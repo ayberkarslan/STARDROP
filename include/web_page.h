@@ -8,28 +8,33 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STM32 Flasher</title>
+    <title>STARDROP • Yıldız Roket Takımı</title>
     <style>
         :root {
-            --bg: #000000;
-            --surface: rgba(18, 18, 20, 0.75);
-            --surface-hover: rgba(28, 28, 32, 0.85);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-focus: rgba(0, 122, 255, 0.5);
-            --text-primary: #f5f5f7;
-            --text-secondary: #86868b;
-            --accent: #2997ff;
-            --accent-glow: rgba(41, 151, 255, 0.25);
+            --navy-deep: #000000;
+            --navy-surface: rgba(6, 10, 22, 0.88);
+            --navy-card: rgba(8, 14, 30, 0.7);
+            --gold-primary: #c5a059;
+            --gold-light: #e8d39c;
+            --gold-glow: rgba(197, 160, 89, 0.18);
+            --gold-border: rgba(197, 160, 89, 0.18);
+            --gold-border-focus: rgba(197, 160, 89, 0.45);
+            --text-primary: #f0f3f8;
+            --text-secondary: #707e94;
+            --text-gold: #d4af37;
             --success: #30d158;
             --error: #ff453a;
+            --warn: #ffd60a;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
             font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
-            background-color: var(--bg);
-            background-image: radial-gradient(circle at 50% 15%, rgba(41, 151, 255, 0.06), transparent 60%);
+            background-color: var(--navy-deep);
+            background-image: 
+                radial-gradient(circle at 50% 5%, rgba(12, 22, 50, 0.5) 0%, transparent 65%),
+                radial-gradient(circle at 50% 95%, rgba(197, 160, 89, 0.03) 0%, transparent 50%);
             color: var(--text-primary);
             display: flex;
             justify-content: center;
@@ -40,114 +45,166 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
 
         .card {
-            background: var(--surface);
-            backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
+            background: var(--navy-surface);
+            backdrop-filter: blur(35px);
+            -webkit-backdrop-filter: blur(35px);
+            border: 1px solid var(--gold-border);
+            border-radius: 22px;
             width: 100%;
             max-width: 480px;
             padding: 28px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255, 255, 255, 0.1);
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.9), 0 0 1px rgba(255, 255, 255, 0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1.5px;
+            background: linear-gradient(90deg, transparent, var(--gold-primary), transparent);
+            opacity: 0.6;
         }
 
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            margin-bottom: 22px;
         }
 
         .title-group h1 {
-            font-size: 19px;
-            font-weight: 600;
-            letter-spacing: -0.02em;
-            color: var(--text-primary);
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            background: linear-gradient(135deg, #ffffff 40%, var(--gold-light) 75%, var(--gold-primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         .title-group p {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-secondary);
-            margin-top: 2px;
-            letter-spacing: -0.01em;
+            margin-top: 3px;
+            letter-spacing: 0.05em;
+            font-weight: 500;
+            text-transform: uppercase;
         }
 
+        /* DİNAMİK BAĞLANTI DURUMU ROZETİ */
         .status-pill {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            background: rgba(48, 209, 88, 0.1);
-            border: 1px solid rgba(48, 209, 88, 0.2);
-            padding: 4px 10px;
+            gap: 7px;
+            padding: 4px 11px;
             border-radius: 20px;
             font-size: 11px;
-            font-weight: 500;
-            color: var(--success);
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .status-pill.online {
+            background: rgba(197, 160, 89, 0.08);
+            border: 1px solid var(--gold-border);
+            color: var(--text-gold);
+        }
+        .status-pill.online .pulse-dot {
+            background-color: var(--gold-primary);
+            box-shadow: 0 0 8px var(--gold-primary);
+            animation: pulse 2s infinite;
+        }
+
+        .status-pill.offline {
+            background: rgba(255, 69, 58, 0.1);
+            border: 1px solid rgba(255, 69, 58, 0.3);
+            color: var(--error);
+        }
+        .status-pill.offline .pulse-dot {
+            background-color: var(--error);
+            box-shadow: 0 0 8px var(--error);
+            animation: none;
+        }
+
+        .status-pill.connecting {
+            background: rgba(255, 214, 10, 0.08);
+            border: 1px solid rgba(255, 214, 10, 0.25);
+            color: var(--warn);
+        }
+        .status-pill.connecting .pulse-dot {
+            background-color: var(--warn);
+            box-shadow: 0 0 6px var(--warn);
+            animation: blink 1s infinite;
         }
 
         .pulse-dot {
             width: 6px;
             height: 6px;
-            background-color: var(--success);
             border-radius: 50%;
-            box-shadow: 0 0 8px var(--success);
-            animation: pulse 2s infinite;
+            transition: background-color 0.3s;
         }
 
         @keyframes pulse {
-            0% { transform: scale(0.95); opacity: 0.8; }
-            50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 12px var(--success); }
-            100% { transform: scale(0.95); opacity: 0.8; }
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.35); opacity: 1; box-shadow: 0 0 10px var(--gold-primary); }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
 
         .drop-zone {
-            border: 1px dashed rgba(255, 255, 255, 0.15);
-            border-radius: 14px;
+            border: 1.5px dashed rgba(197, 160, 89, 0.2);
+            border-radius: 16px;
             padding: 30px 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-            background: rgba(255, 255, 255, 0.02);
+            background: rgba(4, 7, 18, 0.55);
             margin-bottom: 16px;
         }
 
         .drop-zone:hover, .drop-zone.dragover {
-            border-color: var(--accent);
-            background: rgba(41, 151, 255, 0.04);
-            box-shadow: 0 0 20px var(--accent-glow);
+            border-color: var(--gold-primary);
+            background: rgba(197, 160, 89, 0.04);
+            box-shadow: 0 0 24px var(--gold-glow);
         }
 
         .drop-zone svg {
             width: 32px;
             height: 32px;
             fill: none;
-            stroke: var(--text-secondary);
+            stroke: var(--gold-primary);
             stroke-width: 1.5;
             margin-bottom: 10px;
-            transition: stroke 0.2s;
+            opacity: 0.85;
+            transition: opacity 0.2s;
         }
 
         .drop-zone:hover svg {
-            stroke: var(--accent);
+            opacity: 1;
+            filter: drop-shadow(0 0 6px rgba(197, 160, 89, 0.4));
         }
 
         .drop-zone p {
             font-size: 13px;
             color: var(--text-secondary);
-            font-weight: 400;
         }
 
         .drop-zone b {
-            color: var(--text-primary);
+            color: var(--gold-light);
             font-weight: 500;
         }
 
         .file-card {
             display: none;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid var(--border);
+            background: rgba(5, 9, 20, 0.7);
+            border: 1px solid var(--gold-border);
             border-radius: 12px;
-            padding: 12px 14px;
+            padding: 12px 16px;
             margin-bottom: 16px;
             font-size: 12px;
         }
@@ -159,20 +216,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
 
         .file-name {
-            font-weight: 500;
-            color: var(--text-primary);
+            font-weight: 600;
+            color: #ffffff;
             letter-spacing: -0.01em;
             word-break: break-all;
         }
 
         .file-badge {
             font-size: 10px;
-            background: rgba(41, 151, 255, 0.15);
-            color: var(--accent);
+            background: rgba(197, 160, 89, 0.12);
+            color: var(--text-gold);
             padding: 2px 8px;
             border-radius: 6px;
-            font-weight: 600;
-            border: 1px solid rgba(41, 151, 255, 0.25);
+            font-weight: 700;
+            border: 1px solid var(--gold-border);
         }
 
         .file-size {
@@ -183,27 +240,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         button.btn-flash {
             width: 100%;
-            background: var(--text-primary);
-            color: #000000;
+            background: linear-gradient(135deg, #e8d39c 0%, var(--gold-primary) 50%, #9a762e 100%);
+            color: #02040a;
             border: none;
-            padding: 13px;
+            padding: 13.5px;
             border-radius: 12px;
             font-size: 13.5px;
-            font-weight: 600;
-            letter-spacing: -0.01em;
+            font-weight: 700;
+            letter-spacing: 0.01em;
             cursor: pointer;
             transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 4px 14px rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
         }
 
         button.btn-flash:hover:not(:disabled) {
-            background: #ffffff;
             transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 24px rgba(197, 160, 89, 0.35);
+            filter: brightness(1.04);
         }
 
         button.btn-flash:disabled {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(197, 160, 89, 0.08);
             color: rgba(255, 255, 255, 0.2);
             cursor: not-allowed;
             box-shadow: none;
@@ -217,26 +274,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         .progress-labels {
             display: flex;
             justify-content: space-between;
-            font-size: 11.5px;
+            font-size: 11px;
             color: var(--text-secondary);
             margin-bottom: 8px;
             font-weight: 500;
         }
 
         .progress-bar-bg {
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(4, 7, 16, 0.8);
+            border: 1px solid rgba(197, 160, 89, 0.12);
             border-radius: 10px;
-            height: 4px;
+            height: 5px;
             overflow: hidden;
         }
 
         .progress-bar-fill {
-            background: linear-gradient(90deg, var(--accent), #5ac8fa);
+            background: linear-gradient(90deg, var(--gold-primary), #fff3b0);
             height: 100%;
             width: 0%;
             border-radius: 10px;
             transition: width 0.15s ease-out;
-            box-shadow: 0 0 10px var(--accent-glow);
+            box-shadow: 0 0 10px var(--gold-primary);
         }
 
         .terminal-header {
@@ -245,56 +303,56 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             align-items: center;
             margin-top: 20px;
             margin-bottom: 8px;
-            font-size: 10.5px;
-            font-weight: 600;
+            font-size: 10px;
+            font-weight: 700;
             color: var(--text-secondary);
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.08em;
         }
 
         .terminal {
-            background: #000000;
-            border: 1px solid rgba(255, 255, 255, 0.07);
+            background: #020307;
+            border: 1px solid rgba(197, 160, 89, 0.12);
             border-radius: 12px;
             padding: 12px 14px;
-            height: 160px;
+            height: 155px;
             overflow-y: auto;
             font-family: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
-            font-size: 11px;
+            font-size: 10.5px;
             line-height: 1.6;
-            color: var(--text-secondary);
+            color: #637085;
             scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.1) transparent;
+            scrollbar-color: var(--gold-border) transparent;
         }
 
         .terminal::-webkit-scrollbar { width: 4px; }
-        .terminal::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        .terminal::-webkit-scrollbar-thumb { background: var(--gold-border); border-radius: 4px; }
 
         .terminal p { margin: 0; }
-        .log-info { color: #86868b; }
-        .log-chunk { color: #2997ff; }
-        .log-success { color: #30d158; }
-        .log-error { color: #ff453a; font-weight: 600; }
+        .log-info { color: #6e7c91; }
+        .log-chunk { color: var(--text-gold); }
+        .log-success { color: var(--gold-light); font-weight: 600; }
+        .log-error { color: var(--error); font-weight: 600; }
     </style>
 </head>
 <body>
     <div class="card">
         <div class="header">
             <div class="title-group">
-                <h1>STM32 Flasher</h1>
-                <p>Nucleo-F446RE OTA</p>
+                <h1>STARDROP</h1>
+                <p>Yıldız Roket Takımı • Aviyonik OTA</p>
             </div>
-            <div class="status-pill">
-                <span class="pulse-dot"></span>
-                <span>OTA Hazır</span>
+            <div class="status-pill connecting" id="statusPill">
+                <span class="pulse-dot" id="statusDot"></span>
+                <span id="statusText">Bağlanıyor...</span>
             </div>
         </div>
 
         <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
             <svg viewBox="0 0 24 24">
-                <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M12 2L15 8L22 9L17 14L18.5 21L12 17.5L5.5 21L7 14L2 9L9 8L12 2Z" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <p><b>.bin</b> veya <b>.elf</b> dosyasını sürükleyin</p>
+            <p><b>.bin</b> veya <b>.elf</b> yazılımını sürükleyin</p>
             <input type="file" id="fileInput" accept=".bin,.elf" style="display: none;">
         </div>
 
@@ -319,11 +377,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
 
         <div class="terminal-header">
-            <span>Canlı Konsol</span>
-            <span id="chunkCount" style="color: var(--accent)"></span>
+            <span>Aviyonik Telemetri & Doğrulama</span>
+            <span id="chunkCount" style="color: var(--text-gold)"></span>
         </div>
         <div class="terminal" id="terminal">
-            <p class="log-info">[SİSTEM] ESP32-C3 Hazır. Dosya bekleniyor...</p>
+            <p class="log-info">[STARDROP] YRT Yer İstasyonu Hazır. Yazılım bekleniyor...</p>
         </div>
     </div>
 
@@ -340,8 +398,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const pctLabel = document.getElementById('pctLabel');
         const terminal = document.getElementById('terminal');
         const chunkCount = document.getElementById('chunkCount');
+        const statusPill = document.getElementById('statusPill');
+        const statusText = document.getElementById('statusText');
 
         let readyBinary = null;
+        let isFlashing = false;
+        let wasOnline = false;
 
         function log(msg, type = 'info') {
             const p = document.createElement('p');
@@ -351,6 +413,44 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             terminal.appendChild(p);
             terminal.scrollTop = terminal.scrollHeight;
         }
+
+        async function checkConnection() {
+            if (isFlashing) return;
+            const start = performance.now();
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 1800);
+                
+                const res = await fetch('/ping', { signal: controller.signal, cache: 'no-store' });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const latency = Math.round(performance.now() - start);
+                    statusPill.className = 'status-pill online';
+                    statusText.innerText = `Canlı • ${latency}ms`;
+                    if (!wasOnline) {
+                        log(`ESP32 ile bağlantı aktif (${latency}ms).`, 'success');
+                        wasOnline = true;
+                    }
+                    if (readyBinary && !isFlashing) {
+                        flashBtn.disabled = false;
+                    }
+                } else {
+                    throw new Error();
+                }
+            } catch (err) {
+                statusPill.className = 'status-pill offline';
+                statusText.innerText = 'Bağlantı Koptu';
+                flashBtn.disabled = true;
+                if (wasOnline) {
+                    log('ESP32 bağlantısı kesildi! Yeniden bağlanılıyor...', 'error');
+                    wasOnline = false;
+                }
+            }
+        }
+
+        setInterval(checkConnection, 2000);
+        checkConnection();
 
         dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
         dropZone.ondragleave = () => dropZone.classList.remove('dragover');
@@ -417,17 +517,17 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         readyBinary = new Blob([rawBin], { type: 'application/octet-stream' });
                         fileBadge.innerText = 'ELF ➔ BIN';
                         fileSize.innerText = `${(file.size/1024).toFixed(1)} KB ELF ➔ ${(readyBinary.size/1024).toFixed(1)} KB Flash`;
-                        log(`ELF ayrıştırıldı: ${readyBinary.size} bayt Flash verisi hazır.`, 'chunk');
+                        log(`ELF ayrıştırıldı: ${readyBinary.size} bayt Flash verisi hazırlandı.`, 'chunk');
                     } else {
                         readyBinary = file;
                         fileBadge.innerText = 'RAW BIN';
                         fileSize.innerText = `${(file.size/1024).toFixed(1)} KB Flash Binary`;
-                        log(`BIN yüklendi: ${readyBinary.size} bayt.`, 'info');
+                        log(`BIN hazır: ${readyBinary.size} bayt.`, 'info');
                     }
 
                     fileName.innerText = file.name;
                     fileCard.style.display = 'block';
-                    flashBtn.disabled = false;
+                    if (wasOnline) flashBtn.disabled = false;
                 } catch (err) {
                     alert("Ayrıştırma Hatası: " + err.message);
                     log(`Hata: ${err.message}`, 'error');
@@ -440,11 +540,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         function startFlashingProcess() {
             if (!readyBinary) return;
+            isFlashing = true;
             flashBtn.disabled = true;
             progBar.style.width = '0%';
             pctLabel.innerText = '%0';
-            statusLabel.innerText = 'Aktarılıyor...';
-            log('Dosya ESP32 RAM tamponuna yükleniyor...', 'info');
+            statusLabel.innerText = 'Yükleniyor...';
+            log('Yazılım ESP32 belleğine aktarılıyor...', 'info');
 
             const formData = new FormData();
             formData.append('firmware', readyBinary, 'firmware.bin');
@@ -454,17 +555,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
             xhr.onload = () => {
                 if (xhr.status === 200) {
-                    log('Dosya RAM tamponunda. UART Flash akışı başlatılıyor...', 'info');
+                    log('Yazılım belleğe alındı. UART Flash akışı başlıyor...', 'info');
                     startSSEStream();
                 } else {
                     log(`Yükleme hatası: ${xhr.responseText}`, 'error');
                     flashBtn.disabled = false;
+                    isFlashing = false;
                 }
             };
 
             xhr.onerror = () => {
-                log('ESP32 bağlantı hatası!', 'error');
+                log('Yer istasyonu bağlantı hatası!', 'error');
                 flashBtn.disabled = false;
+                isFlashing = false;
             };
 
             xhr.send(formData);
@@ -490,14 +593,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         progBar.style.width = '100%';
                         pctLabel.innerText = '%100';
                         statusLabel.innerText = 'Tamamlandı';
-                        statusLabel.style.color = '#30d158';
+                        statusLabel.style.color = 'var(--text-gold)';
                         flashBtn.disabled = false;
+                        isFlashing = false;
                     }
                     if (data.error) {
                         evtSource.close();
                         statusLabel.innerText = 'Hata';
                         statusLabel.style.color = '#ff453a';
                         flashBtn.disabled = false;
+                        isFlashing = false;
                     }
                 } catch (err) {
                     console.error(err);
@@ -506,8 +611,9 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
             evtSource.onerror = () => {
                 evtSource.close();
-                log('Terminal akış bağlantısı kapandı.', 'info');
+                log('Akış oturumu kapandı.', 'info');
                 flashBtn.disabled = false;
+                isFlashing = false;
             };
         }
     </script>

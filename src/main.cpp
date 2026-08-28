@@ -189,12 +189,24 @@ bool stm32VerifyChunk(uint32_t address, uint8_t* expectedData, uint16_t length) 
 }
 
 void stm32ExitBootloader() {
+    // 1. BOOT0 pinini kesin olarak 0V yap ve hattın tamamen boşalmasını bekle
+    pinMode(STM32_BOOT0_PIN, OUTPUT);
     digitalWrite(STM32_BOOT0_PIN, LOW);
-    delay(10);
+    delay(100);
 
+    // 2. Open-Drain Reset darbesi: NRST hattını 150ms boyunca 0V'a çek
+    pinMode(STM32_RST_PIN, OUTPUT);
     digitalWrite(STM32_RST_PIN, LOW);
-    delay(50);
-    digitalWrite(STM32_RST_PIN, HIGH);
+    delay(150);
+
+    // 3. Reset hattını serbest bırak (Nucleo'nun 3.3V pull-up direnci çeksin)
+    pinMode(STM32_RST_PIN, INPUT_PULLUP);
+    delay(150);
+
+    // 4. UART pinlerini serbest bırak (STM32'nin ana programı pinleri serbestçe kullansın)
+    STM32_Serial.end();
+    pinMode(STM32_RX_PIN, INPUT);
+    pinMode(STM32_TX_PIN, INPUT);
 }
 
 // ==============================================================================
@@ -377,6 +389,10 @@ void setup() {
 
     // Web Sunucu Rotaları
     server.on("/", HTTP_GET, handleRoot);
+    server.on("/ping", HTTP_GET, []() {
+        server.sendHeader("Cache-Control", "no-cache");
+        server.send(200, "application/json", "{\"status\":\"ok\",\"uptime\":" + String(millis() / 1000) + "}");
+    });
     server.on("/upload", HTTP_POST, []() {}, handleFileUpload);
     server.on("/stream-flash", HTTP_GET, handleStreamFlash);
 
