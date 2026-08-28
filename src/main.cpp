@@ -47,7 +47,9 @@ std::vector<uint8_t> firmwareBuffer;
 // 4. STM32 DAHİLİ BOOTLOADER İLETİŞİM FONKSİYONLARI (UART)
 // ==============================================================================
 
-bool waitForAck(uint32_t timeoutMs = 2000) {
+#define BOOTLOADER_BAUD   460800 // 4x Hızlı UART Hızı (115200 yerine 460800)
+
+bool waitForAck(uint32_t timeoutMs = 1500) {
     uint32_t start = millis();
     while (millis() - start < timeoutMs) {
         if (STM32_Serial.available()) {
@@ -63,29 +65,34 @@ bool waitForAck(uint32_t timeoutMs = 2000) {
 String lastDiagnosticMsg = "";
 
 bool stm32EnterBootloader() {
-    // 1. BOOT0 = HIGH (System ROM'dan başlaması için)
-    pinMode(STM32_BOOT0_PIN, OUTPUT);
-    digitalWrite(STM32_BOOT0_PIN, HIGH);
-    delay(50);
-
-    // 2. Open-Drain Reset Emülasyonu (Nucleo ST-Link ile çakışmayı önler)
-    pinMode(STM32_RST_PIN, OUTPUT);
-    digitalWrite(STM32_RST_PIN, LOW); // 0V'a çek
-    delay(150);
-    pinMode(STM32_RST_PIN, INPUT_PULLUP); // Bırak ve 3.3V'a yükselmesini bekle
-    delay(250);
-
-    // 3. UART 8E1 Başlat
-    STM32_Serial.begin(115200, SERIAL_8E1, STM32_RX_PIN, STM32_TX_PIN);
+    // 1. ÖNCE UART portunu başlat ve TX hattını IDLE (HIGH) seviyesine oturt
+    // Bu sayede STM32 resetten kalkarken hatta parazit/glitch görmez ve ilk denemede el sıkışır!
+    STM32_Serial.begin(BOOTLOADER_BAUD, SERIAL_8E1, STM32_RX_PIN, STM32_TX_PIN);
+    delay(20);
     while (STM32_Serial.available()) STM32_Serial.read();
 
-    // 4. 0x7F Gönder ve Gelen Yanıtı Dinle
+    // 2. BOOT0 Pinini HIGH yap
+    pinMode(STM32_BOOT0_PIN, OUTPUT);
+    digitalWrite(STM32_BOOT0_PIN, HIGH);
+    delay(40);
+
+    // 3. ŞİMDİ Reset Darbesi ver (Hatlar zaten tertemiz ve hazır!)
+    pinMode(STM32_RST_PIN, OUTPUT);
+    digitalWrite(STM32_RST_PIN, LOW); // 0V'a çek
+    delay(100);
+    pinMode(STM32_RST_PIN, INPUT_PULLUP); // Bırak
+    delay(120); // STM32 dahili ROM'unun boot etmesini bekle
+
+    // Reset anındaki elektriksel parazitleri temizle
+    while (STM32_Serial.available()) STM32_Serial.read();
+
+    // 4. 0x7F Autobaud baytını gönder ve ACK bekle
     for (int attempt = 1; attempt <= 6; attempt++) {
         while (STM32_Serial.available()) STM32_Serial.read();
         STM32_Serial.write(STM32_CMD_INIT);
 
         uint32_t t0 = millis();
-        while (millis() - t0 < 300) {
+        while (millis() - t0 < 250) {
             if (STM32_Serial.available()) {
                 uint8_t b = STM32_Serial.read();
                 if (b == STM32_ACK) {
@@ -93,15 +100,11 @@ bool stm32EnterBootloader() {
                     return true;
                 } else if (b == STM32_NACK) {
                     lastDiagnosticMsg = "0x1F NACK alındı";
-                } else {
-                    char hexb[16];
-                    snprintf(hexb, sizeof(hexb), "0x%02X alındı", b);
-                    lastDiagnosticMsg = String(hexb);
                 }
             }
             delay(1);
         }
-        delay(100);
+        delay(60);
     }
     return false;
 }
@@ -122,7 +125,7 @@ bool stm32EraseFlash() {
 bool stm32WriteChunk(uint32_t address, uint8_t* data, uint16_t length) {
     STM32_Serial.write(STM32_CMD_WRITE);
     STM32_Serial.write(0xCE); // 0x31 ^ 0xFF
-    if (!waitForAck()) return false;
+    if (!waitForAck(1000)) return false;
 
     uint8_t addrBytes[4];
     addrBytes[0] = (address >> 24) & 0xFF;
@@ -133,29 +136,30 @@ bool stm32WriteChunk(uint32_t address, uint8_t* data, uint16_t length) {
 
     STM32_Serial.write(addrBytes, 4);
     STM32_Serial.write(addrChecksum);
-    if (!waitForAck()) return false;
+    if (!waitForAck(1000)) return false;
 
     uint8_t lenByte = (uint8_t)(length - 1);
     uint8_t dataChecksum = lenByte;
 
-    STM32_Serial.write(lenByte);
+    // Tüm bloğu donanımsal FIFO ile tek seferde yüksek hızda gönder
     for (uint16_t i = 0; i < length; i++) {
-        STM32_Serial.write(data[i]);
         dataChecksum ^= data[i];
     }
+
+    STM32_Serial.write(lenByte);
+    STM32_Serial.write(data, length);
     STM32_Serial.write(dataChecksum);
 
-    return waitForAck(3000);
+    return waitForAck(2000);
 }
 
 /**
- * UART üzerinden STM32 Flash'ından 256 baytı geri okur (0x11 Read Memory)
- * ve gönderilen orijinal veri ile bayt bayt karşılaştırır.
+ * 460800 baud hızında 256 baytı tek seferde (Bulk) geri okur ve memcmp ile anında doğrular.
  */
 bool stm32VerifyChunk(uint32_t address, uint8_t* expectedData, uint16_t length) {
     STM32_Serial.write(STM32_CMD_READ);
     STM32_Serial.write(0xEE); // 0x11 ^ 0xFF
-    if (!waitForAck()) return false;
+    if (!waitForAck(1000)) return false;
 
     uint8_t addrBytes[4];
     addrBytes[0] = (address >> 24) & 0xFF;
@@ -166,24 +170,25 @@ bool stm32VerifyChunk(uint32_t address, uint8_t* expectedData, uint16_t length) 
 
     STM32_Serial.write(addrBytes, 4);
     STM32_Serial.write(addrChecksum);
-    if (!waitForAck()) return false;
+    if (!waitForAck(1000)) return false;
 
     uint8_t lenByte = (uint8_t)(length - 1);
     STM32_Serial.write(lenByte);
     STM32_Serial.write((uint8_t)~lenByte);
-    if (!waitForAck()) return false;
+    if (!waitForAck(1000)) return false;
 
-    for (uint16_t i = 0; i < length; i++) {
-        uint32_t t0 = millis();
-        while (!STM32_Serial.available()) {
-            if (millis() - t0 > 1000) return false;
-        }
-        uint8_t readByte = STM32_Serial.read();
-        if (readByte != expectedData[i]) {
-            Serial.printf("[DOĞRULAMA HATASI] Adres: 0x%08X (Giden: 0x%02X != Gelen: 0x%02X)\n", 
-                          address + i, expectedData[i], readByte);
-            return false;
-        }
+    // 256 Baytı donanımsal UART FIFO tamponundan tek hamlede oku
+    uint8_t readBuffer[256];
+    size_t bytesRead = STM32_Serial.readBytes(readBuffer, length);
+    if (bytesRead != length) {
+        Serial.printf("[DOĞRULAMA HATASI] 0x%08X eksik bayt okundu (%u/%u)\n", address, (uint32_t)bytesRead, length);
+        return false;
+    }
+
+    // Bellekte anında karşılaştır
+    if (memcmp(readBuffer, expectedData, length) != 0) {
+        Serial.printf("[DOĞRULAMA HATASI] 0x%08X verisi uyuşmadı!\n", address);
+        return false;
     }
     return true;
 }
