@@ -188,5 +188,8 @@
  /home/ayberk/.platformio/packages/framework-arduinoespressif32/libraries/WebServer/src/detail/RequestHandler.h \
  /home/ayberk/.platformio/packages/framework-arduinoespressif32/libraries/DNSServer/src/DNSServer.h \
  /home/ayberk/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiUdp.h \
+ /home/ayberk/.platformio/packages/framework-arduinoespressif32/libraries/ESPmDNS/src/ESPmDNS.h \
+ /home/ayberk/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/mdns/include/mdns.h \
+ /home/ayberk/.platformio/packages/framework-arduinoespressif32/libraries/Preferences/src/Preferences.h \
  /home/ayberk/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/soc/esp32c3/include/soc/rtc_cntl_reg.h \
- include/web_page.h
+ include/swd.h include/web_page.h

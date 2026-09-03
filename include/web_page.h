@@ -92,6 +92,31 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             text-transform: uppercase;
         }
 
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-gear {
+            background: rgba(197, 160, 89, 0.08);
+            border: 1px solid var(--gold-border);
+            color: var(--text-gold);
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-gear:hover {
+            background: rgba(197, 160, 89, 0.2);
+            transform: rotate(30deg);
+        }
+
         /* DİNAMİK BAĞLANTI DURUMU ROZETİ */
         .status-pill {
             display: inline-flex;
@@ -333,6 +358,97 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         .log-chunk { color: var(--text-gold); }
         .log-success { color: var(--gold-light); font-weight: 600; }
         .log-error { color: var(--error); font-weight: 600; }
+
+        /* MODAL (AĞ YÖNETİCİSİ) */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .modal {
+            background: #060a16;
+            border: 1px solid var(--gold-border);
+            border-radius: 18px;
+            width: 100%;
+            max-width: 440px;
+            padding: 24px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .modal-header h2 {
+            font-size: 16px;
+            color: var(--gold-light);
+        }
+
+        .btn-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .net-section { margin-bottom: 16px; }
+        .net-section label { display: block; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
+        
+        .net-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(14, 26, 60, 0.5);
+            border: 1px solid var(--gold-border);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .btn-del {
+            background: none;
+            border: none;
+            color: var(--error);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 6px;
+        }
+
+        .net-input {
+            width: 100%;
+            background: #020307;
+            border: 1px solid var(--gold-border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .btn-save-net {
+            width: 100%;
+            background: var(--gold-primary);
+            color: #000;
+            border: none;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -342,9 +458,12 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 <h1>STARDROP</h1>
                 <p>Yıldız Roket Takımı • Aviyonik OTA</p>
             </div>
-            <div class="status-pill connecting" id="statusPill">
-                <span class="pulse-dot" id="statusDot"></span>
-                <span id="statusText">Bağlanıyor...</span>
+            <div class="header-actions">
+                <div class="status-pill connecting" id="statusPill">
+                    <span class="pulse-dot" id="statusDot"></span>
+                    <span id="statusText">Bağlanıyor...</span>
+                </div>
+                <button class="btn-gear" onclick="openNetworkModal()" title="Ağ Yönetimi">⚙️</button>
             </div>
         </div>
 
@@ -385,6 +504,28 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
     </div>
 
+    <!-- AĞ YÖNETİMİ MODAL -->
+    <div class="modal-overlay" id="netModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>⚙️ Wi-Fi Ağ Yöneticisi</h2>
+                <button class="btn-close" onclick="closeNetworkModal()">✕</button>
+            </div>
+            <div class="net-section">
+                <label>Kayıtlı Ağlar (NVS Hafızası)</label>
+                <div id="savedNetworksList">
+                    <p style="font-size: 11px; color: var(--text-secondary);">Yükleniyor...</p>
+                </div>
+            </div>
+            <div class="net-section">
+                <label>Yeni Ağ Ekle</label>
+                <input type="text" class="net-input" id="newSsid" placeholder="Wi-Fi Adı (SSID)">
+                <input type="password" class="net-input" id="newPass" placeholder="Wi-Fi Şifresi">
+                <button class="btn-save-net" onclick="saveNewNetwork()">Hafızaya Kaydet & Bağlan</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
@@ -400,6 +541,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const chunkCount = document.getElementById('chunkCount');
         const statusPill = document.getElementById('statusPill');
         const statusText = document.getElementById('statusText');
+        const netModal = document.getElementById('netModal');
+        const savedNetworksList = document.getElementById('savedNetworksList');
 
         let readyBinary = null;
         let isFlashing = false;
@@ -451,6 +594,73 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         setInterval(checkConnection, 2000);
         checkConnection();
+
+        // WI-FI MODAL İŞLEMLERİ
+        function openNetworkModal() {
+            netModal.style.display = 'flex';
+            loadNetworkStatus();
+        }
+
+        function closeNetworkModal() {
+            netModal.style.display = 'none';
+        }
+
+        async function loadNetworkStatus() {
+            try {
+                const res = await fetch('/api/wifi/status');
+                const data = await res.json();
+                savedNetworksList.innerHTML = '';
+                
+                if (data.saved && data.saved.length > 0) {
+                    data.saved.forEach(s => {
+                        const isCurrent = data.connected && data.ssid === s;
+                        const div = document.createElement('div');
+                        div.className = 'net-item';
+                        div.innerHTML = `<span><b>${s}</b> ${isCurrent ? '<span style="color:var(--gold-primary); font-size:10px;">(Aktif)</span>' : ''}</span>
+                                         <button class="btn-del" onclick="deleteNetwork('${s}')">Sil</button>`;
+                        savedNetworksList.appendChild(div);
+                    });
+                } else {
+                    savedNetworksList.innerHTML = '<p style="font-size: 11px; color: var(--text-secondary);">Kayıtlı ağ yok.</p>';
+                }
+            } catch (e) {
+                savedNetworksList.innerHTML = '<p style="color:var(--error); font-size:11px;">Ağ listesi alınamadı!</p>';
+            }
+        }
+
+        async function saveNewNetwork() {
+            const ssid = document.getElementById('newSsid').value.trim();
+            const pass = document.getElementById('newPass').value.trim();
+            if (!ssid) { alert('Lütfen bir Wi-Fi adı girin!'); return; }
+
+            try {
+                await fetch('/api/wifi/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ssid: ssid, pass: pass })
+                });
+                document.getElementById('newSsid').value = '';
+                document.getElementById('newPass').value = '';
+                alert(`'${ssid}' ağı kaydedildi! ESP32 bağlanmayı deniyor.`);
+                loadNetworkStatus();
+            } catch (e) {
+                alert('Ağ kaydedilemedi!');
+            }
+        }
+
+        async function deleteNetwork(ssid) {
+            if (!confirm(`'${ssid}' ağını silmek istediğinize emin misiniz?`)) return;
+            try {
+                await fetch('/api/wifi/remove', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ssid: ssid })
+                });
+                loadNetworkStatus();
+            } catch (e) {
+                alert('Silinemedi!');
+            }
+        }
 
         dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
         dropZone.ondragleave = () => dropZone.classList.remove('dragover');
