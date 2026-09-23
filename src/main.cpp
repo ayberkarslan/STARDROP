@@ -40,6 +40,10 @@ const char* DISCOVERY_REQUEST = "STARDROP_DISCOVER_V1";
 #define ONBOARD_LED_PIN   2
 #endif
 #define FLASH_START_ADDR  0x08000000
+#define DIAGNOSTIC_REPORT_ADDR 0x20000100UL
+#define DIAGNOSTIC_REPORT_SIZE 128U
+#define DIAGNOSTIC_REPORT_MAGIC 0x53545250UL // "STRP"
+#define DIAGNOSTIC_REPORT_ABI 1U
 
 // Donanım ve Sistem Nesneleri
 SWDFlasher swd;
@@ -668,6 +672,82 @@ void handleTargetFlashUsage() {
     server.send(200, "application/json", json);
 }
 
+uint32_t readLe32(const uint8_t* bytes) {
+    return (uint32_t)bytes[0] | ((uint32_t)bytes[1] << 8) |
+           ((uint32_t)bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+}
+
+uint16_t readLe16(const uint8_t* bytes) {
+    return (uint16_t)bytes[0] | ((uint16_t)bytes[1] << 8);
+}
+
+uint32_t diagnosticReportCrc32(const uint8_t* bytes, uint16_t length) {
+    uint32_t crc = 0xFFFFFFFFUL;
+    for (uint16_t i = 0; i < length; ++i) {
+        crc ^= bytes[i];
+        for (uint8_t bit = 0; bit < 8; ++bit) {
+            crc = (crc >> 1) ^ (0xEDB88320UL & (-(int32_t)(crc & 1U)));
+        }
+    }
+    return ~crc;
+}
+
+const char* diagnosticStateName(uint32_t state) {
+    switch (state) {
+        case 0: return "IDLE";
+        case 1: return "RUNNING";
+        case 2: return "PASS";
+        case 3: return "FAIL";
+        case 4: return "FATAL";
+        default: return "UNKNOWN";
+    }
+}
+
+// Test firmware'i, diagnostics/runtime/stardrop_diagnostic_report.h içindeki
+// 128B ABI'yi SRAM'e yazar. Bu salt-okunur endpoint CPU'yu durdurmadan yalnız
+// SWCLK + SWDIO üzerinden sonucu alır.
+void handleDiagnosticReport() {
+    swd.setSpeedProfile(SwdSpeedProfile::FAST);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    TargetProbeInfo target;
+    if (!swd.probe(&target)) {
+        server.send(200, "application/json", "{\"connected\":false,\"valid\":false,\"ack\":" + String(swd.lastAck) + "}");
+        return;
+    }
+
+    uint8_t report[DIAGNOSTIC_REPORT_SIZE];
+    if (!swd.readBlock(DIAGNOSTIC_REPORT_ADDR, report, sizeof(report))) {
+        server.send(200, "application/json", "{\"connected\":true,\"valid\":false,\"reason\":\"SRAM_READ_FAILED\"}");
+        return;
+    }
+
+    const uint32_t magic = readLe32(report);
+    const uint16_t abi = readLe16(report + 4);
+    const uint16_t size = readLe16(report + 6);
+    const uint32_t sequenceStart = readLe32(report + 8);
+    const uint32_t state = readLe32(report + 12);
+    const uint32_t error = readLe32(report + 16);
+    const uint32_t crc = readLe32(report + 120);
+    const uint32_t sequenceEnd = readLe32(report + 124);
+    const bool valid = magic == DIAGNOSTIC_REPORT_MAGIC && abi == DIAGNOSTIC_REPORT_ABI &&
+                       size == DIAGNOSTIC_REPORT_SIZE && sequenceStart != 0 &&
+                       sequenceStart == sequenceEnd && crc == diagnosticReportCrc32(report, 120);
+
+    String json = "{\"connected\":true,\"valid\":" + String(valid ? "true" : "false") + ",";
+    json += "\"state\":\"" + String(diagnosticStateName(state)) + "\",";
+    json += "\"stateCode\":" + String(state) + ",\"error\":" + String(error) + ",";
+    json += "\"testIdHash\":\"0x" + String(readLe32(report + 20), HEX) + "\",";
+    json += "\"profileHash\":\"0x" + String(readLe32(report + 24), HEX) + "\",";
+    json += "\"expectedDeviceId\":\"0x" + String(readLe32(report + 28), HEX) + "\",";
+    json += "\"observedDeviceId\":\"0x" + String(readLe32(report + 32), HEX) + "\",";
+    json += "\"primaryMilli\":" + String((int32_t)readLe32(report + 36)) + ",";
+    json += "\"secondaryMilli\":" + String((int32_t)readLe32(report + 40)) + ",";
+    json += "\"elapsedMs\":" + String(readLe32(report + 44));
+    if (!valid) json += ",\"reason\":\"ABI_OR_CRC_INVALID\"";
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
 void handleStreamTargetFlashUsage() {
     server.setContentLength(CONTENT_LENGTH_UNKNOWN);
     server.send(200, "text/event-stream", "");
@@ -857,6 +937,7 @@ void setup() {
     server.on("/api/target/label", HTTP_POST, handleTargetLabel);
     server.on("/api/target/flash-usage", HTTP_GET, handleTargetFlashUsage);
     server.on("/stream-target-flash-usage", HTTP_GET, handleStreamTargetFlashUsage);
+    server.on("/api/diagnostic/report", HTTP_GET, handleDiagnosticReport);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);
