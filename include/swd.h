@@ -311,10 +311,6 @@ public:
             }
             if (ack == SWD_ACK_OK && confirmAck == SWD_ACK_OK &&
                 idcode == confirmIdcode && isArmSwDpId(idcode)) {
-                if (resetHeld) {
-                    pinMode(pin_rst, INPUT_PULLUP);
-                    delay(5);
-                }
                 if (idcode_out) *idcode_out = idcode;
                 Serial.printf("[SWD] ARM Cortex-M DAP Bağlandı! (Deneme %d, IDCODE: 0x%08X)\n", attempt, idcode);
 
@@ -334,6 +330,16 @@ public:
                 // 9. MEM-AP CSW Yapılandır (32-bit, Auto-increment = 0x23000052)
                 uint32_t csw = 0x23000052;
                 writeAP(0x00, csw);
+
+                if (resetHeld) {
+                    // Catch reset before user firmware can enter WFI and gate
+                    // the AHB clock needed by MEM-AP. This is only used when
+                    // the optional bench NRST wire is physically connected.
+                    writeMem32(DEMCR_ADDR, 0x01000001UL); // TRCENA | VC_CORERESET
+                    writeMem32(DHCSR_ADDR, DBGKEY | C_DEBUGEN | C_HALT);
+                    pinMode(pin_rst, INPUT_PULLUP);
+                    delay(5);
+                }
 
                 return true;
             }
