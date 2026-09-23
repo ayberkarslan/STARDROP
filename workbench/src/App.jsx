@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Cpu, Download, FileUp, FlaskConical, Radio, RefreshCw, Save, Send, ShieldCheck, Upload } from 'lucide-react';
+import { Activity, Cpu, Download, FileUp, FlaskConical, Github, Radio, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { addAuditEvent, overallConfidence, validateBoardProfile } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { loadSecret, saveSecret } from './lib/secretStore.js';
+import { beginGitHubDeviceLogin, currentGitHubUser, dispatchProfileBuild, pollGitHubDeviceLogin } from './lib/githubClient.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
 
@@ -30,6 +31,9 @@ export default function App() {
   const [aiReview, setAiReview] = useState(null);
   const [acceptedSuggestions, setAcceptedSuggestions] = useState([]);
   const [aiBusy, setAiBusy] = useState(false);
+  const [githubConfig, setGithubConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.github.config') || '{"clientId":"","repository":"","ref":"main"}'));
+  const [githubUser, setGithubUser] = useState(null);
+  const [deviceLogin, setDeviceLogin] = useState(null);
   const [profile, setProfile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null });
@@ -59,6 +63,7 @@ export default function App() {
   useEffect(() => { refreshTarget(); }, []);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)); }, []);
+  useEffect(() => { loadSecret('github_access_token').then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }); }, []);
 
   useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
 
@@ -142,6 +147,39 @@ export default function App() {
     setNotice(`${acceptedSuggestions.length} AI önerisi profile uygulandı; hepsi yeniden onay bekliyor.`);
   };
 
+  const updateGithubConfig = (field, value) => setGithubConfig((current) => {
+    const next = { ...current, [field]: value };
+    localStorage.setItem('stardrop.github.config', JSON.stringify(next));
+    return next;
+  });
+
+  const startGithubLogin = async () => {
+    try {
+      const device = await beginGitHubDeviceLogin(githubConfig.clientId);
+      setDeviceLogin(device); setNotice('GitHub doğrulama kodunu açılan ayarlar ekranından onayla.');
+      const expiresAt = Date.now() + device.expires_in * 1000;
+      const interval = window.setInterval(async () => {
+        if (Date.now() > expiresAt) { window.clearInterval(interval); setDeviceLogin(null); return; }
+        try {
+          const token = await pollGitHubDeviceLogin(githubConfig.clientId, device.device_code);
+          if (!token) return;
+          window.clearInterval(interval); await saveSecret('github_access_token', token);
+          const user = await currentGitHubUser(token); setGithubUser(user); setDeviceLogin(null); setNotice(`GitHub girişi tamamlandı: ${user.login}`);
+        } catch (error) { window.clearInterval(interval); setDeviceLogin(null); setNotice(`GitHub girişi başarısız: ${error.message}`); }
+      }, Math.max(5000, (device.interval || 5) * 1000));
+    } catch (error) { setNotice(`GitHub Device Login başlatılamadı: ${error.message}`); }
+  };
+
+  const dispatchCloudBuild = async () => {
+    try {
+      const token = await loadSecret('github_access_token');
+      if (!token || !githubUser) throw new Error('Önce GitHub girişi yap.');
+      const testId = ({ BMP180: 'bmp180', MS5611: 'ms5611', BMP388: 'bmp388', ICM20689: 'icm20689', 'GENERIC I²C': 'generic-i2c', 'GENERIC SPI': 'generic-spi' })[selectedTest];
+      await dispatchProfileBuild({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', profile, testId });
+      setNotice(`${selectedTest} için GitHub Actions derleme işi ${githubUser.login} adına başlatıldı.`);
+    } catch (error) { setNotice(`Bulut derlemesi başlatılamadı: ${error.message}`); }
+  };
+
   const exportProject = async () => {
     try {
       const file = await exportStardropProject({ profile, netlist: sources.netlist, bom: sources.bom, schematicPdf: sources.schematic });
@@ -168,12 +206,13 @@ export default function App() {
       <nav>
         <button className={mode === 'flash' ? 'active' : ''} onClick={() => setMode('flash')}><Upload />Hızlı Yükleme</button>
         <button className={mode === 'workbench' ? 'active' : ''} onClick={() => setMode('workbench')}><FlaskConical />Kart Workbench</button>
+        <button className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}><Settings />Entegrasyonlar</button>
       </nav>
       <div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
     </aside>
     <main>
-      <header><div><h1>{mode === 'flash' ? 'HIZLI YÜKLEME' : 'KART WORKBENCH'}</h1><p>SWD · F401/F446 · doğrulanabilir donanım profilleri</p></div><div className="bridge"><Radio /><input value={bridge} onChange={(event) => setBridge(event.target.value)} aria-label="ESP32 adresi"/><button onClick={refreshTarget} title="Hedefi yenile"><RefreshCw /></button></div></header>
-      {mode === 'flash' ? <div className="workspace two-col">
+      <header><div><h1>{mode === 'flash' ? 'HIZLI YÜKLEME' : mode === 'settings' ? 'ENTEGRASYONLAR' : 'KART WORKBENCH'}</h1><p>SWD · F401/F446 · doğrulanabilir donanım profilleri</p></div><div className="bridge"><Radio /><input value={bridge} onChange={(event) => setBridge(event.target.value)} aria-label="ESP32 adresi"/><button onClick={refreshTarget} title="Hedefi yenile"><RefreshCw /></button></div></header>
+      {mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Bu giriş yalnız özel katalog, bulut derleme ve merkezi audit için kullanılır.</p><div className="settings-grid"><input value={githubConfig.clientId || ''} placeholder="GitHub App Client ID" onChange={(event) => updateGithubConfig('clientId', event.target.value)} /><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={!githubConfig.clientId || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : 'GITHUB DEVICE LOGIN'}</button>{deviceLogin && <div className="device-code"><strong>{deviceLogin.user_code}</strong><span>Tarayıcıda <b>{deviceLogin.verification_uri}</b> adresini açıp bu kodu gir.</span></div>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <div className="workspace two-col">
         <Section title="SWD HEDEFİ" action={<button className="icon-button" onClick={refreshTarget}><RefreshCw /></button>}>
           {target?.connected ? <div className="target-card"><Cpu /><div><strong>{target.label || target.model}</strong><p>{target.model} · {target.flashSizeKb} KB · UID {target.uid}</p></div><Badge tone="good">BAĞLI</Badge></div> : <div className="empty">ESP32 ve SWD hattını kontrol et. Bu modda GitHub veya parser gerekmez.</div>}
         </Section>
@@ -203,7 +242,7 @@ export default function App() {
             ['BMP180', 'Kimlik + basınç örneği'], ['MS5611', 'Kimlik + basınç örneği'], ['BMP388', 'Kimlik + basınç örneği'],
             ['ICM20689', 'Kimlik + hareket örneği'], ['GENERIC I²C', 'Bus tarama/doğrulama'], ['GENERIC SPI', 'Bus tarama/doğrulama'],
           ].map(([name, description]) => <button key={name} className={selectedTest === name ? 'catalog-selected' : ''} onClick={() => { setSelectedTest(name); setDiagnosticReport(null); }}><Activity /><strong>{name}</strong><small>{description}</small></button>)}</div>
-            {selectedTest && <div className="test-runner"><label className="secondary"><FileUp />{testArtifact?.name || `${selectedTest} .BIN SEÇ`}<input type="file" accept=".bin,application/octet-stream" onChange={(event) => setTestArtifact(event.target.files?.[0] || null)} /></label><button className="primary" disabled={!testArtifact || !profileValidation.valid} onClick={() => flashFirmware(testArtifact)}><Send />TESTİ FLASHLA VE İZLE</button></div>}
+            {selectedTest && <div className="test-runner"><label className="secondary"><FileUp />{testArtifact?.name || `${selectedTest} .BIN SEÇ`}<input type="file" accept=".bin,application/octet-stream" onChange={(event) => setTestArtifact(event.target.files?.[0] || null)} /></label><button className="primary" disabled={!testArtifact || !profileValidation.valid} onClick={() => flashFirmware(testArtifact)}><Send />TESTİ FLASHLA VE İZLE</button><button className="secondary" disabled={!profileValidation.valid} onClick={dispatchCloudBuild}><Github />GITHUB ACTIONS DERLE</button></div>}
             {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID 0x{diagnosticReport.observedDeviceId?.replace('0x', '')}</span><span>ÖLÇÜM {diagnosticReport.primaryMilli}</span></div>}</div>}
             <p className="catalog-note">Şimdilik test artifact’ını elle seçebilirsin; sıradaki GitHub katalog akışı stable/dev imajını ve özel pinli bulut derlemesini bu alana bağlayacak.</p></Section>
         </>}
