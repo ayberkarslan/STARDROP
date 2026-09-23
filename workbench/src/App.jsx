@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Cpu, Download, FileUp, FlaskConical, Radio, RefreshCw, Save, Send, ShieldCheck, Upload } from 'lucide-react';
 import { addAuditEvent, overallConfidence, validateBoardProfile } from './lib/boardProfile.js';
+import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
+import { loadSecret, saveSecret } from './lib/secretStore.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
 
@@ -23,6 +25,11 @@ export default function App() {
   const [selectedTest, setSelectedTest] = useState(null);
   const [testArtifact, setTestArtifact] = useState(null);
   const [diagnosticReport, setDiagnosticReport] = useState(null);
+  const [aiConfig, setAiConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.ai.config') || '{"endpoint":"https://api.openai.com/v1","model":"gpt-4.1-mini"}'));
+  const [aiKey, setAiKey] = useState('');
+  const [aiReview, setAiReview] = useState(null);
+  const [acceptedSuggestions, setAcceptedSuggestions] = useState([]);
+  const [aiBusy, setAiBusy] = useState(false);
   const [profile, setProfile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null });
@@ -50,6 +57,8 @@ export default function App() {
   };
 
   useEffect(() => { refreshTarget(); }, []);
+
+  useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)); }, []);
 
   useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
 
@@ -111,6 +120,28 @@ export default function App() {
     return addAuditEvent({ ...current, connections }, 'CONNECTIONS_APPROVED', { componentRef });
   });
 
+  const updateAiConfig = (field, value) => setAiConfig((current) => {
+    const next = { ...current, [field]: value };
+    localStorage.setItem('stardrop.ai.config', JSON.stringify(next));
+    return next;
+  });
+
+  const runAiReview = async () => {
+    if (!profile) return;
+    setAiBusy(true); setAiReview(null); setAcceptedSuggestions([]);
+    try {
+      await saveSecret('ai_api_key', aiKey);
+      const review = await requestAiReview({ ...aiConfig, apiKey: aiKey, profile, netlist: sources.netlist, schematicPdf: sources.schematic });
+      setAiReview(review); setNotice(`AI incelemesi ${review.suggestions.length} öneri üretti; hiçbir değişiklik uygulanmadı.`);
+    } catch (error) { setNotice(`AI incelemesi başarısız: ${error.message}`); }
+    finally { setAiBusy(false); }
+  };
+
+  const applySelectedAiSuggestions = () => {
+    setProfile((current) => applyAiSuggestions(current, aiReview, acceptedSuggestions));
+    setNotice(`${acceptedSuggestions.length} AI önerisi profile uygulandı; hepsi yeniden onay bekliyor.`);
+  };
+
   const exportProject = async () => {
     try {
       const file = await exportStardropProject({ profile, netlist: sources.netlist, bom: sources.bom, schematicPdf: sources.schematic });
@@ -155,13 +186,19 @@ export default function App() {
         </Section>
       </div> : <div className="workspace workbench">
         {!profile ? <Section title="KART DOSYASI"><div className="import-grid"><label className="dropzone"><FileUp /><strong>ALTIUM .NET İÇE AKTAR</strong><small>Elektriksel bağlantı analizi yerelde yapılır.</small><input ref={fileRef} type="file" accept=".net,.NET,.txt" onChange={(event) => loadNetlist(event.target.files?.[0])} /></label><label className="dropzone"><Download /><strong>.STARDROP AÇ</strong><small>Kaynaklar, profil ve test geçmişi tek dosyada.</small><input ref={projectRef} type="file" accept=".stardrop" onChange={(event) => importProject(event.target.files?.[0])} /></label></div></Section> : <>
-          <div className="summary-row"><Section title="KART PROFİLİ"><strong className="profile-name">{profile.name}</strong><p>{profile.mcu.part} · {components.length} cihaz adayı</p></Section><Section title="DETERMİNİSTİK GÜVEN"><div className="confidence"><strong>{overallConfidence(profile)}%</strong><span>{profileValidation.valid ? 'DERLEMEYE UYGUN' : 'DÜZELTME GEREKİYOR'}</span></div></Section><Section title="PROJE"><button className="secondary" onClick={exportProject}><Save />.STARDROP EXPORT</button></Section></div>
+          <div className="summary-row"><Section title="KART PROFİLİ"><strong className="profile-name">{profile.name}</strong><p>{profile.mcu.part} · {components.length} cihaz adayı</p></Section><Section title="DETERMİNİSTİK GÜVEN"><div className="confidence"><strong>{overallConfidence(profile)}%</strong><span>{profileValidation.valid ? 'DERLEMEYE UYGUN' : 'DÜZELTME GEREKİYOR'}</span></div></Section><Section title="PROJE"><div className="summary-actions"><button className="secondary" onClick={exportProject}><Save />.STARDROP EXPORT</button><label className="secondary"><FileUp />{sources.schematic ? 'PDF EKLİ' : 'ŞEMA PDF EKLE'}<input type="file" accept="application/pdf,.pdf" onChange={(event) => setSources((current) => ({ ...current, schematic: event.target.files?.[0] || null }))} /></label></div></Section></div>
           <div className="work-grid"><Section title="BİLEŞENLER" action={<Badge>{components.length}</Badge>}><div className="component-list">{components.map((component) => <button key={component.ref} onClick={() => setActiveComponent(component.ref)} className={activeComponent === component.ref ? 'selected' : ''}><span><strong>{component.ref}</strong><small>{component.part}</small></span><Badge tone={profile.connections.filter((entry) => entry.componentRef === component.ref).every((entry) => entry.approved) ? 'good' : 'warn'}>{component.protocol || '?'}</Badge></button>)}</div></Section>
             <Section title={activeComponent ? `${activeComponent} PIN MATRİSİ` : 'PIN MATRİSİ'} action={activeComponent && <button className="secondary" onClick={() => approveComponent(activeComponent)}><ShieldCheck />ONAYLA</button>}>
               <div className="pin-table">{componentConnections.map((connection) => { const index = profile.connections.indexOf(connection); return <div className="pin-row" key={`${connection.componentRef}-${connection.role}-${index}`}><div><strong>{connection.role}</strong><small>{connection.sensorPin || '?'}</small></div><input value={connection.mcuPin || ''} onChange={(event) => editConnection(index, 'mcuPin', event.target.value.toUpperCase())}/><input value={connection.peripheral || ''} onChange={(event) => editConnection(index, 'peripheral', event.target.value.toUpperCase())}/><Badge tone={connection.approved ? 'good' : connection.confidence >= 60 ? 'warn' : 'bad'}>{connection.approved ? 'ONAYLI' : `${connection.confidence}%`}</Badge></div>; })}</div>
               {!!profileValidation.errors.length && <div className="validation bad"><strong>Derleme engelleri</strong>{profileValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>}
               {!!profileValidation.warnings.length && <div className="validation warn"><strong>İnceleme notları</strong>{profileValidation.warnings.slice(0, 5).map((warning) => <span key={warning}>{warning}</span>)}</div>}
             </Section></div>
+          <Section title="AI DESTEKLİ İNCELEME" action={<Badge tone={sources.schematic ? 'good' : 'warn'}>{sources.schematic ? 'NET + PDF' : 'SADECE NET'}</Badge>}>
+            <p className="ai-consent">İstek gönderildiğinde profil, `.NET` özeti ve eklediğin şema PDF’si seçtiğin sağlayıcıya gider. API anahtarı yalnız işletim sisteminin credential store’unda tutulur.</p>
+            <div className="ai-config"><input value={aiConfig.endpoint || ''} placeholder="https://api.openai.com/v1" onChange={(event) => updateAiConfig('endpoint', event.target.value)} /><input value={aiConfig.model || ''} placeholder="Model" onChange={(event) => updateAiConfig('model', event.target.value)} /><input type="password" value={aiKey} placeholder="API anahtarı" onChange={(event) => setAiKey(event.target.value)} /></div>
+            <button className="primary ai-run" disabled={aiBusy || !aiKey} onClick={runAiReview}><ShieldCheck />{aiBusy ? 'AI İNCELİYOR…' : 'AI İNCELEMESİNİ BAŞLAT'}</button>
+            {aiReview && <div className="ai-result"><strong>{aiReview.summary}</strong>{aiReview.suggestions.length === 0 ? <p>AI düzeltme önermedi.</p> : aiReview.suggestions.map((suggestion) => <label key={suggestion.id} className="ai-suggestion"><input type="checkbox" checked={acceptedSuggestions.includes(suggestion.id)} onChange={(event) => setAcceptedSuggestions((items) => event.target.checked ? [...items, suggestion.id] : items.filter((id) => id !== suggestion.id))}/><span><b>{suggestion.confidence}% · bağlantı #{suggestion.connectionIndex + 1}</b><small>{suggestion.reason} — {suggestion.evidence}</small></span></label>)}{aiReview.suggestions.length > 0 && <button className="secondary" disabled={!acceptedSuggestions.length} onClick={applySelectedAiSuggestions}>SEÇİLİ ÖNERİLERİ UYGULA</button>}</div>}
+          </Section>
           <Section title="TANI TESTLERİ" action={selectedTest && <Badge tone="good">{selectedTest}</Badge>}><div className="catalog">{[
             ['BMP180', 'Kimlik + basınç örneği'], ['MS5611', 'Kimlik + basınç örneği'], ['BMP388', 'Kimlik + basınç örneği'],
             ['ICM20689', 'Kimlik + hareket örneği'], ['GENERIC I²C', 'Bus tarama/doğrulama'], ['GENERIC SPI', 'Bus tarama/doğrulama'],

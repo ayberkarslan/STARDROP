@@ -42,7 +42,10 @@ export async function requestAiReview({ endpoint, apiKey, model, profile, netlis
   const content = [{ type: 'input_text', text: `${instructions}\n\nBoardProfile:\n${JSON.stringify(profile)}\n\nNET kaynak özeti:\n${String(netlist || '').slice(0, 120000)}` }];
   if (schematicPdf) {
     const bytes = await schematicPdf.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+    const view = new Uint8Array(bytes);
+    let binary = '';
+    for (let offset = 0; offset < view.length; offset += 0x8000) binary += String.fromCharCode(...view.subarray(offset, offset + 0x8000));
+    const base64 = btoa(binary);
     content.push({ type: 'input_file', filename: 'schematic.pdf', file_data: `data:application/pdf;base64,${base64}` });
   }
   const response = await fetch(`${cleanEndpoint(endpoint)}/responses`, {
