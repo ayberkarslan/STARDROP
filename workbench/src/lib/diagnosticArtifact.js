@@ -27,7 +27,7 @@ export async function readDiagnosticArtifact(bytes, expected) {
   if (!manifestEntry) throw new Error('Firmware manifesti eksik.');
   const manifest = JSON.parse(await manifestEntry.async('string'));
   if (manifest.schemaVersion !== 1 || manifest.testId !== expected.testId || manifest.componentRef !== expected.componentRef
-      || manifest.requestId !== expected.requestId || manifest.profileId !== expected.profileId
+      || manifest.requestId !== expected.requestId || manifest.profileId !== expected.profileId || manifest.targetUid !== expected.targetUid
       || manifest.mcuPart !== expected.mcuPart || manifest.sourcePath !== expected.sourcePath
       || manifest.pins?.scl !== expected.scl || manifest.pins?.sda !== expected.sda) {
     throw new Error('Firmware manifesti seçilen kart, sensör veya pinlerle uyuşmuyor.');

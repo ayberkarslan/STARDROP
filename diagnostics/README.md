@@ -20,6 +20,7 @@ Ana ESP32/Workbench deposundan bağımsız sürümlenmelidir.
 4. Operatörlerin workflow dispatch yetkisi olmalıdır. Bu prototipte GitHub yetki modeli ayrı bir yönetim servisi olmadan “salt okunur kaynak + dispatch” ayrımını kesin olarak sağlayamaz; üretim erişim politikası ayrıca tasarlanmalıdır.
 
 `workflow_dispatch` girdi olarak yalnız normalize edilmiş `BoardProfile` JSON alır. Ham `.NET`, PDF veya API anahtarı CI'a gönderilmez.
+Workbench'te kart profili, canlı SWD hedefinin UID'siyle kullanıcı tarafından eşleştirilmelidir; Actions artefaktı bu UID, MCU, sensör ve onaylı pinler uyuşmadan flashlanmaz.
 
 ## Çalışan prototip kapsamı
 

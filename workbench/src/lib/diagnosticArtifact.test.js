@@ -3,7 +3,7 @@ import test from 'node:test';
 import JSZip from 'jszip';
 import { readDiagnosticArtifact, sha256Hex } from './diagnosticArtifact.js';
 
-const expected = { testId: 'bmp180', componentRef: 'U1', requestId: 'request-1', profileId: 'board-1', mcuPart: 'STM32F401CCU6', sourcePath: 'templates/bmp180.c', scl: 'PB6', sda: 'PB7', flashSizeKb: 256 };
+const expected = { testId: 'bmp180', componentRef: 'U1', requestId: 'request-1', profileId: 'board-1', targetUid: '123456789ABCDEF012345678', mcuPart: 'STM32F401CCU6', sourcePath: 'templates/bmp180.c', scl: 'PB6', sda: 'PB7', flashSizeKb: 256 };
 
 async function fixture(overrides = {}) {
   const bytes = new Uint8Array([1, 2, 3, 4]);
@@ -23,5 +23,6 @@ test('accepts a matching firmware artifact', async () => {
 
 test('rejects wrong target and tampered bytes before flashing', async () => {
   await assert.rejects(async () => readDiagnosticArtifact(await fixture({ mcuPart: 'STM32F446RE' }), expected), /uyuşmuyor/);
+  await assert.rejects(async () => readDiagnosticArtifact(await fixture({ targetUid: '000000000000000000000000' }), expected), /uyuşmuyor/);
   await assert.rejects(async () => readDiagnosticArtifact(await fixture({ sha256: '0'.repeat(64) }), expected), /SHA-256/);
 });

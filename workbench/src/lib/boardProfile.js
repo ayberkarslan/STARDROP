@@ -49,6 +49,7 @@ export function newBoardProfile({ name = 'İsimsiz Kart', mcuPart = 'UNKNOWN', s
     name,
     createdAt,
     updatedAt: createdAt,
+    targetUid: null,
     source: {
       netlistName: source.netlistName || null,
       netlistSha256: source.netlistSha256 || null,

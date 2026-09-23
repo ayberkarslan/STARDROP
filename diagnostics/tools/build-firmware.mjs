@@ -55,7 +55,7 @@ const converted = spawnSync('arm-none-eabi-objcopy', ['-O', 'binary', elf, bin],
 if (converted.error) throw converted.error;
 if (converted.status !== 0) throw new Error('BIN oluşturulamadı.');
 const bytes = await readFile(bin);
-const manifest = { schemaVersion: 1, testId, componentRef, requestId, mcuPart: part, profileId: profile.id,
+const manifest = { schemaVersion: 1, testId, componentRef, requestId, mcuPart: part, profileId: profile.id, targetUid: profile.targetUid || null,
   pins: { scl: scl.mcuPin, sda: sda.mcuPin }, size: bytes.length,
   sha256: createHash('sha256').update(bytes).digest('hex'), sourcePath: test.sourcePath };
 await writeFile(join(out, 'artifact.json'), `${JSON.stringify(manifest, null, 2)}\n`);
