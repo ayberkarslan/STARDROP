@@ -34,4 +34,13 @@ node tools/build-firmware.mjs tests/valid-f446-profile.json U2 bmp180 build/f446
 
 `arm-none-eabi-gcc` ve `arm-none-eabi-objcopy` gerekir. CI bunları kurar. Üretilen `artifact.json` hedef MCU, pinler, çalıştırma kimliği ve `.bin` SHA-256 değerini taşır. Workbench bu veriler uyuşmadan flashlamaz. Tanı firmware'i hedefteki mevcut uygulamayı siler; test bitince üretim yazılımı ayrıca yeniden yüklenir.
 
+Özel GitHub deposu henüz kurulmadan geliştirici masasında uçtan uca test:
+
+```sh
+node tools/run-local.mjs tests/valid-profile.json U1 bmp180 http://192.168.4.1
+node tools/run-local.mjs tests/valid-profile.json U1 bmp180 http://192.168.4.1 --flash
+```
+
+İlk komut yalnız derler. `--flash` eklenen ikinci komut ESP'de canlı STM32 modelini ve UID'yi tekrar kontrol eder, mevcut firmware'i silip tanı kodunu yükler, ardından yalnız bu çalıştırmaya ait geçerli SRAM raporunu kabul eder. Bunun için ESP32'nin güncel firmware'i (`runHash` alanlı rapor API'si) ve ortak GND + SWCLK + SWDIO bağlantısı gerekir. Test profili gerçek kartın sensör pinleriyle uyuşmalıdır; örnek fixture'ı rastgele karta flashlamayın.
+
 Yeni sensör testi eklemek için `templates/bmp180.c` örneğini temel alın, yalnız `diagnostic_run(diagnostic_result_t *)` fonksiyonunu uygulayın. Pin numarası, MCU modeli veya kart adı sensör kaynak dosyasına yazılmamalı; bunlar doğrulanmış BoardProfile'dan `generated_config.h` içine derleme sırasında alınır. Yeni testin protokol/cihaz doğrulaması ve sahada bilinen bir referans kartla ölçümü yapılmadan katalogda `ready` durumuna geçirilmemelidir.

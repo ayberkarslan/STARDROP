@@ -109,5 +109,10 @@ int i2c_read(uint8_t address, uint8_t *bytes, uint32_t length) {
     stop(); return 1;
 }
 int i2c_read_register(uint8_t address, uint8_t reg, uint8_t *bytes, uint32_t length) {
-    return i2c_write(address, &reg, 1) && i2c_read(address, bytes, length);
+    if (!start()) { stop(); return 0; }
+    if (!write_byte((uint8_t)(address << 1)) || !write_byte(reg)) { stop(); return 0; }
+    if (!start()) { stop(); return 0; } /* repeated START, no STOP between address and read */
+    if (!write_byte((uint8_t)((address << 1) | 1))) { stop(); return 0; }
+    for (uint32_t index = 0; index < length; ++index) bytes[index] = read_byte(index + 1 < length);
+    stop(); return 1;
 }

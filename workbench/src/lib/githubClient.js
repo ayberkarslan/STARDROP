@@ -1,4 +1,5 @@
 const GITHUB_API = 'https://api.github.com';
+let nextDevicePollAt = 0;
 
 export function parseRepository(repository) {
   const match = String(repository || '').trim().match(/^([\w.-]+)\/([\w.-]+)$/);
@@ -12,7 +13,10 @@ async function api(path, { token, method = 'GET', body } = {}) {
     headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw new Error(`GitHub API HTTP ${response.status}`);
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    throw new Error(`GitHub API HTTP ${response.status}: ${failure.message || 'İstek reddedildi.'}`);
+  }
   return response.status === 204 ? null : response.json();
 }
 
@@ -31,6 +35,7 @@ export async function beginGitHubDeviceLogin(clientId) {
 }
 
 export async function pollGitHubDeviceLogin(clientId, deviceCode) {
+  if (Date.now() < nextDevicePollAt) return null;
   let result;
   if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -43,7 +48,11 @@ export async function pollGitHubDeviceLogin(clientId, deviceCode) {
     result = await response.json();
   }
   if (result.access_token) return result.access_token;
-  if (['authorization_pending', 'slow_down'].includes(result.error)) return null;
+  if (result.error === 'slow_down') {
+    nextDevicePollAt = Date.now() + Math.max(10000, (result.interval || 10) * 1000);
+    return null;
+  }
+  if (result.error === 'authorization_pending') return null;
   throw new Error(result.error_description || result.error || 'GitHub giriş isteği reddedildi.');
 }
 

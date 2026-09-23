@@ -54,6 +54,13 @@ export default function App() {
   const profileValidation = useMemo(() => profile ? validateBoardProfile(profile) : null, [profile]);
   const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
   const sensorTest = testForComponent(catalog, activeSensor, profile?.mcu?.part);
+  const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref) : null;
+  const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
+    : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
+    : !catalogSha ? 'Özel test deposu kataloğu henüz yüklenmedi.'
+    : !sensorTest ? 'Bu sensör için katalog eşlemesi yok.'
+    : sensorTest.status !== 'ready' ? 'Bu sensörün test kodu henüz hazır değil.'
+    : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
 
   const normalizedBridge = bridge.replace(/\/$/, '');
@@ -229,7 +236,8 @@ export default function App() {
     if (testBusy || !profile || !activeSensor || !sensorTest) return;
     const validation = validateTestTarget(profile, activeSensor.ref);
     if (!validation.valid) { setNotice(validation.errors.join(' ')); return; }
-    const selectedProfile = { ...profile, components: [activeSensor], connections: profile.connections.filter((item) => item.componentRef === activeSensor.ref && ['SCL', 'SDA'].includes(item.role)) };
+    const selectedProfile = { schemaVersion: profile.schemaVersion, id: profile.id, name: profile.name, mcu: profile.mcu,
+      components: [activeSensor], connections: profile.connections.filter((item) => item.componentRef === activeSensor.ref && ['SCL', 'SDA'].includes(item.role)) };
     const scl = selectedProfile.connections.find((item) => item.role === 'SCL');
     const sda = selectedProfile.connections.find((item) => item.role === 'SDA');
     const requestId = crypto.randomUUID();
@@ -238,6 +246,7 @@ export default function App() {
       if (!githubUser || !githubConfig.repository || !catalogSha) throw new Error('Özel test deposuna GitHub girişi gerekli.');
       if (sensorTest.status !== 'ready' || !sensorTest.sourcePath) throw new Error('Bu sensörün derlenebilir test şablonu henüz yok.');
       if (!target?.connected || !target.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı STM32 ile kart profilinin MCU ailesi uyuşmuyor.');
+      if (!/^[0-9A-F]{24}$/.test(target.uid || '') || /^0+$/.test(target.uid)) throw new Error('Hedef STM32 UID güvenilir okunamadı.');
       const token = await loadSecret('github_access_token');
       if (!token) throw new Error('GitHub oturumu bulunamadı.');
       setTestStage('GitHub derlemesi başlatılıyor…');
@@ -336,6 +345,8 @@ export default function App() {
           <Section title="SENSÖR TESTİ" action={activeSensor && <Badge>{activeSensor.ref}</Badge>}>
             {!activeSensor ? <p>Ortadaki kart haritasından test etmek istediğin sensörü seç.</p> : <div className="sensor-test-detail"><div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {activeSensor.protocol || 'Protokol bilinmiyor'}</span></div><p>{sensorTest ? `${sensorTest.name} testi katalogda eşleşti.` : 'Bu sensör için katalogda eşleşen test yok; yönetici eşlemesi gerekiyor.'}</p>{sensorTest && <p>Durum: {sensorTest.status === 'ready' ? 'Derlenebilir şablon hazır' : 'Test firmware şablonu henüz üretilmedi'} · Kaynak: {sensorTest.sourcePath || 'Atanmadı'}</p>}{activeSensor && !validateTestTarget(profile, activeSensor.ref).valid && <div className="validation warn">{validateTestTarget(profile, activeSensor.ref).errors.map((error) => <span key={error}>{error}</span>)}</div>}<p className="destructive-note">Test, STM32’nin mevcut firmware’ini silip tanı firmware’ini yükler. Sonrasında üretim yazılımını yeniden yüklemen gerekir.</p><button className="primary" disabled={testBusy || !githubUser || !catalogSha || !target?.connected || !sensorTest || sensorTest.status !== 'ready' || !validateTestTarget(profile, activeSensor.ref).valid} onClick={runDiagnosticTest}><Send />{testBusy ? 'TEST ÇALIŞIYOR…' : 'TEST FIRMWARE’İNİ YÜKLE VE BAŞLAT'}</button><small>{testStage || 'Onaylı pinler ve GitHub bağlantısı hazır olduğunda derlenir, flashlanır ve sonuç okunur.'}</small></div>}
             {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID {diagnosticReport.observedDeviceId}</span><span>{sensorTest?.id === 'generic-i2c' ? `YANIT VEREN ADRES SAYISI ${diagnosticReport.detailCode}` : `HAM ÖRNEK ${diagnosticReport.detailCode}`}</span></div>}</div>}
+            {activeSensor && testBlocker && <div className="validation warn">{testBlocker}</div>}
+            {activeSensor && sensorTest?.id === 'generic-i2c' && <p className="catalog-note">Genel I²C testi yalnız bus üzerinde ACK alındığını gösterir; seçilen sensörün kimliğini veya ölçümünü doğrulamaz.</p>}
             {testHistory.length > 0 && <p className="catalog-note">Son test: {testHistory.at(-1).componentRef} · {testHistory.at(-1).status} · {new Date(testHistory.at(-1).at).toLocaleString('tr-TR')}</p>}
           </Section>
         </>}
