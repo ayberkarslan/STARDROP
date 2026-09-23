@@ -19,7 +19,7 @@ async function addAttachment(zip, manifest, path, value) {
 }
 
 /** Creates a self-contained .stardrop ZIP. Secrets intentionally have no slot. */
-export async function exportStardropProject({ profile, netlist, bom, schematicPdf, artifacts = [], testHistory = [] }) {
+export async function exportStardropProject({ profile, netlist, bom, schematicPdf, boardImage, artifacts = [], testHistory = [] }) {
   const validation = validateBoardProfile(profile);
   if (!validation.valid) throw new Error(`Proje export edilemedi: ${validation.errors.join(' ')}`);
 
@@ -38,6 +38,11 @@ export async function exportStardropProject({ profile, netlist, bom, schematicPd
   await addAttachment(zip, manifest, 'sources/board.NET', netlist);
   await addAttachment(zip, manifest, 'sources/bom.csv', bom);
   await addAttachment(zip, manifest, 'sources/schematic.pdf', schematicPdf);
+  if (boardImage) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(boardImage.type)) throw new Error('Kart görseli PNG, JPEG veya WebP olmalı.');
+    if (boardImage.size > 8 * 1024 * 1024) throw new Error('Kart görseli en fazla 8 MB olabilir.');
+    await addAttachment(zip, manifest, `sources/board-image.${boardImage.type === 'image/png' ? 'png' : boardImage.type === 'image/webp' ? 'webp' : 'jpg'}`, boardImage);
+  }
   for (const artifact of artifacts) {
     if (!artifact?.name || !artifact?.data) continue;
     await addAttachment(zip, manifest, `artifacts/${artifact.name}`, artifact.data);
