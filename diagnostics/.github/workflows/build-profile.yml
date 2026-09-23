@@ -1,10 +1,19 @@
 name: Build custom diagnostic profile
+run-name: stardrop-${{ inputs.request_id }}-${{ inputs.test_id }}
 
 on:
   workflow_dispatch:
     inputs:
       test_id:
         description: Catalog test identifier
+        required: true
+        type: string
+      component_ref:
+        description: Selected sensor reference designator
+        required: true
+        type: string
+      request_id:
+        description: Client correlation UUID
         required: true
         type: string
       profile_json:
@@ -17,29 +26,34 @@ permissions:
   actions: read
 
 jobs:
-  validate-and-package:
+  build-firmware:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Validate selected test
         env:
           TEST_ID: ${{ inputs.test_id }}
-        run: node --input-type=module -e "const c=JSON.parse(await (await import('node:fs/promises')).readFile('catalog/catalog.json')); if(!c.tests.some(t=>t.id===process.env.TEST_ID)) throw Error('Unknown catalog test');"
+        run: node --input-type=module -e "const c=JSON.parse(await (await import('node:fs/promises')).readFile('catalog/catalog.json')); const t=c.tests.find(x=>x.id===process.env.TEST_ID); if(!t||t.status!=='ready') throw Error('Test not buildable');"
       - name: Validate BoardProfile
         env:
           PROFILE_JSON: ${{ inputs.profile_json }}
         run: node tools/validate-profile.mjs "$PROFILE_JSON"
       - name: Verify shared diagnostic runtime
         run: cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
-      - name: Package immutable build request
+      - name: Install ARM GCC
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+      - name: Generate pin-specific firmware
         env:
           TEST_ID: ${{ inputs.test_id }}
           PROFILE_JSON: ${{ inputs.profile_json }}
-          ACTOR: ${{ github.actor }}
-          RUN_ID: ${{ github.run_id }}
-        run: node --input-type=module -e "const fs=await import('node:fs/promises'); const crypto=await import('node:crypto'); const profile=JSON.parse(process.env.PROFILE_JSON); const data=JSON.stringify({testId:process.env.TEST_ID,profile,actor:process.env.ACTOR,runId:process.env.RUN_ID},null,2); await fs.mkdir('out',{recursive:true}); await fs.writeFile('out/build-request.json',data); await fs.writeFile('out/build-request.sha256',crypto.createHash('sha256').update(data).digest('hex')+'  build-request.json\\n');"
+          COMPONENT_REF: ${{ inputs.component_ref }}
+        run: |
+          printf '%s' "$PROFILE_JSON" > profile-input.json
+          node tools/build-firmware.mjs profile-input.json "$COMPONENT_REF" "$TEST_ID" out
       - uses: actions/upload-artifact@v4
         with:
-          name: stardrop-profile-${{ github.run_id }}
-          path: out/
+          name: stardrop-firmware-${{ inputs.request_id }}
+          path: |
+            out/*.bin
+            out/artifact.json
           retention-days: 14
