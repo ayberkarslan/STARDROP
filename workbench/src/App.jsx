@@ -20,12 +20,16 @@ export default function App() {
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
   const [flashProgress, setFlashProgress] = useState(0);
+  const [selectedTest, setSelectedTest] = useState(null);
+  const [testArtifact, setTestArtifact] = useState(null);
+  const [diagnosticReport, setDiagnosticReport] = useState(null);
   const [profile, setProfile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null });
   const [activeComponent, setActiveComponent] = useState(null);
   const fileRef = useRef(null);
   const projectRef = useRef(null);
+  const diagnosticTimer = useRef(null);
 
   const profileValidation = useMemo(() => profile ? validateBoardProfile(profile) : null, [profile]);
 
@@ -47,6 +51,23 @@ export default function App() {
 
   useEffect(() => { refreshTarget(); }, []);
 
+  useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
+
+  const startDiagnosticWatch = () => {
+    window.clearInterval(diagnosticTimer.current);
+    setDiagnosticReport({ state: 'WAITING', valid: false });
+    diagnosticTimer.current = window.setInterval(async () => {
+      try {
+        const response = await fetch(`${normalizedBridge}/api/diagnostic/report`, { signal: AbortSignal.timeout(2500) });
+        const report = await response.json();
+        setDiagnosticReport(report);
+        if (['PASS', 'FAIL', 'FATAL'].includes(report.state)) window.clearInterval(diagnosticTimer.current);
+      } catch (_) {
+        // Hedef resetlenirken veya kablo oynarken önceki geçerli raporu koru.
+      }
+    }, 750);
+  };
+
   const flashFirmware = async (selected = firmware) => {
     if (!selected) return setNotice('Önce bir .bin veya .elf seç.');
     setFlashLog([]); setFlashProgress(0);
@@ -60,7 +81,10 @@ export default function App() {
         const event = JSON.parse(data);
         if (event.msg) setFlashLog((logs) => [...logs.slice(-80), event.msg]);
         if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
-        if (event.done || event.error) { stream.close(); refreshTarget(); }
+        if (event.done || event.error) {
+          stream.close(); refreshTarget();
+          if (event.done && selectedTest && selected === testArtifact) startDiagnosticWatch();
+        }
       };
       stream.onerror = () => stream.close();
     } catch (error) { setNotice(`Flash başlatılamadı: ${error.message}`); }
@@ -138,7 +162,13 @@ export default function App() {
               {!!profileValidation.errors.length && <div className="validation bad"><strong>Derleme engelleri</strong>{profileValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>}
               {!!profileValidation.warnings.length && <div className="validation warn"><strong>İnceleme notları</strong>{profileValidation.warnings.slice(0, 5).map((warning) => <span key={warning}>{warning}</span>)}</div>}
             </Section></div>
-          <Section title="TEST KATALOĞU"><div className="catalog"><button><Activity /><strong>BMP180</strong><small>Kimlik + basınç örneği</small></button><button><Activity /><strong>MS5611</strong><small>Kimlik + basınç örneği</small></button><button><Activity /><strong>GENERIC I²C</strong><small>Bus tarama/doğrulama</small></button></div><p className="catalog-note">GitHub girişli katalog, bulut derleme ve SRAM üzerinden canlı sonuç ekranı bir sonraki dilimde bağlanacak. Hızlı Yükleme bu akıştan bağımsız kalır.</p></Section>
+          <Section title="TANI TESTLERİ" action={selectedTest && <Badge tone="good">{selectedTest}</Badge>}><div className="catalog">{[
+            ['BMP180', 'Kimlik + basınç örneği'], ['MS5611', 'Kimlik + basınç örneği'], ['BMP388', 'Kimlik + basınç örneği'],
+            ['ICM20689', 'Kimlik + hareket örneği'], ['GENERIC I²C', 'Bus tarama/doğrulama'], ['GENERIC SPI', 'Bus tarama/doğrulama'],
+          ].map(([name, description]) => <button key={name} className={selectedTest === name ? 'catalog-selected' : ''} onClick={() => { setSelectedTest(name); setDiagnosticReport(null); }}><Activity /><strong>{name}</strong><small>{description}</small></button>)}</div>
+            {selectedTest && <div className="test-runner"><label className="secondary"><FileUp />{testArtifact?.name || `${selectedTest} .BIN SEÇ`}<input type="file" accept=".bin,application/octet-stream" onChange={(event) => setTestArtifact(event.target.files?.[0] || null)} /></label><button className="primary" disabled={!testArtifact || !profileValidation.valid} onClick={() => flashFirmware(testArtifact)}><Send />TESTİ FLASHLA VE İZLE</button></div>}
+            {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID 0x{diagnosticReport.observedDeviceId?.replace('0x', '')}</span><span>ÖLÇÜM {diagnosticReport.primaryMilli}</span></div>}</div>}
+            <p className="catalog-note">Şimdilik test artifact’ını elle seçebilirsin; sıradaki GitHub katalog akışı stable/dev imajını ve özel pinli bulut derlemesini bu alana bağlayacak.</p></Section>
         </>}
       </div>}
     </main>
