@@ -358,16 +358,25 @@ public:
         uint32_t idcode = 0;
         if (!connect(&idcode)) return false;
 
-        uint32_t dbgId = readMem32(DBGMCU_IDCODE_ADDR);
-        uint32_t flashSizeWord = readMem32(STM32F4_FLASH_SIZE_REG & ~0x3UL);
+        uint32_t dbgId = 0;
+        uint32_t flashSizeWord = 0;
+        if (!readMem32Checked(DBGMCU_IDCODE_ADDR, &dbgId) ||
+            !readMem32Checked(STM32F4_FLASH_SIZE_REG & ~0x3UL, &flashSizeWord)) return false;
+        const uint16_t deviceId = dbgId & 0x0FFF;
+        const uint16_t flashSizeKb = (flashSizeWord >> 16) & 0xFFFF;
+        if (deviceId == 0 || deviceId == 0x0FFF || flashSizeKb == 0 || flashSizeKb > 1024) return false;
+        uint32_t uid[3] = {0, 0, 0};
+        for (uint8_t i = 0; i < 3; ++i) {
+            if (!readMem32Checked(STM32F4_UID_BASE + i * 4, &uid[i])) return false;
+        }
+        if ((uid[0] | uid[1] | uid[2]) == 0 ||
+            (uid[0] & uid[1] & uid[2]) == 0xFFFFFFFFUL) return false;
         info->connected = true;
         info->dpIdcode = idcode;
-        info->deviceId = dbgId & 0x0FFF;
+        info->deviceId = deviceId;
         info->revisionId = (dbgId >> 16) & 0xFFFF;
-        info->flashSizeKb = (flashSizeWord >> 16) & 0xFFFF;
-        info->uid[0] = readMem32(STM32F4_UID_BASE);
-        info->uid[1] = readMem32(STM32F4_UID_BASE + 4);
-        info->uid[2] = readMem32(STM32F4_UID_BASE + 8);
+        info->flashSizeKb = flashSizeKb;
+        memcpy(info->uid, uid, sizeof(uid));
         return true;
     }
 
@@ -387,6 +396,18 @@ public:
         uint32_t dummy;
         sendPacket(1, 1, addr, &dummy); // Pipelined read
         return sendPacket(0, 1, 0x0C, val); // Read DP RDBUFF
+    }
+
+    bool readMem32Checked(uint32_t addr, uint32_t* value) {
+        if (!value) return false;
+        uint8_t ack = writeAP(0x04, addr);
+        if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
+        uint32_t dummy = 0;
+        ack = sendPacket(1, 1, 0x0C, &dummy);
+        if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
+        ack = sendPacket(0, 1, 0x0C, value);
+        if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
+        return true;
     }
 
     uint32_t readMem32(uint32_t addr) {
@@ -569,20 +590,25 @@ public:
     // MEM-AP AUTO-INCREMENT STREAMING İLE IŞIK HIZINDA DOĞRULAMA (READBACK)
     bool readBlock(uint32_t address, uint8_t* data, uint16_t length) {
         // TAR Adresini BLOK BAŞINDA SADECE 1 KEZ YAZ
-        writeAP(0x04, address);
+        if (!data || length == 0 || (length & 3U)) return false;
+        uint8_t ack = writeAP(0x04, address);
+        if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
 
         uint16_t words = (length + 3) / 4;
         uint32_t* ptr = (uint32_t*)data;
 
         // Okuma hattını başlat (Dummy Read)
         uint32_t dummy;
-        sendPacket(1, 1, 0x0C, &dummy);
+        ack = sendPacket(1, 1, 0x0C, &dummy);
+        if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
 
         for (uint16_t i = 0; i < words - 1; i++) {
-            sendPacket(1, 1, 0x0C, &ptr[i]);
+            ack = sendPacket(1, 1, 0x0C, &ptr[i]);
+            if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
         }
         // Son kelimeyi RDBUFF'tan al
-        sendPacket(0, 1, 0x0C, &ptr[words - 1]);
+        ack = sendPacket(0, 1, 0x0C, &ptr[words - 1]);
+        if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
 
         return true;
     }
