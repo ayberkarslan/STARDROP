@@ -29,5 +29,7 @@ int main(void) {
     report->reserved[3] = (uint8_t)(STARDROP_RUN_HASH >> 24);
     stardrop_report_finish_at(report, passed ? STARDROP_REPORT_PASS : STARDROP_REPORT_FAIL,
                               passed ? STARDROP_ERROR_NONE : result.error);
-    for (;;) { __asm__ volatile ("wfi"); }
+    /* Keep the AHB/MEM-AP accessible so a two-wire SWD host can read the
+     * completed SRAM report without an NRST wire or an external wake event. */
+    for (;;) { __asm__ volatile ("nop"); }
 }
