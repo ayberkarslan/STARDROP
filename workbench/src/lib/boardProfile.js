@@ -136,12 +136,19 @@ export function validateBoardProfile(profile) {
 }
 
 export function validateTestTarget(profile, componentRef) {
-  const base = validateBoardProfile(profile);
-  const errors = [...base.errors];
   const component = profile?.components?.find((item) => item.ref === componentRef);
-  const connections = profile?.connections?.filter((item) => item.componentRef === componentRef) || [];
+  const requiredRoles = component?.protocol === 'I2C' ? ['SCL', 'SDA'] : component?.protocol === 'SPI' ? ['SCK', 'MISO', 'MOSI', 'CS'] : [];
+  const connections = profile?.connections?.filter((item) => item.componentRef === componentRef && (!requiredRoles.length || requiredRoles.includes(item.role))) || [];
+  const selected = profile ? { ...profile, components: component ? [component] : [], connections } : null;
+  const base = validateBoardProfile(selected);
+  const errors = [...base.errors];
   if (!component) errors.push('Test edilecek bileşen profilde bulunamadı.');
   if (!connections.length) errors.push('Bu bileşen için MCU pin bağlantısı bulunamadı.');
+  for (const role of requiredRoles) {
+    const count = connections.filter((item) => item.role === role).length;
+    if (count !== 1) errors.push(`${componentRef} için tam bir ${role} bağlantısı gerekli (${count} bulundu).`);
+  }
+  if (component?.protocol === 'I2C' && connections.length === 2 && connections[0].peripheral !== connections[1].peripheral) errors.push('SCL ve SDA aynı I2C bus üzerinde olmalı.');
   for (const connection of connections) {
     if (!connection.approved) errors.push(`${componentRef}:${connection.role} bağlantısı henüz onaylanmadı.`);
     const capability = supportedPeripheral(profile.mcu.part, connection.peripheral, connection.role, connection.mcuPin);

@@ -19,3 +19,12 @@ test('a stardrop archive retains sources, artifact and test history', async () =
   assert.equal(imported.testHistory[0].status, 'PASS');
   assert.ok(imported.sources['sources/schematic.pdf']);
 });
+
+test('an unfinished board profile can be saved and resumed', async () => {
+  const profile = newBoardProfile({ name: 'Draft' });
+  profile.connections = [{ componentRef: 'U1', role: 'SCL', mcuPin: '', approved: false }];
+  const archive = await exportStardropProject({ profile });
+  const opened = await importStardropProject(archive);
+  assert.equal(opened.profile.name, 'Draft');
+  assert.equal(opened.validation.valid, false);
+});

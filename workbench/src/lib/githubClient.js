@@ -18,6 +18,10 @@ async function api(path, { token, method = 'GET', body } = {}) {
 
 export async function beginGitHubDeviceLogin(clientId) {
   if (!clientId) throw new Error('GitHub App Client ID zorunludur.');
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return JSON.parse(await invoke('github_device_request', { clientId, deviceCode: null }));
+  }
   const response = await fetch('https://github.com/login/device/code', {
     method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: clientId }),
@@ -27,11 +31,17 @@ export async function beginGitHubDeviceLogin(clientId) {
 }
 
 export async function pollGitHubDeviceLogin(clientId, deviceCode) {
-  const response = await fetch('https://github.com/login/oauth/access_token', {
-    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: clientId, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
-  });
-  const result = await response.json();
+  let result;
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    result = JSON.parse(await invoke('github_device_request', { clientId, deviceCode }));
+  } else {
+    const response = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: clientId, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
+    });
+    result = await response.json();
+  }
   if (result.access_token) return result.access_token;
   if (['authorization_pending', 'slow_down'].includes(result.error)) return null;
   throw new Error(result.error_description || result.error || 'GitHub giriş isteği reddedildi.');
@@ -41,11 +51,33 @@ export async function currentGitHubUser(token) {
   return api('/user', { token });
 }
 
-export async function dispatchProfileBuild({ token, repository, profile, testId, ref = 'main' }) {
+export async function dispatchProfileBuild({ token, repository, profile, testId, componentRef, requestId, ref = 'main' }) {
   const { owner, repo } = parseRepository(repository);
   return api(`/repos/${owner}/${repo}/actions/workflows/build-profile.yml/dispatches`, {
-    token, method: 'POST', body: { ref, inputs: { test_id: testId, profile_json: JSON.stringify(profile) } },
+    token, method: 'POST', body: { ref, inputs: { test_id: testId, component_ref: componentRef, request_id: requestId, profile_json: JSON.stringify(profile) } },
   });
+}
+
+export async function waitForProfileArtifact({ token, repository, requestId, testId, ref = 'main', actor, startedAt = Date.now(), onStatus }) {
+  const { owner, repo } = parseRepository(repository);
+  const title = `stardrop-${requestId}-${testId}`;
+  const deadline = Date.now() + 8 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const listing = await api(`/repos/${owner}/${repo}/actions/workflows/build-profile.yml/runs?event=workflow_dispatch&per_page=50&branch=${encodeURIComponent(ref)}`, { token });
+    const run = listing.workflow_runs?.find((item) => item.display_title === title && item.actor?.login === actor && Date.parse(item.created_at) >= startedAt - 30000);
+    if (run) {
+      onStatus?.(run.status === 'completed' ? `Derleme tamamlandı: ${run.conclusion}` : `GitHub Actions: ${run.status}`);
+      if (run.status === 'completed') {
+        if (run.conclusion !== 'success') throw new Error(`Derleme başarısız (${run.conclusion}). ${run.html_url}`);
+        const artifacts = await api(`/repos/${owner}/${repo}/actions/runs/${run.id}/artifacts`, { token });
+        const artifact = artifacts.artifacts?.find((item) => item.name === `stardrop-firmware-${requestId}` && !item.expired);
+        if (!artifact) throw new Error('Başarılı derlemede firmware artefaktı bulunamadı.');
+        return { run, artifact };
+      }
+    } else onStatus?.('GitHub işinin kuyruğa alınması bekleniyor…');
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+  }
+  throw new Error('GitHub derleme süresi aşıldı (8 dakika).');
 }
 
 export async function dispatchAuditEvent({ token, repository, event, ref = 'main' }) {
@@ -69,7 +101,7 @@ export async function fetchCatalogDocument({ token, repository, ref = 'main' }) 
 export async function catalogWritePermission({ token, repository }) {
   const { owner, repo } = parseRepository(repository);
   const details = await api(`/repos/${owner}/${repo}`, { token });
-  return Boolean(details.permissions?.admin || details.permissions?.maintain || details.permissions?.push);
+  return Boolean(details.permissions?.admin);
 }
 
 export async function saveCatalogDocument({ token, repository, ref = 'main', catalog, sha }) {

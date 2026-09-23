@@ -5,7 +5,8 @@ import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { loadSecret, saveSecret } from './lib/secretStore.js';
-import { beginGitHubDeviceLogin, catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, pollGitHubDeviceLogin, saveCatalogDocument } from './lib/githubClient.js';
+import { beginGitHubDeviceLogin, catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, pollGitHubDeviceLogin, saveCatalogDocument, waitForProfileArtifact } from './lib/githubClient.js';
+import { downloadDiagnosticArtifact, hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import BoardMap from './BoardMap.jsx';
 import { DEFAULT_TEST_CATALOG, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
 
@@ -25,7 +26,10 @@ export default function App() {
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
   const [flashProgress, setFlashProgress] = useState(0);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testStage, setTestStage] = useState('');
   const [diagnosticReport, setDiagnosticReport] = useState(null);
+  const [testHistory, setTestHistory] = useState([]);
   const [aiConfig, setAiConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.ai.config') || '{"endpoint":"https://api.openai.com/v1","model":"gpt-4.1-mini"}'));
   const [aiKey, setAiKey] = useState('');
   const [aiReview, setAiReview] = useState(null);
@@ -70,8 +74,8 @@ export default function App() {
 
   useEffect(() => { refreshTarget(); }, []);
 
-  useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)); }, []);
-  useEffect(() => { loadSecret('github_access_token').then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }); }, []);
+  useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
+  useEffect(() => { loadSecret('github_access_token').then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!githubUser || !githubConfig.repository) return;
@@ -91,40 +95,54 @@ export default function App() {
 
   useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
 
-  const startDiagnosticWatch = () => {
-    window.clearInterval(diagnosticTimer.current);
+  const waitForDiagnosticReport = async (expectedHashes) => {
     setDiagnosticReport({ state: 'WAITING', valid: false });
-    diagnosticTimer.current = window.setInterval(async () => {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
       try {
         const response = await fetch(`${normalizedBridge}/api/diagnostic/report`, { signal: AbortSignal.timeout(2500) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const report = await response.json();
-        setDiagnosticReport(report);
-        if (['PASS', 'FAIL', 'FATAL'].includes(report.state)) window.clearInterval(diagnosticTimer.current);
+        const matches = report.valid && (parseInt(report.testIdHash, 16) >>> 0) === expectedHashes.test
+          && (parseInt(report.profileHash, 16) >>> 0) === expectedHashes.profile
+          && (parseInt(report.runHash, 16) >>> 0) === expectedHashes.run;
+        if (matches) {
+          setDiagnosticReport(report);
+          if (['PASS', 'FAIL', 'FATAL'].includes(report.state)) return report;
+        }
       } catch (_) {
-        // Hedef resetlenirken veya kablo oynarken önceki geçerli raporu koru.
+        // Reset sırasında kısa SWD kesintisi normaldir.
       }
-    }, 750);
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+    throw new Error('STM32 geçerli ve bu çalıştırmaya ait SRAM test raporu üretmedi (30 saniye).');
   };
 
   const flashFirmware = async (selected = firmware) => {
-    if (!selected) return setNotice('Önce bir .bin veya .elf seç.');
+    if (!selected) return setNotice('Önce bir .bin seç.');
     setFlashLog([]); setFlashProgress(0);
     try {
       const form = new FormData(); form.append('firmware', selected, selected.name);
       const upload = await fetch(`${normalizedBridge}/upload`, { method: 'POST', body: form });
       if (!upload.ok) throw new Error('Firmware ESP32 belleğine alınamadı.');
       setFlashLog((logs) => [...logs, `[YÜKLENDİ] ${selected.name} (${selected.size} B)`]);
-      const stream = new EventSource(`${normalizedBridge}/stream-flash`);
-      stream.onmessage = ({ data }) => {
-        const event = JSON.parse(data);
-        if (event.msg) setFlashLog((logs) => [...logs.slice(-80), event.msg]);
-        if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
-        if (event.done || event.error) {
-          stream.close(); refreshTarget();
-        }
-      };
-      stream.onerror = () => stream.close();
-    } catch (error) { setNotice(`Flash başlatılamadı: ${error.message}`); }
+      await new Promise((resolve, reject) => {
+        const stream = new EventSource(`${normalizedBridge}/stream-flash`);
+        const timer = window.setTimeout(() => { stream.close(); reject(new Error('Flash süresi aşıldı.')); }, 180000);
+        const finish = (error) => { window.clearTimeout(timer); stream.close(); error ? reject(error) : resolve(); };
+        stream.onmessage = ({ data }) => {
+          let event;
+          try { event = JSON.parse(data); } catch (_) { return; }
+          if (event.msg) setFlashLog((logs) => [...logs.slice(-80), event.msg]);
+          if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
+          if (event.error) finish(new Error(event.msg || 'ESP32 flash doğrulaması başarısız.'));
+          else if (event.done) finish();
+        };
+        stream.onerror = () => finish(new Error('ESP32 flash akışı kesildi.'));
+      });
+      await refreshTarget();
+      return true;
+    } catch (error) { setNotice(`Flash başarısız: ${error.message}`); return false; }
   };
 
   const loadNetlist = async (file) => {
@@ -207,9 +225,57 @@ export default function App() {
     } catch (error) { setNotice(`Katalog kaydedilemedi: ${error.message}`); }
   };
 
+  const runDiagnosticTest = async () => {
+    if (testBusy || !profile || !activeSensor || !sensorTest) return;
+    const validation = validateTestTarget(profile, activeSensor.ref);
+    if (!validation.valid) { setNotice(validation.errors.join(' ')); return; }
+    const selectedProfile = { ...profile, components: [activeSensor], connections: profile.connections.filter((item) => item.componentRef === activeSensor.ref && ['SCL', 'SDA'].includes(item.role)) };
+    const scl = selectedProfile.connections.find((item) => item.role === 'SCL');
+    const sda = selectedProfile.connections.find((item) => item.role === 'SDA');
+    const requestId = crypto.randomUUID();
+    setTestBusy(true); setDiagnosticReport(null);
+    try {
+      if (!githubUser || !githubConfig.repository || !catalogSha) throw new Error('Özel test deposuna GitHub girişi gerekli.');
+      if (sensorTest.status !== 'ready' || !sensorTest.sourcePath) throw new Error('Bu sensörün derlenebilir test şablonu henüz yok.');
+      if (!target?.connected || !target.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı STM32 ile kart profilinin MCU ailesi uyuşmuyor.');
+      const token = await loadSecret('github_access_token');
+      if (!token) throw new Error('GitHub oturumu bulunamadı.');
+      setTestStage('GitHub derlemesi başlatılıyor…');
+      const startedAt = Date.now();
+      await dispatchProfileBuild({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', profile: selectedProfile, testId: sensorTest.id, componentRef: activeSensor.ref, requestId });
+      const { artifact } = await waitForProfileArtifact({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', actor: githubUser.login, requestId, testId: sensorTest.id, startedAt, onStatus: setTestStage });
+      setTestStage('Firmware indiriliyor ve SHA-256 doğrulanıyor…');
+      const { firmware: builtFirmware, manifest } = await downloadDiagnosticArtifact({ token, repository: githubConfig.repository, artifactId: artifact.id, expected: {
+        testId: sensorTest.id, componentRef: activeSensor.ref, requestId, profileId: profile.id, mcuPart: profile.mcu.part.toUpperCase(),
+        scl: scl.mcuPin, sda: sda.mcuPin, sourcePath: sensorTest.sourcePath, flashSizeKb: target.flashSizeKb,
+      } });
+      const liveResponse = await fetch(`${normalizedBridge}/api/target/status`, { signal: AbortSignal.timeout(6000) });
+      if (!liveResponse.ok) throw new Error('Flash öncesi STM32 tekrar sorgulanamadı.');
+      const liveTarget = await liveResponse.json();
+      if (!liveTarget.connected || liveTarget.uid !== target.uid || !liveTarget.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı kart değişti; yanlış STM32’ye kod yüklememek için durduruldu.');
+      setTestStage('ESP32 üzerinden STM32 flashlanıyor…');
+      if (!await flashFirmware(builtFirmware)) throw new Error('ESP32 flash işlemi başarısız.');
+      setTestStage('STM32 SRAM test raporu bekleniyor…');
+      const hashes = {
+        test: hash32FromSha256(await sha256Hex(sensorTest.id)),
+        profile: hash32FromSha256(await sha256Hex(JSON.stringify(selectedProfile))),
+        run: hash32FromSha256(await sha256Hex(requestId)),
+      };
+      const report = await waitForDiagnosticReport(hashes);
+      const outcome = report.state === 'PASS' ? 'PASS' : 'FAIL';
+      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref, testId: sensorTest.id, targetUid: liveTarget.uid, status: outcome, firmwareSha256: manifest.sha256, report }]);
+      setTestStage(outcome === 'PASS' ? 'Test geçti.' : `Test başarısız: hata kodu ${report.error}`);
+      setNotice(`${activeSensor.ref} · ${sensorTest.name}: ${outcome}`);
+    } catch (error) {
+      setTestStage(`Test durdu: ${error.message}`);
+      setNotice(`Sensör testi başarısız: ${error.message}`);
+      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref, testId: sensorTest.id, status: 'ERROR', error: error.message }]);
+    } finally { setTestBusy(false); }
+  };
+
   const exportProject = async () => {
     try {
-      const file = await exportStardropProject({ profile, netlist: sources.netlist, bom: sources.bom, schematicPdf: sources.schematic, boardImage: sources.boardImage });
+      const file = await exportStardropProject({ profile, netlist: sources.netlist, bom: sources.bom, schematicPdf: sources.schematic, boardImage: sources.boardImage, testHistory });
       const url = URL.createObjectURL(file); const link = document.createElement('a');
       link.href = url; link.download = `${profile.name}.stardrop`; link.click(); URL.revokeObjectURL(url);
       setNotice('Taşınabilir .stardrop paketi indirildi.');
@@ -218,7 +284,7 @@ export default function App() {
 
   const importProject = async (file) => {
     try {
-      const data = await importStardropProject(file); setProfile(data.profile);
+      const data = await importStardropProject(file); setProfile(data.profile); setTestHistory(data.testHistory || []);
       setSources({ netlist: data.sources['sources/board.NET'] ? await data.sources['sources/board.NET'].text() : null, schematic: data.sources['sources/schematic.pdf'] || null, bom: data.sources['sources/bom.csv'] ? await data.sources['sources/bom.csv'].text() : null, boardImage: Object.entries(data.sources).find(([path]) => path.startsWith('sources/board-image.'))?.[1] || null });
       setActiveComponent(data.profile.components[0]?.ref || null); setMode('workbench'); setNotice('STARDROP projesi güvenle geri yüklendi.');
     } catch (error) { setNotice(`Proje açılamadı: ${error.message}`); }
@@ -245,7 +311,7 @@ export default function App() {
           {target?.connected ? <><div className="target-card"><Cpu /><div><strong>{target.label || target.model}</strong><p>{target.model} · {target.flashSizeKb} KB · UID {target.uid}</p></div><Badge tone="good">BAĞLI</Badge></div><div className="quick-board"><BoardMap target={target} components={[]} /></div></> : <div className="empty">ESP32 ve SWD hattını kontrol et. Bu modda GitHub veya parser gerekmez.</div>}
         </Section>
         <Section title="FIRMWARE" action={<Badge>{firmware ? 'HAZIR' : 'DOSYA BEKLENİYOR'}</Badge>}>
-          <label className="dropzone"><FileUp /><strong>{firmware?.name || '.BIN / .ELF SEÇ'}</strong><small>{firmware ? `${firmware.size.toLocaleString()} bayt` : 'Mevcut üretim firmware’ini doğrudan yükle.'}</small><input type="file" accept=".bin,.elf,application/octet-stream" onChange={(event) => setFirmware(event.target.files?.[0] || null)} /></label>
+          <label className="dropzone"><FileUp /><strong>{firmware?.name || '.BIN SEÇ'}</strong><small>{firmware ? `${firmware.size.toLocaleString()} bayt` : 'Geliştirici için ham üretim firmware yükleme.'}</small><input type="file" accept=".bin,application/octet-stream" onChange={(event) => { const file = event.target.files?.[0] || null; if (file && !file.name.toLowerCase().endsWith('.bin')) { setNotice('Hızlı yükleme yalnız .bin kabul eder; ELF doğrudan flashlanamaz.'); setFirmware(null); } else setFirmware(file); }} /></label>
           <button className="primary" disabled={!firmware} onClick={() => flashFirmware()}><Send />ESP32 ÜZERİNDEN FLASHLA</button>
         </Section>
         <Section title="CANLI İŞLEM" action={<Badge tone={flashProgress === 100 ? 'good' : 'muted'}>{flashProgress}%</Badge>}>
@@ -268,8 +334,9 @@ export default function App() {
             {aiReview && <div className="ai-result"><strong>{aiReview.summary}</strong>{aiReview.suggestions.length === 0 ? <p>AI düzeltme önermedi.</p> : aiReview.suggestions.map((suggestion) => <label key={suggestion.id} className="ai-suggestion"><input type="checkbox" checked={acceptedSuggestions.includes(suggestion.id)} onChange={(event) => setAcceptedSuggestions((items) => event.target.checked ? [...items, suggestion.id] : items.filter((id) => id !== suggestion.id))}/><span><b>{suggestion.confidence}% · bağlantı #{suggestion.connectionIndex + 1}</b><small>{suggestion.reason} — {suggestion.evidence}</small></span></label>)}{aiReview.suggestions.length > 0 && <button className="secondary" disabled={!acceptedSuggestions.length} onClick={applySelectedAiSuggestions}>SEÇİLİ ÖNERİLERİ UYGULA</button>}</div>}
           </Section>
           <Section title="SENSÖR TESTİ" action={activeSensor && <Badge>{activeSensor.ref}</Badge>}>
-            {!activeSensor ? <p>Ortadaki kart haritasından test etmek istediğin sensörü seç.</p> : <div className="sensor-test-detail"><div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {activeSensor.protocol || 'Protokol bilinmiyor'}</span></div><p>{sensorTest ? `${sensorTest.name} testi katalogda eşleşti.` : 'Bu sensör için katalogda eşleşen test yok; yönetici eşlemesi gerekiyor.'}</p>{sensorTest && <p>Durum: {sensorTest.status === 'ready' ? 'Katalogda hazır işaretli' : 'Test firmware şablonu henüz üretilmedi'} · Kaynak: {sensorTest.sourcePath || 'Atanmadı'}</p>}{activeSensor && !validateTestTarget(profile, activeSensor.ref).valid && <div className="validation warn">{validateTestTarget(profile, activeSensor.ref).errors.map((error) => <span key={error}>{error}</span>)}</div>}<button className="primary" disabled><Send />TESTİ BAŞLAT</button><small>Donanımcı bu ekranda .BIN seçmez. Otomatik derleme ve güvenilir artefakt indirme akışı bitene kadar test kapalıdır.</small></div>}
-            {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID 0x{diagnosticReport.observedDeviceId?.replace('0x', '')}</span><span>ÖLÇÜM {diagnosticReport.primaryMilli}</span></div>}</div>}
+            {!activeSensor ? <p>Ortadaki kart haritasından test etmek istediğin sensörü seç.</p> : <div className="sensor-test-detail"><div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {activeSensor.protocol || 'Protokol bilinmiyor'}</span></div><p>{sensorTest ? `${sensorTest.name} testi katalogda eşleşti.` : 'Bu sensör için katalogda eşleşen test yok; yönetici eşlemesi gerekiyor.'}</p>{sensorTest && <p>Durum: {sensorTest.status === 'ready' ? 'Derlenebilir şablon hazır' : 'Test firmware şablonu henüz üretilmedi'} · Kaynak: {sensorTest.sourcePath || 'Atanmadı'}</p>}{activeSensor && !validateTestTarget(profile, activeSensor.ref).valid && <div className="validation warn">{validateTestTarget(profile, activeSensor.ref).errors.map((error) => <span key={error}>{error}</span>)}</div>}<p className="destructive-note">Test, STM32’nin mevcut firmware’ini silip tanı firmware’ini yükler. Sonrasında üretim yazılımını yeniden yüklemen gerekir.</p><button className="primary" disabled={testBusy || !githubUser || !catalogSha || !target?.connected || !sensorTest || sensorTest.status !== 'ready' || !validateTestTarget(profile, activeSensor.ref).valid} onClick={runDiagnosticTest}><Send />{testBusy ? 'TEST ÇALIŞIYOR…' : 'TEST FIRMWARE’İNİ YÜKLE VE BAŞLAT'}</button><small>{testStage || 'Onaylı pinler ve GitHub bağlantısı hazır olduğunda derlenir, flashlanır ve sonuç okunur.'}</small></div>}
+            {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID {diagnosticReport.observedDeviceId}</span><span>{sensorTest?.id === 'generic-i2c' ? `YANIT VEREN ADRES SAYISI ${diagnosticReport.detailCode}` : `HAM ÖRNEK ${diagnosticReport.detailCode}`}</span></div>}</div>}
+            {testHistory.length > 0 && <p className="catalog-note">Son test: {testHistory.at(-1).componentRef} · {testHistory.at(-1).status} · {new Date(testHistory.at(-1).at).toLocaleString('tr-TR')}</p>}
           </Section>
         </>}
       </div>}

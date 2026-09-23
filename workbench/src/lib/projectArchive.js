@@ -20,8 +20,7 @@ async function addAttachment(zip, manifest, path, value) {
 
 /** Creates a self-contained .stardrop ZIP. Secrets intentionally have no slot. */
 export async function exportStardropProject({ profile, netlist, bom, schematicPdf, boardImage, artifacts = [], testHistory = [] }) {
-  const validation = validateBoardProfile(profile);
-  if (!validation.valid) throw new Error(`Proje export edilemedi: ${validation.errors.join(' ')}`);
+  if (profile?.schemaVersion !== PROFILE_SCHEMA_VERSION) throw new Error('Desteklenmeyen BoardProfile sürümü.');
 
   const zip = new JSZip();
   const manifest = {
@@ -64,7 +63,7 @@ export async function importStardropProject(file) {
   }
   const profile = await readJson('profile.json');
   const validation = validateBoardProfile(profile);
-  if (!validation.valid) throw new Error(`Proje profili geçersiz: ${validation.errors.join(' ')}`);
+  if (profile?.schemaVersion !== PROFILE_SCHEMA_VERSION) throw new Error('Desteklenmeyen BoardProfile sürümü.');
 
   const sources = {};
   const artifacts = [];

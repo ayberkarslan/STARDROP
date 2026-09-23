@@ -742,7 +742,9 @@ void handleDiagnosticReport() {
     json += "\"observedDeviceId\":\"0x" + String(readLe32(report + 32), HEX) + "\",";
     json += "\"primaryMilli\":" + String((int32_t)readLe32(report + 36)) + ",";
     json += "\"secondaryMilli\":" + String((int32_t)readLe32(report + 40)) + ",";
-    json += "\"elapsedMs\":" + String(readLe32(report + 44));
+    json += "\"runHash\":\"0x" + String(readLe32(report + 52), HEX) + "\",";
+    json += "\"elapsedMs\":" + String(readLe32(report + 44)) + ",";
+    json += "\"detailCode\":" + String(readLe32(report + 48));
     if (!valid) json += ",\"reason\":\"ABI_OR_CRC_INVALID\"";
     json += "}";
     server.send(200, "application/json", json);

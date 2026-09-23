@@ -19,6 +19,6 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "vite build",
     "tauri": "tauri",
-    "test:core": "node src/lib/boardProfile.test.js && node src/lib/projectArchive.test.js && node src/lib/aiReview.test.js && node src/lib/githubClient.test.js"
+    "test:core": "node src/lib/boardProfile.test.js && node src/lib/projectArchive.test.js && node src/lib/aiReview.test.js && node src/lib/githubClient.test.js && node src/lib/diagnosticArtifact.test.js"
   }
 }

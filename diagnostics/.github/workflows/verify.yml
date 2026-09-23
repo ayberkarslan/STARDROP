@@ -16,3 +16,9 @@ jobs:
         run: cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
       - name: Validate catalog JSON
         run: node --input-type=module -e "JSON.parse(await (await import('node:fs/promises')).readFile('catalog/catalog.json')); console.log('catalog valid')"
+      - name: Install ARM GCC and compile both targets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+          node tools/build-firmware.mjs tests/valid-profile.json U1 bmp180 build/f401
+          node tools/build-firmware.mjs tests/valid-f446-profile.json U2 bmp180 build/f446

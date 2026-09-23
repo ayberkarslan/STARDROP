@@ -47,9 +47,10 @@ jobs:
           TEST_ID: ${{ inputs.test_id }}
           PROFILE_JSON: ${{ inputs.profile_json }}
           COMPONENT_REF: ${{ inputs.component_ref }}
+          REQUEST_ID: ${{ inputs.request_id }}
         run: |
           printf '%s' "$PROFILE_JSON" > profile-input.json
-          node tools/build-firmware.mjs profile-input.json "$COMPONENT_REF" "$TEST_ID" out
+          node tools/build-firmware.mjs profile-input.json "$COMPONENT_REF" "$TEST_ID" out "$REQUEST_ID"
       - uses: actions/upload-artifact@v4
         with:
           name: stardrop-firmware-${{ inputs.request_id }}

@@ -1,12 +1,9 @@
 let volatileSecrets = new Map();
 
 async function tauriInvoke(command, args) {
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke(command, args);
-  } catch (_) {
-    return undefined;
-  }
+  if (typeof window === 'undefined' || !window.__TAURI_INTERNALS__) return undefined;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke(command, args);
 }
 
 /** Credentials never enter project archives or localStorage. */

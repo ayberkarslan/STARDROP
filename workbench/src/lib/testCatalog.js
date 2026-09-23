@@ -12,7 +12,9 @@ export function validateTestCatalog(catalog) {
     if (seen.has(item.id)) errors.push(`Tekrarlanan test ID: ${item.id}`);
     seen.add(item.id);
     if (!item.name || !Array.isArray(item.supportedMcu)) errors.push(`${item.id}: ad veya MCU listesi eksik.`);
+    if (!['planned', 'ready'].includes(item.status)) errors.push(`${item.id}: durum planned veya ready olmalı.`);
     if (item.sourcePath && !/^templates\/[a-zA-Z0-9_/-]+\.c$/.test(item.sourcePath)) errors.push(`${item.id}: kaynak yolu templates/ altında .c olmalı.`);
+    if (item.status === 'ready' && !item.sourcePath) errors.push(`${item.id}: hazır testin kaynak yolu olmalı.`);
   }
   return { valid: errors.length === 0, errors };
 }
@@ -23,5 +25,6 @@ export function testForComponent(catalog, component, mcuPart) {
   const family = canonicalMcu(mcuPart);
   return catalog?.tests?.find((item) => item.supportedMcu?.includes(family)
     && item.matchParts?.some((pattern) => part.includes(pattern.toUpperCase()))
-    && (!item.protocol || item.protocol === component.protocol || item.protocol.includes(component.protocol))) || null;
+    && (!item.protocol || item.protocol === component.protocol || item.protocol.includes(component.protocol)))
+    || (component.protocol === 'I2C' ? catalog?.tests?.find((item) => item.id === 'generic-i2c' && item.supportedMcu?.includes(family)) : null);
 }

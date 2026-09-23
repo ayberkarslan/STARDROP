@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const [profilePath, componentRef, testId, outputDirectory = 'out'] = process.argv.slice(2);
+const [profilePath, componentRef, testId, outputDirectory = 'out', requestId = 'local'] = process.argv.slice(2);
 if (!profilePath || !componentRef || !testId) throw new Error('Kullanım: node tools/build-firmware.mjs profile.json COMPONENT_REF TEST_ID [out]');
 
 const profile = JSON.parse(await readFile(profilePath, 'utf8'));
@@ -39,7 +39,7 @@ if (scl.mcuPin === sda.mcuPin) throw new Error('SCL ve SDA farklı GPIO olmalı.
 const out = resolve(outputDirectory);
 await mkdir(out, { recursive: true });
 const hash32 = (value) => `0x${createHash('sha256').update(value).digest('hex').slice(0, 8)}UL`;
-const header = `#pragma once\n#define STARDROP_SCL_PORT ${sclPin.port}\n#define STARDROP_SCL_PIN ${sclPin.pin}\n#define STARDROP_SDA_PORT ${sdaPin.port}\n#define STARDROP_SDA_PIN ${sdaPin.pin}\n#define STARDROP_TEST_ID_HASH ${hash32(testId)}\n#define STARDROP_PROFILE_HASH ${hash32(JSON.stringify(profile))}\n`;
+const header = `#pragma once\n#define STARDROP_SCL_PORT ${sclPin.port}\n#define STARDROP_SCL_PIN ${sclPin.pin}\n#define STARDROP_SDA_PORT ${sdaPin.port}\n#define STARDROP_SDA_PIN ${sdaPin.pin}\n#define STARDROP_TEST_ID_HASH ${hash32(testId)}\n#define STARDROP_PROFILE_HASH ${hash32(JSON.stringify(profile))}\n#define STARDROP_RUN_HASH ${hash32(requestId)}\n`;
 await writeFile(join(out, 'generated_config.h'), header);
 const elf = join(out, `${testId}-${target}.elf`);
 const bin = join(out, `${testId}-${target}.bin`);
@@ -55,7 +55,7 @@ const converted = spawnSync('arm-none-eabi-objcopy', ['-O', 'binary', elf, bin],
 if (converted.error) throw converted.error;
 if (converted.status !== 0) throw new Error('BIN oluşturulamadı.');
 const bytes = await readFile(bin);
-const manifest = { schemaVersion: 1, testId, componentRef, mcuPart: part, profileId: profile.id,
+const manifest = { schemaVersion: 1, testId, componentRef, requestId, mcuPart: part, profileId: profile.id,
   pins: { scl: scl.mcuPin, sda: sda.mcuPin }, size: bytes.length,
   sha256: createHash('sha256').update(bytes).digest('hex'), sourcePath: test.sourcePath };
 await writeFile(join(out, 'artifact.json'), `${JSON.stringify(manifest, null, 2)}\n`);

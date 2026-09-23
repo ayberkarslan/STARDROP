@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-f446",
+  "name": "F446 BMP180 fixture",
+  "mcu": { "part": "STM32F446RE", "family": "STM32F446" },
+  "components": [{ "ref": "U2", "part": "BMP180", "protocol": "I2C" }],
+  "connections": [
+    { "componentRef": "U2", "role": "SCL", "mcuPin": "PB8", "peripheral": "I2C1", "approved": true },
+    { "componentRef": "U2", "role": "SDA", "mcuPin": "PB9", "peripheral": "I2C1", "approved": true }
+  ]
+}
