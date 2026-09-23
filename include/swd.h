@@ -54,6 +54,7 @@ enum class SwdSpeedProfile : uint8_t {
 
 // STM32F4 sistem belleğindeki fabrika flash boyutu kaydı (KB, 16-bit).
 #define STM32F4_FLASH_SIZE_REG 0x1FFF7A22UL
+#define STM32F4_UID_BASE       0x1FFF7A10UL
 
 // Hedef İşlemci Durum Teşhis Yapısı
 struct TargetDiagnostics {
@@ -75,6 +76,7 @@ struct TargetProbeInfo {
     uint16_t deviceId;
     uint16_t revisionId;
     uint16_t flashSizeKb;
+    uint32_t uid[3];
 };
 
 class SWDFlasher {
@@ -363,6 +365,9 @@ public:
         info->deviceId = dbgId & 0x0FFF;
         info->revisionId = (dbgId >> 16) & 0xFFFF;
         info->flashSizeKb = (flashSizeWord >> 16) & 0xFFFF;
+        info->uid[0] = readMem32(STM32F4_UID_BASE);
+        info->uid[1] = readMem32(STM32F4_UID_BASE + 4);
+        info->uid[2] = readMem32(STM32F4_UID_BASE + 8);
         return true;
     }
 

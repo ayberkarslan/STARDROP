@@ -66,6 +66,13 @@ String lastFlashDiagnostics = "-";
 uint32_t lastTargetIdcode = 0;
 uint32_t lastFlashDurationMs = 0;
 
+struct KnownTarget {
+    String uid;
+    String label;
+};
+std::vector<KnownTarget> knownTargets;
+String lastSeenTargetUid = "";
+
 const char* speedProfileName(SwdSpeedProfile profile) {
     switch (profile) {
         case SwdSpeedProfile::TURBO: return "TURBO";
@@ -94,6 +101,42 @@ void loadProgrammerSettings() {
 void saveProgrammerSettings() {
     prefs.begin("stardrop_cfg", false);
     prefs.putUChar("speed_mode", configuredSpeedMode);
+    prefs.end();
+}
+
+void loadKnownTargets() {
+    knownTargets.clear();
+    prefs.begin("stardrop_targets", true);
+    int count = prefs.getInt("count", 0);
+    for (int i = 0; i < count; ++i) {
+        String uid = prefs.getString(("u_" + String(i)).c_str(), "");
+        String label = prefs.getString(("n_" + String(i)).c_str(), "");
+        if (uid.length() && label.length()) knownTargets.push_back({uid, label});
+    }
+    prefs.end();
+}
+
+String labelForUid(const String& uid) {
+    for (const auto& target : knownTargets) {
+        if (target.uid == uid) return target.label;
+    }
+    return "";
+}
+
+void saveTargetLabel(const String& uid, const String& label) {
+    bool found = false;
+    for (auto& target : knownTargets) {
+        if (target.uid == uid) { target.label = label; found = true; break; }
+    }
+    if (!found) knownTargets.push_back({uid, label});
+
+    prefs.begin("stardrop_targets", false);
+    prefs.clear();
+    prefs.putInt("count", knownTargets.size());
+    for (size_t i = 0; i < knownTargets.size(); ++i) {
+        prefs.putString(("u_" + String(i)).c_str(), knownTargets[i].uid);
+        prefs.putString(("n_" + String(i)).c_str(), knownTargets[i].label);
+    }
     prefs.end();
 }
 
@@ -530,9 +573,17 @@ const char* stm32ModelName(uint16_t deviceId) {
         case 0x413: return "STM32F405/F407/F415/F417";
         case 0x419: return "STM32F42x/F43x";
         case 0x421: return "STM32F446";
-        case 0x423: return "STM32F401/F411";
+        case 0x423: return "STM32F401";
+        case 0x431: return "STM32F411";
         default: return "Bilinmeyen STM32";
     }
+}
+
+String formatTargetUid(const TargetProbeInfo& target) {
+    char uid[25];
+    snprintf(uid, sizeof(uid), "%08lX%08lX%08lX",
+             (unsigned long)target.uid[0], (unsigned long)target.uid[1], (unsigned long)target.uid[2]);
+    return String(uid);
 }
 
 void handleTargetStatus() {
@@ -546,15 +597,43 @@ void handleTargetStatus() {
         return;
     }
 
+    String uid = formatTargetUid(target);
+    lastSeenTargetUid = uid;
+    String label = labelForUid(uid);
+
     String json = "{";
     json += "\"connected\":true,";
     json += "\"model\":\"" + String(stm32ModelName(target.deviceId)) + "\",";
     json += "\"deviceId\":\"0x" + String(target.deviceId, HEX) + "\",";
     json += "\"revisionId\":\"0x" + String(target.revisionId, HEX) + "\",";
     json += "\"flashSizeKb\":" + String(target.flashSizeKb) + ",";
-    json += "\"dpIdcode\":\"0x" + String(target.dpIdcode, HEX) + "\"";
+    json += "\"dpIdcode\":\"0x" + String(target.dpIdcode, HEX) + "\",";
+    json += "\"uid\":\"" + uid + "\",";
+    json += "\"label\":\"" + label + "\"";
     json += "}";
     server.send(200, "application/json", json);
+}
+
+void handleTargetLabel() {
+    if (lastSeenTargetUid.length() == 0 || !server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Önce hedef taranmalı\"}");
+        return;
+    }
+    String body = server.arg("plain");
+    const String marker = "\"label\":\"";
+    int start = body.indexOf(marker);
+    if (start < 0) { server.send(400, "application/json", "{\"status\":\"error\"}"); return; }
+    start += marker.length();
+    int end = body.indexOf('"', start);
+    if (end < start) { server.send(400, "application/json", "{\"status\":\"error\"}"); return; }
+    String label = body.substring(start, end);
+    label.trim();
+    if (!label.length() || label.length() > 32 || label.indexOf('\\') >= 0) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Geçersiz kart adı\"}");
+        return;
+    }
+    saveTargetLabel(lastSeenTargetUid, label);
+    server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
 void handleWifiScan() {
@@ -662,6 +741,7 @@ void setup() {
     // 1. Kayıtlı Ağları NVS'den Yükle
     loadSavedNetworks();
     loadProgrammerSettings();
+    loadKnownTargets();
 
     // 2. Ağ Alt Yapısını Başlat (AP + STA Eşzamanlı)
     initNetworkSubsystem();
@@ -688,6 +768,7 @@ void setup() {
     server.on("/api/programmer/status", HTTP_GET, handleProgrammerStatus);
     server.on("/api/programmer/settings", HTTP_POST, handleProgrammerSettings);
     server.on("/api/target/status", HTTP_GET, handleTargetStatus);
+    server.on("/api/target/label", HTTP_POST, handleTargetLabel);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);

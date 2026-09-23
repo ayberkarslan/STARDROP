@@ -584,6 +584,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             border-color: var(--border-focus);
             background: var(--border-mid);
         }
+        .btn-submit:disabled { opacity: .42; cursor: not-allowed; }
 
         .notice-overlay {
             display: none;
@@ -713,6 +714,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     <span id="lastFlashText" style="font-weight:700; text-align:right; max-width:220px;">-</span>
                 </div>
                 <p class="setting-note" id="diagnosticsText">Doğrulama: zorunlu.</p>
+                <div class="section-label" style="margin-top:12px;">Algılanan Hedefi Adlandır</div>
+                <input type="text" class="input-text" id="targetLabelInput" maxlength="32" placeholder="Örn. TELEMETRİ KARTI">
+                <button class="btn-submit" id="saveTargetLabelBtn" onclick="saveCurrentTargetLabel()" disabled>Hedef Adını Kaydet</button>
+                <p class="setting-note" id="targetUidText">Önce SWD hedefi algılanmalı.</p>
             </div>
 
             <!-- AKTİF BAĞLANTI -->
@@ -817,12 +822,16 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const targetCard = document.getElementById('targetCard');
         const targetName = document.getElementById('targetName');
         const targetDetail = document.getElementById('targetDetail');
+        const targetLabelInput = document.getElementById('targetLabelInput');
+        const targetUidText = document.getElementById('targetUidText');
+        const saveTargetLabelBtn = document.getElementById('saveTargetLabelBtn');
 
         let readyBinary = null;
         let isFlashing = false;
         let wasOnline = false;
         let noticeAction = null;
         let settingsDirty = false;
+        let currentTarget = null;
 
         function showNotice(title, message, type = 'info', onConfirm = null) {
             noticeTitle.innerText = title;
@@ -934,19 +943,51 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 if (!res.ok) throw new Error();
                 const target = await res.json();
                 if (!target.connected) {
+                    currentTarget = null;
                     targetCard.className = 'target-card missing';
                     targetName.innerText = 'STM32 HEDEFİ BULUNAMADI';
                     targetDetail.innerText = `ACK ${target.ack ?? '-'}`;
+                    targetUidText.innerText = 'Önce SWD hedefi algılanmalı.';
+                    saveTargetLabelBtn.disabled = true;
                     return;
                 }
+                currentTarget = target;
                 targetCard.className = 'target-card connected';
-                targetName.innerText = target.model;
-                targetDetail.innerText = `${target.flashSizeKb} KB · ${target.deviceId}`;
+                targetName.innerText = target.label || target.model;
+                targetDetail.innerText = `${target.model} · ${target.flashSizeKb} KB`;
                 targetCard.title = `DPIDR ${target.dpIdcode} · Revizyon ${target.revisionId}`;
+                targetLabelInput.value = target.label || '';
+                targetUidText.innerText = `UID: ${target.uid}`;
+                saveTargetLabelBtn.disabled = false;
             } catch (e) {
+                currentTarget = null;
                 targetCard.className = 'target-card missing';
                 targetName.innerText = 'STM32 DURUMU OKUNAMADI';
                 targetDetail.innerText = 'SWD';
+            }
+        }
+
+        async function saveCurrentTargetLabel() {
+            if (!currentTarget) {
+                showNotice('Hedef bulunamadı', 'Kart adı kaydetmeden önce STM32 hedefinin SWD ile algılanması gerekir.', 'warn');
+                return;
+            }
+            const label = targetLabelInput.value.trim();
+            if (!label) {
+                showNotice('Kart adı gerekli', 'Örneğin TELEMETRİ KARTI gibi kısa bir ad gir.', 'warn');
+                return;
+            }
+            try {
+                const res = await fetch('/api/target/label', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label })
+                });
+                if (!res.ok) throw new Error();
+                currentTarget.label = label;
+                targetName.innerText = label;
+                showNotice('Hedef adlandırıldı', `'${label}' bu STM32'nin değişmeyen UID'sine bağlandı.`, 'info');
+            } catch (e) {
+                showNotice('Kart adı kaydedilemedi', 'ESP32 hedef kaydını güncelleyemedi.', 'error');
             }
         }
 
