@@ -1,4 +1,4 @@
-import { DeterministicBoardParser } from '../../../parse_algorithm/frontend/src/lib/parser.js';
+import { DeterministicBoardParser } from './deterministicNetlistParser.js';
 import { confidenceForConnection, newBoardProfile } from './boardProfile.js';
 
 function roleFor(protocol, role) {
