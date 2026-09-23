@@ -574,6 +574,7 @@ const char* stm32ModelName(uint16_t deviceId) {
         case 0x419: return "STM32F42x/F43x";
         case 0x421: return "STM32F446";
         case 0x423: return "STM32F401";
+        case 0x433: return "STM32F401";
         case 0x431: return "STM32F411";
         default: return "Bilinmeyen STM32";
     }
