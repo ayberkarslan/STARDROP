@@ -8,7 +8,7 @@ import { loadSecret, saveSecret } from './lib/secretStore.js';
 import { beginGitHubDeviceLogin, catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, pollGitHubDeviceLogin, saveCatalogDocument, waitForProfileArtifact } from './lib/githubClient.js';
 import { downloadDiagnosticArtifact, hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import BoardMap from './BoardMap.jsx';
-import { DEFAULT_TEST_CATALOG, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
+import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
 
@@ -60,6 +60,7 @@ export default function App() {
     : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
     : !catalogSha ? 'Özel test deposu kataloğu henüz yüklenmedi.'
     : !sensorTest ? 'Bu sensör için katalog eşlemesi yok.'
+    : !buildableTargetPart(profile?.mcu?.part) ? 'Bu prototip yalnız STM32F401CC ve STM32F446RE firmware’i derler.'
     : sensorTest.status !== 'ready' ? 'Bu sensörün test kodu henüz hazır değil.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
@@ -246,6 +247,7 @@ export default function App() {
     try {
       if (!githubUser || !githubConfig.repository || !catalogSha) throw new Error('Özel test deposuna GitHub girişi gerekli.');
       if (sensorTest.status !== 'ready' || !sensorTest.sourcePath) throw new Error('Bu sensörün derlenebilir test şablonu henüz yok.');
+      if (!buildableTargetPart(profile.mcu.part)) throw new Error('Bu prototip yalnız STM32F401CC ve STM32F446RE destekler.');
       if (!target?.connected || !target.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı STM32 ile kart profilinin MCU ailesi uyuşmuyor.');
       if (profile.targetUid !== target.uid) throw new Error('Kart profili bağlı STM32 UID’siyle eşleşmiyor.');
       if (!/^[0-9A-F]{24}$/.test(target.uid || '') || /^0+$/.test(target.uid)) throw new Error('Hedef STM32 UID güvenilir okunamadı.');

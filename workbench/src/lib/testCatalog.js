@@ -3,6 +3,11 @@ import { canonicalMcu } from './boardProfile.js';
 
 export const DEFAULT_TEST_CATALOG = seedCatalog;
 
+export function buildableTargetPart(part) {
+  const normalized = String(part || '').toUpperCase();
+  return normalized.startsWith('STM32F401CC') || normalized.startsWith('STM32F446RE');
+}
+
 export function validateTestCatalog(catalog) {
   const errors = [];
   if (catalog?.schemaVersion !== 1 || !Array.isArray(catalog.tests)) errors.push('Katalog sürümü veya test listesi geçersiz.');
@@ -13,7 +18,7 @@ export function validateTestCatalog(catalog) {
     seen.add(item.id);
     if (!item.name || !Array.isArray(item.supportedMcu)) errors.push(`${item.id}: ad veya MCU listesi eksik.`);
     if (!['planned', 'ready'].includes(item.status)) errors.push(`${item.id}: durum planned veya ready olmalı.`);
-    if (item.sourcePath && !/^templates\/[a-zA-Z0-9_/-]+\.c$/.test(item.sourcePath)) errors.push(`${item.id}: kaynak yolu templates/ altında .c olmalı.`);
+    if (item.sourcePath && !/^templates\/[a-z0-9_-]+\.c$/.test(item.sourcePath)) errors.push(`${item.id}: kaynak yolu templates/ altında tek bir .c dosyası olmalı.`);
     if (item.status === 'ready' && !item.sourcePath) errors.push(`${item.id}: hazır testin kaynak yolu olmalı.`);
   }
   return { valid: errors.length === 0, errors };
