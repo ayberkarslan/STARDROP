@@ -1,0 +1,14 @@
+# Generated embedded builds must never be versioned.
+.pio/
+
+# Desktop workbench build output and local credentials.
+workbench/node_modules/
+workbench/dist/
+workbench/src-tauri/target/
+workbench/src-tauri/gen/
+workbench/.env
+workbench/.env.*
+
+# Local application data and downloaded diagnostic artifacts.
+.stardrop-cache/
+*.stardrop.tmp
