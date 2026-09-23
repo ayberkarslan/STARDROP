@@ -1,8 +1,10 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <ESPmDNS.h>
+#include <NetBIOS.h>
 #include <Preferences.h>
 #include <vector>
 #include "soc/soc.h"
@@ -17,15 +19,26 @@ const char* FALLBACK_AP_SSID = "STARDROP-Setup";
 const char* FALLBACK_AP_PASS = "12345678";
 const char* MDNS_HOSTNAME    = "stardrop"; // http://stardrop.local
 const byte  DNS_PORT         = 53;
+const uint16_t DISCOVERY_PORT = 4210;
+const char* DISCOVERY_REQUEST = "STARDROP_DISCOVER_V1";
 
 // ==============================================================================
-// 2. PIN TANIMLAMALARI (ESP32-C3 Super Mini -> STM32 SWD)
+// 2. PIN TANIMLAMALARI (ESP32 -> STM32 SWD)
 // ==============================================================================
-// SWD Protokolü (ST-Link Modu):
-#define SWD_CLK_PIN       20   // ESP32-C3 GPIO 20 ➔ STM32 PA14 (SWCLK / Morpho CN10 Pin 15)
-#define SWD_DIO_PIN       21   // ESP32-C3 GPIO 21 ➔ STM32 PA13 (SWDIO / Morpho CN10 Pin 13)
-#define STM32_RST_PIN     3    // ESP32-C3 GPIO 3  ➔ STM32 NRST (RESET / CN7 Pin 14)
-#define ONBOARD_LED_PIN   8    // ESP32-C3 Super Mini Mavi LED (GPIO 8)
+// Pinler platformio.ini içinden seçilir. STM32_RST_PIN=-1 verilirse SWD,
+// yalnızca SWCLK + SWDIO ile çalışır; reset altında kilitlenmiş hedefi kurtaramaz.
+#ifndef SWD_CLK_PIN
+#define SWD_CLK_PIN       25
+#endif
+#ifndef SWD_DIO_PIN
+#define SWD_DIO_PIN       26
+#endif
+#ifndef STM32_RST_PIN
+#define STM32_RST_PIN     27
+#endif
+#ifndef ONBOARD_LED_PIN
+#define ONBOARD_LED_PIN   2
+#endif
 #define FLASH_START_ADDR  0x08000000
 
 // Donanım ve Sistem Nesneleri
@@ -33,6 +46,7 @@ SWDFlasher swd;
 WebServer server(80);
 DNSServer dnsServer;
 Preferences prefs;
+WiFiUDP discoveryUdp;
 
 struct SavedNetwork {
     String ssid;
@@ -44,6 +58,45 @@ std::vector<uint8_t> firmwareBuffer;
 bool apModeActive = false;
 unsigned long lastWifiCheck = 0;
 
+// 0: AUTO (Turbo -> Fast -> Safe), 1: Turbo, 2: Fast, 3: Safe.
+uint8_t configuredSpeedMode = 0;
+String lastFlashResult = "Henüz programlama yapılmadı";
+String lastFlashProfile = "-";
+String lastFlashDiagnostics = "-";
+uint32_t lastTargetIdcode = 0;
+uint32_t lastFlashDurationMs = 0;
+
+const char* speedProfileName(SwdSpeedProfile profile) {
+    switch (profile) {
+        case SwdSpeedProfile::TURBO: return "TURBO";
+        case SwdSpeedProfile::FAST: return "FAST";
+        case SwdSpeedProfile::SAFE: return "SAFE";
+    }
+    return "BILINMIYOR";
+}
+
+const char* configuredSpeedModeName() {
+    switch (configuredSpeedMode) {
+        case 1: return "turbo";
+        case 2: return "fast";
+        case 3: return "safe";
+        default: return "auto";
+    }
+}
+
+void loadProgrammerSettings() {
+    prefs.begin("stardrop_cfg", true);
+    configuredSpeedMode = prefs.getUChar("speed_mode", 0);
+    prefs.end();
+    if (configuredSpeedMode > 3) configuredSpeedMode = 0;
+}
+
+void saveProgrammerSettings() {
+    prefs.begin("stardrop_cfg", false);
+    prefs.putUChar("speed_mode", configuredSpeedMode);
+    prefs.end();
+}
+
 // ==============================================================================
 // 4. ÇOKLU AĞ HAFIZASI YÖNETİMİ (NVS / PREFERENCES)
 // ==============================================================================
@@ -52,14 +105,6 @@ void loadSavedNetworks() {
     savedNetworks.clear();
     prefs.begin("stardrop_net", false);
     int count = prefs.getInt("count", 0);
-
-    // İlk kullanımda hiç ağ yoksa varsayılan ağı kaydet:
-    if (count == 0) {
-        prefs.putInt("count", 1);
-        prefs.putString("s_0", "mayberk");
-        prefs.putString("p_0", "tiramisu13");
-        count = 1;
-    }
 
     for (int i = 0; i < count; i++) {
         String sKey = "s_" + String(i);
@@ -128,11 +173,13 @@ void initNetworkSubsystem() {
 
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
-    delay(100);
+    delay(50);
 
     // Eşzamanlı AP + STA Modu
     WiFi.mode(WIFI_AP_STA);
-    delay(100);
+    WiFi.setHostname("stardrop");
+    WiFi.softAPsetHostname("stardrop");
+    delay(50);
 
     IPAddress local_ip(192, 168, 4, 1);
     IPAddress gateway(192, 168, 4, 1);
@@ -154,6 +201,7 @@ void initNetworkSubsystem() {
     bool staConnected = false;
     for (const auto& net : savedNetworks) {
         Serial.printf("[WI-FI] Kayıtlı ağ deneniyor: '%s' ... ", net.ssid.c_str());
+        WiFi.setHostname("stardrop");
         WiFi.begin(net.ssid.c_str(), net.password.c_str());
 
         unsigned long start = millis();
@@ -167,10 +215,15 @@ void initNetworkSubsystem() {
             digitalWrite(ONBOARD_LED_PIN, LOW); // Sabit Açık
             Serial.printf("BAĞLANDI!\n[WI-FI] Yerel IP: %s\n", WiFi.localIP().toString().c_str());
 
+            MDNS.end();
             if (MDNS.begin("stardrop")) {
+                MDNS.setInstanceName("stardrop");
                 MDNS.addService("http", "tcp", 80);
-                Serial.println("[mDNS] http://stardrop.local AKTİF!");
+                MDNS.addServiceTxt("http", "tcp", "path", "/");
+                Serial.println("[mDNS] http://stardrop.local ve http://stardrop AKTİF!");
             }
+            NBNS.begin("stardrop");
+            Serial.println("[NetBIOS] 'stardrop' Windows ve Samba cihazları için AKTİF!");
             break;
         } else {
             Serial.println("bağlanılamadı.");
@@ -179,7 +232,50 @@ void initNetworkSubsystem() {
 
     if (!staConnected) {
         Serial.println("[WI-FI] Sadece STARDROP-OTA (192.168.4.1) üzerinden çalışılıyor.");
+        MDNS.end();
+        MDNS.begin("stardrop");
+        MDNS.addService("http", "tcp", 80);
+        NBNS.begin("stardrop");
     }
+}
+
+// ==============================================================================
+// 4. YEREL AĞ CİHAZ KEŞFİ (UDP)
+// ==============================================================================
+// Bilgisayardaki stardrop_discover.py aynı yerel ağa broadcast gönderir. ESP
+// cevabı isteği gönderen cihaza unicast döner; internet veya sabit IP gerekmez.
+void initDiscoveryService() {
+    if (discoveryUdp.begin(DISCOVERY_PORT)) {
+        Serial.printf("[DISCOVERY] UDP cihaz keşfi portu hazır: %u\n", DISCOVERY_PORT);
+    } else {
+        Serial.println("[DISCOVERY] UDP portu açılamadı!");
+    }
+}
+
+void handleDiscoveryService() {
+    int packetSize = discoveryUdp.parsePacket();
+    if (packetSize <= 0) return;
+
+    char request[64] = {0};
+    int readLen = discoveryUdp.read(request, sizeof(request) - 1);
+    if (readLen <= 0 || strcmp(request, DISCOVERY_REQUEST) != 0) return;
+
+    bool staConnected = WiFi.status() == WL_CONNECTED;
+    String response = "{\"protocol\":\"stardrop-discovery-v1\",";
+    response += "\"name\":\"stardrop\",";
+    response += "\"mac\":\"" + WiFi.macAddress() + "\",";
+    response += "\"staConnected\":" + String(staConnected ? "true" : "false") + ",";
+    response += "\"ip\":\"" + (staConnected ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + "\",";
+    response += "\"apIp\":\"" + WiFi.softAPIP().toString() + "\",";
+    response += "\"httpPort\":80,";
+    response += "\"rssi\":" + String(staConnected ? WiFi.RSSI() : 0);
+    response += "}";
+
+    discoveryUdp.beginPacket(discoveryUdp.remoteIP(), discoveryUdp.remotePort());
+    discoveryUdp.print(response);
+    discoveryUdp.endPacket();
+    Serial.printf("[DISCOVERY] Yanıt gönderildi: %s:%u\n",
+                  discoveryUdp.remoteIP().toString().c_str(), discoveryUdp.remotePort());
 }
 
 // ==============================================================================
@@ -221,109 +317,126 @@ void sendSSE(const String& msg, const String& type = "info", int pct = -1, const
     Serial.println(msg);
 }
 
-void handleStreamFlash() {
-    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
-    server.send(200, "text/event-stream", "");
+enum class FlashAttemptResult : uint8_t { SUCCESS, CONNECT, HALT, UNLOCK, ERASE, WRITE, VERIFY };
 
-    if (firmwareBuffer.empty()) {
-        sendSSE("HATA: Firmware dosyası bulunamadı!", "error");
-        server.sendContent("data: {\"error\":true}\n\n");
-        return;
-    }
-
-    uint32_t totalBytes = firmwareBuffer.size();
-    uint32_t totalChunks = (totalBytes + 255) / 256;
-
-    sendSSE("[1/4] ARM Cortex-M SWD bağlantısı kuruluyor (ST-Link Modu)...", "info", 5);
+FlashAttemptResult flashAtSpeed(SwdSpeedProfile profile, uint32_t totalBytes, uint32_t totalChunks) {
+    swd.setSpeedProfile(profile);
+    swd.resetTransferStats();
     swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    sendSSE("[HIZ] " + String(speedProfileName(profile)) + " profili bağlantı kararlılığı test ediliyor...", "info", 4);
 
     uint32_t idcode = 0;
-    if (!swd.connect(&idcode)) {
-        char errBuf[128];
-        snprintf(errBuf, sizeof(errBuf), "[HATA] ARM SWD DAP el sıkışma başarısız! (ACK: %d, IDCODE: 0x%08X)", swd.lastAck, swd.lastIdcode);
-        sendSSE(String(errBuf), "error");
-        server.sendContent("data: {\"error\":true}\n\n");
-        return;
+    uint32_t confirmIdcode = 0;
+    if (!swd.connect(&idcode) || !swd.connect(&confirmIdcode) || idcode != confirmIdcode) {
+        return FlashAttemptResult::CONNECT;
     }
-
-    char idMsg[64];
-    snprintf(idMsg, sizeof(idMsg), "[OK] ARM CoreSight DAP Bağlandı! (IDCODE: 0x%08X)", idcode);
+    lastTargetIdcode = idcode;
+    char idMsg[96];
+    snprintf(idMsg, sizeof(idMsg), "[OK] %s kararlı: CoreSight DAP 0x%08X", speedProfileName(profile), idcode);
     sendSSE(String(idMsg), "success", 8);
 
-    // Akıllı Hedef İşlemci Teşhisi
     TargetDiagnostics diag = swd.inspectAndDiagnose();
     sendSSE("[DURUM] " + diag.statusSummary, diag.isLockup ? "warn" : "info", 11);
     sendSSE("[STRATEJİ] " + diag.actionTaken, "info", 13);
 
-    // Çekirdeği Durdur / Gerekirse HardFault Kurtar
-    if (!swd.haltAndRecover()) {
-        sendSSE("[UYARI] CPU dondurulamadı, doğrudan flash yazmaya devam ediliyor...", "warn", 14);
-    } else {
-        sendSSE("[OK] STM32 Cortex-M4 çekirdeği kontrol altına alındı (Core Halted).", "success", 15);
-    }
+    if (!swd.haltAndRecover()) return FlashAttemptResult::HALT;
+    sendSSE("[OK] STM32 Cortex-M4 çekirdeği kontrol altına alındı (Core Halted).", "success", 15);
 
-    // Gerekliyse Flash Kilidini Aç
-    if (!swd.unlockFlashIfNeeded()) {
-        sendSSE("[HATA] STM32 Flash Kontrolcüsü kilidi açılamadı!", "error");
-        server.sendContent("data: {\"error\":true}\n\n");
-        return;
-    }
+    if (!swd.unlockFlashIfNeeded()) return FlashAttemptResult::UNLOCK;
     sendSSE("[OK] STM32 Flash Kontrolcüsü kilidi açık.", "success", 16);
 
-    sendSSE("[2/4] Flash belleği siliniyor (SWD Mass Erase)...", "info", 18);
-    if (!swd.massErase()) {
-        sendSSE("[HATA] Flash silme başarısız oldu!", "error");
-        server.sendContent("data: {\"error\":true}\n\n");
-        return;
-    }
-    sendSSE("[OK] Flash tamamen silindi. ~2.5 MHz Auto-Increment Burst ile yazma başlıyor...", "success", 22);
+    sendSSE("[2/4] Firmware'in kullandığı flash sektörleri siliniyor...", "info", 18);
+    uint8_t erasedSectors = 0;
+    uint16_t flashSizeKb = 0;
+    if (!swd.eraseImageSectors(totalBytes, &erasedSectors, &flashSizeKb)) return FlashAttemptResult::ERASE;
+    String eraseInfo = "[OK] " + String(erasedSectors) + " gerekli sektör silindi";
+    if (flashSizeKb > 0) eraseInfo += " (hedef flash: " + String(flashSizeKb) + " KB)";
+    eraseInfo += ". " + String(speedProfileName(profile)) + " Auto-Increment Burst ile yazma + zorunlu doğrulama başlıyor...";
+    sendSSE(eraseInfo, "success", 22);
 
     uint32_t currentAddr = FLASH_START_ADDR;
     uint8_t chunk[256];
     uint8_t verifyBuf[256];
-
     for (uint32_t i = 0; i < totalChunks; i++) {
         uint32_t offset = i * 256;
-        memset(chunk, 0xFF, 256);
+        memset(chunk, 0xFF, sizeof(chunk));
+        uint32_t bytesHere = totalBytes - offset;
+        if (bytesHere > sizeof(chunk)) bytesHere = sizeof(chunk);
+        memcpy(chunk, &firmwareBuffer[offset], bytesHere);
 
-        if (offset + 256 > totalBytes) {
-            memcpy(chunk, &firmwareBuffer[offset], totalBytes - offset);
-        } else {
-            memcpy(chunk, &firmwareBuffer[offset], 256);
-        }
-
-        if (!swd.writeBlock(currentAddr, chunk, 256)) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "[HATA] 0x%08X SWD yazma başarısız!", currentAddr);
-            sendSSE(String(buf), "error");
-            server.sendContent("data: {\"error\":true}\n\n");
-            return;
-        }
-
-        if (!swd.readBlock(currentAddr, verifyBuf, 256) || memcmp(chunk, verifyBuf, 256) != 0) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "[DOĞRULAMA HATASI] 0x%08X verisi uyuşmadı!", currentAddr);
-            sendSSE(String(buf), "error");
-            server.sendContent("data: {\"error\":true}\n\n");
-            return;
+        if (!swd.writeBlock(currentAddr, chunk, sizeof(chunk))) return FlashAttemptResult::WRITE;
+        if (!swd.readBlock(currentAddr, verifyBuf, sizeof(verifyBuf)) || memcmp(chunk, verifyBuf, sizeof(chunk)) != 0) {
+            return FlashAttemptResult::VERIFY;
         }
 
         int pct = 22 + ((i + 1) * 76) / totalChunks;
         char hexAddr[16];
         snprintf(hexAddr, sizeof(hexAddr), "0x%08X", currentAddr);
         String chunkInfo = String(i + 1) + " / " + String(totalChunks) + " Blok";
-
         sendSSE("[SWD] " + String(hexAddr) + " ➔ 256B Yazıldı + Doğrulandı (OK)", "chunk", pct, chunkInfo);
-        currentAddr += 256;
+        currentAddr += sizeof(chunk);
+    }
+    return FlashAttemptResult::SUCCESS;
+}
+
+String flashFailureMessage(FlashAttemptResult result) {
+    switch (result) {
+        case FlashAttemptResult::CONNECT: return "SWD bağlantısı/IDCODE kararsız";
+        case FlashAttemptResult::HALT: return "CPU dondurulamadı";
+        case FlashAttemptResult::UNLOCK: return "Flash kilidi açılamadı";
+        case FlashAttemptResult::ERASE: return "Flash silme başarısız";
+        case FlashAttemptResult::WRITE: return "SWD yazma/flash hazır olma hatası";
+        case FlashAttemptResult::VERIFY: return "Readback doğrulama uyuşmazlığı";
+        default: return "Bilinmeyen hata";
+    }
+}
+
+void handleStreamFlash() {
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/event-stream", "");
+    if (firmwareBuffer.empty()) {
+        sendSSE("HATA: Firmware dosyası bulunamadı!", "error");
+        server.sendContent("data: {\"error\":true}\n\n");
+        return;
     }
 
-    sendSSE("[4/4] STM32 Sıfırlanıyor ve Normal Çalışma Moduna geçiriliyor...", "info", 99);
+    const SwdSpeedProfile autoProfiles[] = {SwdSpeedProfile::TURBO, SwdSpeedProfile::FAST, SwdSpeedProfile::SAFE};
+    SwdSpeedProfile requestedProfiles[] = {SwdSpeedProfile::FAST};
+    const SwdSpeedProfile* profiles = requestedProfiles;
+    uint8_t profileCount = 1;
+    if (configuredSpeedMode == 0) { profiles = autoProfiles; profileCount = 3; }
+    else if (configuredSpeedMode == 1) requestedProfiles[0] = SwdSpeedProfile::TURBO;
+    else if (configuredSpeedMode == 3) requestedProfiles[0] = SwdSpeedProfile::SAFE;
+
+    uint32_t startedAt = millis();
+    uint32_t totalBytes = firmwareBuffer.size();
+    uint32_t totalChunks = (totalBytes + 255) / 256;
+    FlashAttemptResult result = FlashAttemptResult::CONNECT;
+    bool success = false;
+    for (uint8_t attempt = 0; attempt < profileCount; ++attempt) {
+        result = flashAtSpeed(profiles[attempt], totalBytes, totalChunks);
+        lastFlashProfile = speedProfileName(profiles[attempt]);
+        lastFlashDiagnostics = swd.transferDiagnostics();
+        if (result == FlashAttemptResult::SUCCESS) { success = true; break; }
+        if (attempt + 1 < profileCount) {
+            sendSSE("[HIZ UYARISI] " + String(speedProfileName(profiles[attempt])) + " profili: " + flashFailureMessage(result) + ". Daha güvenli profile yeniden deneniyor. " + lastFlashDiagnostics, "warn", 5);
+        }
+    }
+    lastFlashDurationMs = millis() - startedAt;
+
+    if (!success) {
+        lastFlashResult = "HATA: " + flashFailureMessage(result);
+        sendSSE("[HATA] " + lastFlashResult + " | " + lastFlashDiagnostics, "error");
+        server.sendContent("data: {\"error\":true}\n\n");
+        return;
+    }
+
+    sendSSE("[4/4] STM32 sıfırlanıyor ve normal çalışma moduna geçiriliyor...", "info", 99);
     swd.resetAndRun();
-
-    char successMsg[80];
-    snprintf(successMsg, sizeof(successMsg), "[TAMAMLANDI] Toplam %u bayt SWD ile hatasız yüklendi ve çalışıyor!", totalBytes);
+    lastFlashResult = "BAŞARILI";
+    char successMsg[128];
+    snprintf(successMsg, sizeof(successMsg), "[TAMAMLANDI] %u bayt %s profiliyle doğrulandı (%lums).", totalBytes, lastFlashProfile.c_str(), lastFlashDurationMs);
     sendSSE(String(successMsg), "success", 100);
-
     server.sendContent("data: {\"done\":true}\n\n");
 }
 
@@ -340,16 +453,35 @@ void handleFileUpload() {
 }
 
 // ==============================================================================
-// 8. WI-FI REST API ENDPOINT'LERİ (AĞ YÖNETİMİ)
+// 8. WI-FI REST API ENDPOINT'LERİ (AĞ YÖNETİMİ & HIZLI GEÇİŞ)
 // ==============================================================================
 
+int calcRssiPct(int rssi) {
+    if (rssi >= -50) return 100;
+    if (rssi <= -100) return 0;
+    return 2 * (rssi + 100);
+}
+
+bool doWifiSwitch = false;
+String targetSwitchSsid = "";
+String targetSwitchPass = "";
+
 void handleWifiStatus() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Cache-Control", "no-cache");
+
+    bool isSta = (WiFi.status() == WL_CONNECTED);
+    int rssi = isSta ? WiFi.RSSI() : 0;
+    int pct = isSta ? calcRssiPct(rssi) : 0;
+
     String json = "{";
-    json += "\"connected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ",";
-    json += "\"ssid\":\"" + (WiFi.status() == WL_CONNECTED ? WiFi.SSID() : "") + "\",";
-    json += "\"ip\":\"" + (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : (apModeActive ? WiFi.softAPIP().toString() : "")) + "\",";
-    json += "\"rssi\":" + String(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0) + ",";
-    json += "\"apMode\":" + String(apModeActive ? "true" : "false") + ",";
+    json += "\"connected\":" + String(isSta ? "true" : "false") + ",";
+    json += "\"ssid\":\"" + (isSta ? WiFi.SSID() : "") + "\",";
+    json += "\"ip\":\"" + (isSta ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + "\",";
+    json += "\"rssi\":" + String(rssi) + ",";
+    json += "\"pct\":" + String(pct) + ",";
+    json += "\"apSsid\":\"" + String(AP_SSID) + "\",";
+    json += "\"apIp\":\"" + WiFi.softAPIP().toString() + "\",";
     json += "\"saved\":[";
     for (size_t i = 0; i < savedNetworks.size(); i++) {
         json += "\"" + savedNetworks[i].ssid + "\"";
@@ -359,13 +491,82 @@ void handleWifiStatus() {
     server.send(200, "application/json", json);
 }
 
+void handleProgrammerStatus() {
+    String json = "{";
+    json += "\"speedMode\":\"" + String(configuredSpeedModeName()) + "\",";
+    json += "\"verifyRequired\":true,";
+    json += "\"swclkPin\":" + String(SWD_CLK_PIN) + ",";
+    json += "\"swdioPin\":" + String(SWD_DIO_PIN) + ",";
+    json += "\"resetAvailable\":" + String(STM32_RST_PIN >= 0 ? "true" : "false") + ",";
+    json += "\"lastResult\":\"" + lastFlashResult + "\",";
+    json += "\"lastProfile\":\"" + lastFlashProfile + "\",";
+    json += "\"lastDiagnostics\":\"" + lastFlashDiagnostics + "\",";
+    json += "\"lastTargetIdcode\":\"0x" + String(lastTargetIdcode, HEX) + "\",";
+    json += "\"lastDurationMs\":" + String(lastFlashDurationMs);
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
+void handleProgrammerSettings() {
+    if (!server.hasArg("plain")) {
+        server.send(400, "application/json", "{\"status\":\"error\"}");
+        return;
+    }
+    String body = server.arg("plain");
+    if (body.indexOf("\"speedMode\":\"auto\"") >= 0) configuredSpeedMode = 0;
+    else if (body.indexOf("\"speedMode\":\"turbo\"") >= 0) configuredSpeedMode = 1;
+    else if (body.indexOf("\"speedMode\":\"fast\"") >= 0) configuredSpeedMode = 2;
+    else if (body.indexOf("\"speedMode\":\"safe\"") >= 0) configuredSpeedMode = 3;
+    else {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Geçersiz hız profili\"}");
+        return;
+    }
+    saveProgrammerSettings();
+    server.send(200, "application/json", "{\"status\":\"ok\",\"speedMode\":\"" + String(configuredSpeedModeName()) + "\"}");
+}
+
+const char* stm32ModelName(uint16_t deviceId) {
+    switch (deviceId) {
+        case 0x413: return "STM32F405/F407/F415/F417";
+        case 0x419: return "STM32F42x/F43x";
+        case 0x421: return "STM32F446";
+        case 0x423: return "STM32F401/F411";
+        default: return "Bilinmeyen STM32";
+    }
+}
+
+void handleTargetStatus() {
+    // Durum taraması, seçili flash hızından bağımsız olarak FAST'te yapılır:
+    // ekranın "hedef yok" demesi Turbo temas marjına bağlı kalmasın.
+    swd.setSpeedProfile(SwdSpeedProfile::FAST);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    TargetProbeInfo target;
+    if (!swd.probe(&target)) {
+        server.send(200, "application/json", "{\"connected\":false,\"ack\":" + String(swd.lastAck) + "}");
+        return;
+    }
+
+    String json = "{";
+    json += "\"connected\":true,";
+    json += "\"model\":\"" + String(stm32ModelName(target.deviceId)) + "\",";
+    json += "\"deviceId\":\"0x" + String(target.deviceId, HEX) + "\",";
+    json += "\"revisionId\":\"0x" + String(target.revisionId, HEX) + "\",";
+    json += "\"flashSizeKb\":" + String(target.flashSizeKb) + ",";
+    json += "\"dpIdcode\":\"0x" + String(target.dpIdcode, HEX) + "\"";
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
 void handleWifiScan() {
-    int n = WiFi.scanNetworks();
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    int n = WiFi.scanNetworks(false, true, false, 80); // Hızlı ve kesintisiz 80ms tarama
     String json = "[";
     for (int i = 0; i < n; ++i) {
+        int r = WiFi.RSSI(i);
         json += "{";
         json += "\"ssid\":\"" + WiFi.SSID(i) + "\",";
-        json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
+        json += "\"rssi\":" + String(r) + ",";
+        json += "\"pct\":" + String(calcRssiPct(r)) + ",";
         json += "\"secure\":" + String(WiFi.encryptionType(i) != WIFI_AUTH_OPEN ? "true" : "false");
         json += "}";
         if (i < n - 1) json += ",";
@@ -375,10 +576,33 @@ void handleWifiScan() {
     server.send(200, "application/json", json);
 }
 
-void handleWifiAdd() {
+void handleWifiSwitch() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
     if (server.hasArg("plain")) {
         String body = server.arg("plain");
-        // Basit JSON parse: {"ssid":"...","pass":"..."}
+        int sIdx = body.indexOf("\"ssid\":");
+        if (sIdx != -1) {
+            int q1 = body.indexOf("\"", sIdx + 7);
+            int q2 = body.indexOf("\"", q1 + 1);
+            String ssid = body.substring(q1 + 1, q2);
+            for (const auto& net : savedNetworks) {
+                if (net.ssid == ssid) {
+                    targetSwitchSsid = net.ssid;
+                    targetSwitchPass = net.password;
+                    doWifiSwitch = true;
+                    server.send(200, "application/json", "{\"status\":\"ok\",\"msg\":\"Geçiş başlatıldı\"}");
+                    return;
+                }
+            }
+        }
+    }
+    server.send(400, "application/json", "{\"status\":\"error\",\"msg\":\"Ağ bulunamadı\"}");
+}
+
+void handleWifiAdd() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    if (server.hasArg("plain")) {
+        String body = server.arg("plain");
         int sIdx = body.indexOf("\"ssid\":\"");
         int pIdx = body.indexOf("\"pass\":\"");
         if (sIdx != -1 && pIdx != -1) {
@@ -391,9 +615,6 @@ void handleWifiAdd() {
 
             saveNetworkToNVS(newSsid, newPass);
             server.send(200, "application/json", "{\"status\":\"ok\"}");
-
-            // Arka planda yeni ağa bağlanmayı dene
-            initNetworkSubsystem();
             return;
         }
     }
@@ -401,6 +622,7 @@ void handleWifiAdd() {
 }
 
 void handleWifiRemove() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
     if (server.hasArg("plain")) {
         String body = server.arg("plain");
         int sIdx = body.indexOf("\"ssid\":\"");
@@ -432,18 +654,24 @@ void setup() {
     pinMode(ONBOARD_LED_PIN, OUTPUT);
     digitalWrite(ONBOARD_LED_PIN, LOW);
 
-    pinMode(STM32_RST_PIN, OUTPUT);
-    digitalWrite(STM32_RST_PIN, HIGH);
+    if (STM32_RST_PIN >= 0) {
+        pinMode(STM32_RST_PIN, OUTPUT);
+        digitalWrite(STM32_RST_PIN, HIGH);
+    }
 
     // 1. Kayıtlı Ağları NVS'den Yükle
     loadSavedNetworks();
+    loadProgrammerSettings();
 
     // 2. Ağ Alt Yapısını Başlat (AP + STA Eşzamanlı)
     initNetworkSubsystem();
+    initDiscoveryService();
 
     // 3. Web Sunucu Rotaları
+    server.enableCORS(true);
     server.on("/", HTTP_GET, handleRoot);
     server.on("/ping", HTTP_GET, []() {
+        server.sendHeader("Access-Control-Allow-Origin", "*");
         server.sendHeader("Cache-Control", "no-cache");
         server.send(200, "application/json", "{\"status\":\"ok\",\"uptime\":" + String(millis() / 1000) + "}");
     });
@@ -454,8 +682,12 @@ void setup() {
     // Wi-Fi Yönetim API Rotaları
     server.on("/api/wifi/status", HTTP_GET, handleWifiStatus);
     server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
+    server.on("/api/wifi/switch", HTTP_POST, handleWifiSwitch);
     server.on("/api/wifi/add", HTTP_POST, handleWifiAdd);
     server.on("/api/wifi/remove", HTTP_POST, handleWifiRemove);
+    server.on("/api/programmer/status", HTTP_GET, handleProgrammerStatus);
+    server.on("/api/programmer/settings", HTTP_POST, handleProgrammerSettings);
+    server.on("/api/target/status", HTTP_GET, handleTargetStatus);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);
@@ -475,4 +707,57 @@ void loop() {
         dnsServer.processNextRequest();
     }
     server.handleClient();
+    handleDiscoveryService();
+
+    // Dinamik Ağ Geçiş Durum Makinesi
+    if (doWifiSwitch) {
+        doWifiSwitch = false;
+        Serial.printf("\n[WI-FI] '%s' ağına geçiş yapılıyor...\n", targetSwitchSsid.c_str());
+        WiFi.disconnect(false, false);
+        delay(50);
+        WiFi.begin(targetSwitchSsid.c_str(), targetSwitchPass.c_str());
+
+        unsigned long t0 = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - t0 < 5000) {
+            delay(100);
+            if (apModeActive) dnsServer.processNextRequest();
+            server.handleClient();
+        }
+
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("[WI-FI] '%s' ağına BAĞLANDI! Yerel IP: %s\n", targetSwitchSsid.c_str(), WiFi.localIP().toString().c_str());
+            MDNS.end();
+            if (MDNS.begin("stardrop")) {
+                MDNS.addService("http", "tcp", 80);
+                Serial.println("[mDNS] http://stardrop.local AKTİF!");
+            }
+        } else {
+            Serial.println("[WI-FI] Ağ geçişi zaman aşımına uğradı!");
+        }
+    }
+
+    // Otomatik Wi-Fi Yeniden Bağlanma (Arka planda kesintisiz izleme)
+    static unsigned long lastStaCheck = 0;
+    if (millis() - lastStaCheck > 12000) {
+        lastStaCheck = millis();
+        if (WiFi.status() != WL_CONNECTED && !savedNetworks.empty() && !doWifiSwitch) {
+            for (const auto& net : savedNetworks) {
+                WiFi.begin(net.ssid.c_str(), net.password.c_str());
+                unsigned long t0 = millis();
+                while (WiFi.status() != WL_CONNECTED && millis() - t0 < 2500) {
+                    delay(100);
+                    if (apModeActive) dnsServer.processNextRequest();
+                    server.handleClient();
+                }
+                if (WiFi.status() == WL_CONNECTED) {
+                    Serial.printf("[WI-FI] Otomatik Yeniden BAĞLANDI! IP: %s\n", WiFi.localIP().toString().c_str());
+                    MDNS.end();
+                    if (MDNS.begin("stardrop")) {
+                        MDNS.addService("http", "tcp", 80);
+                    }
+                    break;
+                }
+            }
+        }
+    }
 }

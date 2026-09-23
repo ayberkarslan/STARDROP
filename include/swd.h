@@ -10,6 +10,12 @@
 #define SWD_ACK_WAIT    0x02
 #define SWD_ACK_FAULT   0x04
 
+enum class SwdSpeedProfile : uint8_t {
+    TURBO = 0, // En kısa kenar aralığı; kısa ve sağlam bağlantı gerektirir.
+    FAST  = 1, // Eski sabit ayar: günlük kullanım varsayılanı.
+    SAFE  = 2  // Uzun kablo/breadboard için muhafazakâr zamanlama.
+};
+
 // ARM CoreDebug ve Sistem Adresleri
 #define DHCSR_ADDR      0xE000EDF0 // Debug Halting Control and Status Register
 #define DCRSR_ADDR      0xE000EDF4 // Debug Core Register Selector Register
@@ -17,6 +23,7 @@
 #define DEMCR_ADDR      0xE000EDFC // Debug Exception and Monitor Control Register
 #define AIRCR_ADDR      0xE000ED0C // Application Interrupt and Reset Control Register
 #define HFSR_ADDR       0xE000ED2C // HardFault Status Register
+#define DBGMCU_IDCODE_ADDR 0xE0042000 // STM32 device/revision kimliği
 
 #define C_DEBUGEN       (1 << 0)
 #define C_HALT          (1 << 1)
@@ -38,10 +45,15 @@
 
 #define FLASH_CR_PG         (1 << 0)
 #define FLASH_CR_SER        (1 << 1)
+#define FLASH_CR_SNB_SHIFT  3
+#define FLASH_CR_SNB_MASK   (0xFUL << FLASH_CR_SNB_SHIFT)
 #define FLASH_CR_MER        (1 << 2)
 #define FLASH_CR_PSIZE_X32  (2 << 8)  // 32-bit hızlı yazma modu
 #define FLASH_CR_STRT       (1 << 16)
 #define FLASH_CR_LOCK       (1 << 31)
+
+// STM32F4 sistem belleğindeki fabrika flash boyutu kaydı (KB, 16-bit).
+#define STM32F4_FLASH_SIZE_REG 0x1FFF7A22UL
 
 // Hedef İşlemci Durum Teşhis Yapısı
 struct TargetDiagnostics {
@@ -57,20 +69,35 @@ struct TargetDiagnostics {
     String actionTaken;
 };
 
+struct TargetProbeInfo {
+    bool connected;
+    uint32_t dpIdcode;
+    uint16_t deviceId;
+    uint16_t revisionId;
+    uint16_t flashSizeKb;
+};
+
 class SWDFlasher {
 private:
     uint8_t pin_clk;
     uint8_t pin_dio;
-    uint8_t pin_rst;
+    int8_t pin_rst;
+    SwdSpeedProfile speedProfile = SwdSpeedProfile::FAST;
 
-    // ~2.5 MHz yüksek hızlı donanımsal SWD gecikmesi (30 NOPs @ 160MHz)
-    static inline void swdDelay() {
-        __asm__ __volatile__ (
-            "nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;"
-            "nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;"
-            "nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;"
-            ::: "memory"
-        );
+    // Yüksek hızlı GPIO bit-bang SWD gecikmesi.
+    inline void swdDelay() {
+        if (speedProfile == SwdSpeedProfile::TURBO) {
+            __asm__ __volatile__("" ::: "memory");
+        } else if (speedProfile == SwdSpeedProfile::SAFE) {
+            delayMicroseconds(1);
+        } else {
+            __asm__ __volatile__ (
+                "nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;"
+                "nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;"
+                "nop; nop; nop; nop; nop; nop; nop; nop; nop; nop;"
+                ::: "memory"
+            );
+        }
     }
 
     inline void clockCycle() {
@@ -130,7 +157,7 @@ private:
             writeBit((req >> i) & 1);
         }
 
-        // Turnaround (Host -> Target): 1 clock cycle with SWDIO as Input
+        // Turnaround (Host -> Target): STM32F4 varsayılanı 1 clock.
         setDioInput();
         clockCycle();
 
@@ -152,13 +179,14 @@ private:
                 uint8_t dataParity = readBit();
                 if (dataParity != parity(val)) {
                     ack = SWD_ACK_FAULT;
+                    parityErrorCount++;
                 }
 
-                // Turnaround (Target -> Host): 1 clock cycle + Host Output
+                // Turnaround (Target -> Host) + Host Output
                 clockCycle();
                 setDioOutput();
             } else {
-                // Turnaround (Target -> Host): 1 clock cycle + Host Output
+                // Turnaround (Target -> Host) + Host Output
                 clockCycle();
                 setDioOutput();
 
@@ -173,6 +201,9 @@ private:
             setDioOutput();
         }
 
+        if (ack == SWD_ACK_WAIT) ackWaitCount++;
+        if (ack == SWD_ACK_FAULT) ackFaultCount++;
+
         // 8 Idle Clock (SWDIO = 0)
         digitalWrite(pin_dio, LOW);
         for (int i = 0; i < 8; i++) {
@@ -185,9 +216,28 @@ private:
 public:
     uint8_t lastAck = 0;
     uint32_t lastIdcode = 0;
+    uint32_t ackWaitCount = 0;
+    uint32_t ackFaultCount = 0;
+    uint32_t parityErrorCount = 0;
     TargetDiagnostics diag;
 
-    void begin(uint8_t clk, uint8_t dio, uint8_t rst) {
+    void setSpeedProfile(SwdSpeedProfile profile) { speedProfile = profile; }
+    SwdSpeedProfile getSpeedProfile() const { return speedProfile; }
+    void resetTransferStats() { ackWaitCount = ackFaultCount = parityErrorCount = 0; }
+    String transferDiagnostics() const {
+        return "ACK WAIT: " + String(ackWaitCount) +
+               ", ACK FAULT: " + String(ackFaultCount) +
+               ", parity: " + String(parityErrorCount);
+    }
+
+    // ARM SW-DP DPIDR'nin JEP106 designer alanı (ARM = 0x23B) ve bit0
+    // birleşimi 0x477'dir. Bu denetim farklı STM32 Cortex-M ailelerini
+    // destekler, ancak kopuk hatta rastgele gelen sahte ACK'i reddeder.
+    static bool isArmSwDpId(uint32_t idcode) {
+        return (idcode & 0x00000FFFUL) == 0x477UL;
+    }
+
+    void begin(uint8_t clk, uint8_t dio, int8_t rst = -1) {
         pin_clk = clk;
         pin_dio = dio;
         pin_rst = rst;
@@ -198,8 +248,10 @@ public:
         pinMode(pin_dio, OUTPUT);
         digitalWrite(pin_dio, HIGH);
 
-        pinMode(pin_rst, OUTPUT);
-        digitalWrite(pin_rst, HIGH);
+        if (pin_rst >= 0) {
+            pinMode(pin_rst, OUTPUT);
+            digitalWrite(pin_rst, HIGH);
+        }
     }
 
     void lineReset() {
@@ -216,13 +268,15 @@ public:
 
         for (int attempt = 1; attempt <= 6; attempt++) {
             // İlk 2 deneme Sıcak Bağlantı (En Hızlı Yol)
-            // Sonraki denemeler Donanımsal Reset ile Kurtarma
-            if (attempt > 2) {
+            // Sonraki denemeler reset HALA aktifken DAP'a bağlanır. Reset
+            // bırakıldıktan sonra bağlanmak, uygulama PA13/PA14'ü çok erken
+            // yeniden yapılandırıyorsa hedefi kurtaramaz.
+            bool resetHeld = false;
+            if (attempt > 2 && pin_rst >= 0) {
                 pinMode(pin_rst, OUTPUT);
                 digitalWrite(pin_rst, LOW);
                 delay(20);
-                pinMode(pin_rst, INPUT_PULLUP);
-                delay(30);
+                resetHeld = true;
             }
 
             // 1. SWD Line Reset
@@ -246,7 +300,19 @@ public:
             lastAck = ack;
             lastIdcode = idcode;
 
-            if (ack == SWD_ACK_OK && idcode != 0 && idcode != 0xFFFFFFFF) {
+            // Aynı DPIDR'yi tekrar oku: ACK=OK gibi görünen rastgele/bit
+            // kaymış veriyle erase işlemine geçilmesini önler.
+            uint32_t confirmIdcode = 0;
+            uint8_t confirmAck = SWD_ACK_FAULT;
+            if (ack == SWD_ACK_OK && isArmSwDpId(idcode)) {
+                confirmAck = sendPacket(0, 1, 0x00, &confirmIdcode);
+            }
+            if (ack == SWD_ACK_OK && confirmAck == SWD_ACK_OK &&
+                idcode == confirmIdcode && isArmSwDpId(idcode)) {
+                if (resetHeld) {
+                    pinMode(pin_rst, INPUT_PULLUP);
+                    delay(5);
+                }
                 if (idcode_out) *idcode_out = idcode;
                 Serial.printf("[SWD] ARM Cortex-M DAP Bağlandı! (Deneme %d, IDCODE: 0x%08X)\n", attempt, idcode);
 
@@ -270,11 +336,34 @@ public:
                 return true;
             }
 
+            if (resetHeld) {
+                pinMode(pin_rst, INPUT_PULLUP);
+                delay(10);
+            }
+
             delay(20);
         }
 
         Serial.printf("Bağlantı başarısız, son ACK: %d, IDCODE: 0x%08X\n", lastAck, lastIdcode);
         return false;
+    }
+
+    // Bu sorgu yalnız DAP/MEM-AP üzerinden okuma yapar; CPU'yu durdurmaz,
+    // resetlemez ve kullanıcı yazılımına müdahale etmez.
+    bool probe(TargetProbeInfo* info) {
+        if (!info) return false;
+        memset(info, 0, sizeof(*info));
+        uint32_t idcode = 0;
+        if (!connect(&idcode)) return false;
+
+        uint32_t dbgId = readMem32(DBGMCU_IDCODE_ADDR);
+        uint32_t flashSizeWord = readMem32(STM32F4_FLASH_SIZE_REG & ~0x3UL);
+        info->connected = true;
+        info->dpIdcode = idcode;
+        info->deviceId = dbgId & 0x0FFF;
+        info->revisionId = (dbgId >> 16) & 0xFFFF;
+        info->flashSizeKb = (flashSizeWord >> 16) & 0xFFFF;
+        return true;
     }
 
     uint8_t writeDP(uint8_t addr, uint32_t val) {
@@ -402,6 +491,50 @@ public:
         return ok;
     }
 
+    // F401/F446 gibi STM32F4'lerde flash bankası 16K,16K,16K,16K,64K ve
+    // devamında 128K sektörlerden oluşur. Küçük firmware için tüm flashı
+    // silmek yerine yalnızca görüntünün değdiği sektörleri sileriz.
+    bool eraseImageSectors(uint32_t imageBytes, uint8_t* erasedCount = nullptr,
+                           uint16_t* flashSizeKbOut = nullptr) {
+        if (erasedCount) *erasedCount = 0;
+        uint32_t sizeWord = readMem32(STM32F4_FLASH_SIZE_REG & ~0x3UL);
+        uint16_t flashSizeKb = (uint16_t)(sizeWord >> 16);
+        if (flashSizeKbOut) *flashSizeKbOut = flashSizeKb;
+
+        // Bu geometri yalnız bilinen STM32F4 boyutlarında güvenlidir.
+        if (flashSizeKb != 256 && flashSizeKb != 512 && flashSizeKb != 1024) {
+            return massErase();
+        }
+
+        uint32_t imageEnd = imageBytes;
+        uint32_t sectorStart = 0;
+        uint8_t sector = 0;
+        while (sectorStart < imageEnd) {
+            uint32_t sectorSize;
+            if (sector < 4) sectorSize = 16 * 1024UL;
+            else if (sector == 4) sectorSize = 64 * 1024UL;
+            else sectorSize = 128 * 1024UL;
+
+            if (sectorStart >= (uint32_t)flashSizeKb * 1024UL) return false;
+            if (!waitForFlashReady()) return false;
+
+            // Önce eski hata bayraklarını temizle, sonra tek sektörü sil.
+            writeMem32(FLASH_SR, FLASH_SR_ERR_MASK);
+            uint32_t cr = FLASH_CR_SER |
+                          ((uint32_t)sector << FLASH_CR_SNB_SHIFT) |
+                          FLASH_CR_STRT;
+            writeMem32(FLASH_CR, cr);
+            bool ok = waitForFlashReady(15000);
+            writeMem32(FLASH_CR, 0);
+            if (!ok) return false;
+            if (erasedCount) (*erasedCount)++;
+
+            sectorStart += sectorSize;
+            sector++;
+        }
+        return true;
+    }
+
     // ==============================================================================
     // MEM-AP AUTO-INCREMENT STREAMING İLE IŞIK HIZINDA YAZMA (3X-5X HIZLANMA)
     // ==============================================================================
@@ -457,11 +590,13 @@ public:
         // Debug modunu kapat ve serbest bırak
         writeMem32(DHCSR_ADDR, DBGKEY | 0);
 
-        // Donanımsal Reset bırak
-        pinMode(pin_rst, OUTPUT);
-        digitalWrite(pin_rst, LOW);
-        delay(30);
-        pinMode(pin_rst, INPUT_PULLUP);
+        // Donanımsal reset isteğe bağlıdır. Bağlı değilse SYSRESETREQ yeterlidir.
+        if (pin_rst >= 0) {
+            pinMode(pin_rst, OUTPUT);
+            digitalWrite(pin_rst, LOW);
+            delay(30);
+            pinMode(pin_rst, INPUT_PULLUP);
+        }
 
         // Pinleri boşa çıkar
         pinMode(pin_clk, INPUT);
