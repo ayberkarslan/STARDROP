@@ -24,13 +24,14 @@ Workbench'te kart profili, canlı SWD hedefinin UID'siyle kullanıcı tarafında
 
 ## Çalışan prototip kapsamı
 
-F401CC ve F446RE için BMP180 kimlik + ham sıcaklık ADC örneği ve genel I²C ACK taraması derlenir. Genel I²C taramasının PASS sonucu belirli sensörün sağlam olduğunu **kanıtlamaz**; yalnız o bus üzerinde en az bir adresin yanıt verdiğini gösterir. BMP180 ham ADC sayısı gerçek sıcaklık değildir. MS5611, BMP388, ICM20689 ve SPI testleri henüz `planned` durumundadır.
+F401CC/CD/CE ve F446RE için BMP180 kimlik + ham sıcaklık ADC örneği derlenir. Genel I²C ACK taraması yalnız geliştirici bus teşhisidir; bir sensöre otomatik eşleştirilmez ve belirli sensörün sağlam olduğunu **kanıtlamaz**. BMP180 ham ADC sayısı gerçek sıcaklık değildir. Sensör gerektirmeyen MCU self-test'i cihaz ID'si ve SRAM yaz/oku kontrolü yapar. MS5611, BMP388, ICM20689 ve SPI testleri henüz `planned` durumundadır.
 
 Yerel derleme kontrolü:
 
 ```sh
 node tools/build-firmware.mjs tests/valid-profile.json U1 bmp180 build/f401 local-f401
 node tools/build-firmware.mjs tests/valid-f446-profile.json U2 bmp180 build/f446 local-f446
+node tools/build-firmware.mjs tests/selftest-f401-profile.json MCU mcu-selftest build/selftest local-mcu
 ```
 
 `arm-none-eabi-gcc` ve `arm-none-eabi-objcopy` gerekir. CI bunları kurar. Üretilen `artifact.json` hedef MCU, pinler, çalıştırma kimliği ve `.bin` SHA-256 değerini taşır. Workbench bu veriler uyuşmadan flashlamaz. Tanı firmware'i hedefteki mevcut uygulamayı siler; test bitince üretim yazılımı ayrıca yeniden yüklenir.

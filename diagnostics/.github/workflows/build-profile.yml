@@ -35,6 +35,7 @@ jobs:
           TEST_ID: ${{ inputs.test_id }}
         run: node --input-type=module -e "const c=JSON.parse(await (await import('node:fs/promises')).readFile('catalog/catalog.json')); const t=c.tests.find(x=>x.id===process.env.TEST_ID); if(!t||t.status!=='ready') throw Error('Test not buildable');"
       - name: Validate BoardProfile
+        if: inputs.test_id != 'mcu-selftest'
         env:
           PROFILE_JSON: ${{ inputs.profile_json }}
         run: node tools/validate-profile.mjs "$PROFILE_JSON"

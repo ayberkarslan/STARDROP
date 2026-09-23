@@ -5,7 +5,7 @@ export const DEFAULT_TEST_CATALOG = seedCatalog;
 
 export function buildableTargetPart(part) {
   const normalized = String(part || '').toUpperCase();
-  return normalized.startsWith('STM32F401CC') || normalized.startsWith('STM32F446RE');
+  return /^STM32F401C[CDE]/.test(normalized) || normalized.startsWith('STM32F446RE');
 }
 
 export function validateTestCatalog(catalog) {
@@ -28,8 +28,8 @@ export function testForComponent(catalog, component, mcuPart) {
   if (!component) return null;
   const part = String(component.part || '').toUpperCase();
   const family = canonicalMcu(mcuPart);
-  return catalog?.tests?.find((item) => item.supportedMcu?.includes(family)
+  return catalog?.tests?.find((item) => !['generic-i2c', 'generic-spi', 'mcu-selftest'].includes(item.id)
+    && item.supportedMcu?.includes(family)
     && item.matchParts?.some((pattern) => part.includes(pattern.toUpperCase()))
-    && (!item.protocol || item.protocol === component.protocol || item.protocol.includes(component.protocol)))
-    || (component.protocol === 'I2C' ? catalog?.tests?.find((item) => item.id === 'generic-i2c' && item.supportedMcu?.includes(family)) : null);
+    && (!item.protocol || item.protocol === component.protocol || item.protocol.includes(component.protocol))) || null;
 }

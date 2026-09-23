@@ -9,7 +9,9 @@ void platform_i2c_init(void);
 int main(void) {
     volatile stardrop_diagnostic_report_t *report = stardrop_report_at_fixed_address();
     stardrop_report_begin_at(report, STARDROP_TEST_ID_HASH, STARDROP_PROFILE_HASH);
+#if STARDROP_USE_I2C
     platform_i2c_init();
+#endif
     DEMCR |= 1UL << 24;
     DWT_CYCCNT = 0;
     DWT_CTRL |= 1UL;

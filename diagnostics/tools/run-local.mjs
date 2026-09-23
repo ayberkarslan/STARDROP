@@ -14,7 +14,7 @@ const built = spawnSync(process.execPath, [join(root, 'tools/build-firmware.mjs'
 if (built.error) throw built.error;
 if (built.status !== 0) throw new Error('Yerel ARM derlemesi başarısız.');
 const manifest = JSON.parse(await readFile(join(output, 'artifact.json'), 'utf8'));
-const bin = await readFile(join(output, `${testId}-${manifest.mcuPart.startsWith('STM32F401CC') ? 'stm32f401cc' : 'stm32f446re'}.bin`));
+const bin = await readFile(join(output, `${testId}-${manifest.mcuPart.startsWith('STM32F401') ? 'stm32f401cc' : 'stm32f446re'}.bin`));
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 if (sha(bin) !== manifest.sha256) throw new Error('Yerel BIN SHA-256 uyuşmazlığı.');
 if (confirm !== '--flash') {
@@ -28,6 +28,10 @@ async function targetStatus() {
   if (!response.ok) throw new Error(`ESP hedef sorgusu HTTP ${response.status}`);
   const target = await response.json();
   if (!target.connected || !target.model?.startsWith(manifest.mcuPart.slice(0, 9))) throw new Error('Bağlı MCU ile firmware ailesi uyuşmuyor.');
+  const expectedDeviceId = /^STM32F401CC/.test(manifest.mcuPart) ? '0x423'
+    : /^STM32F401C[DE]/.test(manifest.mcuPart) ? '0x433'
+    : /^STM32F446RE/.test(manifest.mcuPart) ? '0x421' : null;
+  if (expectedDeviceId && target.deviceId?.toLowerCase() !== expectedDeviceId) throw new Error(`MCU varyantı uyuşmuyor: beklenen ${expectedDeviceId}, okunan ${target.deviceId}.`);
   if (!/^[0-9A-F]{24}$/.test(target.uid || '') || /^0+$/.test(target.uid)) throw new Error('STM32 UID okunamadı; yanlış karta flash riskinden dolayı durduruldu.');
   if (target.flashSizeKb && bin.length > target.flashSizeKb * 1024) throw new Error('BIN hedef flash kapasitesini aşıyor.');
   return target;
