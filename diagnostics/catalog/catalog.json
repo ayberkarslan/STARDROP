@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "channel": "development",
   "tests": [
-    { "id": "bmp180", "name": "BMP180", "protocol": "I2C", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"] },
-    { "id": "ms5611", "name": "MS5611", "protocol": "I2C", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"] },
-    { "id": "bmp388", "name": "BMP388", "protocol": "I2C/SPI", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"] },
-    { "id": "icm20689", "name": "ICM20689", "protocol": "I2C/SPI", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"] },
-    { "id": "generic-i2c", "name": "Generic I2C", "protocol": "I2C", "resultRule": "bus-response", "supportedMcu": ["STM32F401", "STM32F446"] },
-    { "id": "generic-spi", "name": "Generic SPI", "protocol": "SPI", "resultRule": "bus-response", "supportedMcu": ["STM32F401", "STM32F446"] }
+    { "id": "bmp180", "name": "BMP180", "matchParts": ["BMP180", "BMP085"], "protocol": "I2C", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" },
+    { "id": "ms5611", "name": "MS5611", "matchParts": ["MS5611"], "protocol": "I2C", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" },
+    { "id": "bmp388", "name": "BMP388", "matchParts": ["BMP388", "BMP390"], "protocol": "I2C/SPI", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" },
+    { "id": "icm20689", "name": "ICM20689", "matchParts": ["ICM20689"], "protocol": "I2C/SPI", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" },
+    { "id": "generic-i2c", "name": "Generic I2C", "matchParts": [], "protocol": "I2C", "resultRule": "bus-response", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" },
+    { "id": "generic-spi", "name": "Generic SPI", "matchParts": [], "protocol": "SPI", "resultRule": "bus-response", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" }
   ]
 }

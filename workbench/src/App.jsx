@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Cpu, Download, FileUp, FlaskConical, Github, Radio, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { addAuditEvent, overallConfidence, validateBoardProfile } from './lib/boardProfile.js';
+import { addAuditEvent, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { loadSecret, saveSecret } from './lib/secretStore.js';
-import { beginGitHubDeviceLogin, currentGitHubUser, dispatchProfileBuild, pollGitHubDeviceLogin } from './lib/githubClient.js';
+import { beginGitHubDeviceLogin, catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, pollGitHubDeviceLogin, saveCatalogDocument } from './lib/githubClient.js';
 import BoardMap from './BoardMap.jsx';
+import { DEFAULT_TEST_CATALOG, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
 
@@ -24,8 +25,6 @@ export default function App() {
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
   const [flashProgress, setFlashProgress] = useState(0);
-  const [selectedTest, setSelectedTest] = useState(null);
-  const [testArtifact, setTestArtifact] = useState(null);
   const [diagnosticReport, setDiagnosticReport] = useState(null);
   const [aiConfig, setAiConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.ai.config') || '{"endpoint":"https://api.openai.com/v1","model":"gpt-4.1-mini"}'));
   const [aiKey, setAiKey] = useState('');
@@ -34,6 +33,11 @@ export default function App() {
   const [aiBusy, setAiBusy] = useState(false);
   const [githubConfig, setGithubConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.github.config') || '{"clientId":"","repository":"","ref":"main"}'));
   const [githubUser, setGithubUser] = useState(null);
+  const [catalog, setCatalog] = useState(DEFAULT_TEST_CATALOG);
+  const [catalogSha, setCatalogSha] = useState(null);
+  const [catalogAdmin, setCatalogAdmin] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [adminTestId, setAdminTestId] = useState(DEFAULT_TEST_CATALOG.tests[0]?.id || '');
   const [deviceLogin, setDeviceLogin] = useState(null);
   const [profile, setProfile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -44,6 +48,9 @@ export default function App() {
   const diagnosticTimer = useRef(null);
 
   const profileValidation = useMemo(() => profile ? validateBoardProfile(profile) : null, [profile]);
+  const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
+  const sensorTest = testForComponent(catalog, activeSensor, profile?.mcu?.part);
+  const adminTest = catalog.tests.find((item) => item.id === adminTestId);
 
   const normalizedBridge = bridge.replace(/\/$/, '');
   const refreshTarget = async () => {
@@ -65,6 +72,22 @@ export default function App() {
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)); }, []);
   useEffect(() => { loadSecret('github_access_token').then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }); }, []);
+
+  useEffect(() => {
+    if (!githubUser || !githubConfig.repository) return;
+    let cancelled = false;
+    setCatalogLoading(true);
+    loadSecret('github_access_token').then(async (token) => {
+      const [{ catalog: remote, sha }, canWrite] = await Promise.all([
+        fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' }),
+        catalogWritePermission({ token, repository: githubConfig.repository }),
+      ]);
+      const validation = validateTestCatalog(remote);
+      if (!validation.valid) throw new Error(validation.errors.join(' '));
+      if (!cancelled) { setCatalog(remote); setCatalogSha(sha); setCatalogAdmin(canWrite); }
+    }).catch((error) => { if (!cancelled) setNotice(`GitHub kataloğu alınamadı: ${error.message}`); }).finally(() => { if (!cancelled) setCatalogLoading(false); });
+    return () => { cancelled = true; };
+  }, [githubUser, githubConfig.repository, githubConfig.ref]);
 
   useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
 
@@ -98,7 +121,6 @@ export default function App() {
         if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
         if (event.done || event.error) {
           stream.close(); refreshTarget();
-          if (event.done && selectedTest && selected === testArtifact) startDiagnosticWatch();
         }
       };
       stream.onerror = () => stream.close();
@@ -171,14 +193,18 @@ export default function App() {
     } catch (error) { setNotice(`GitHub Device Login başlatılamadı: ${error.message}`); }
   };
 
-  const dispatchCloudBuild = async () => {
+  const updateAdminTest = (field, value) => setCatalog((current) => ({ ...current, tests: current.tests.map((item) => item.id === adminTestId ? { ...item, [field]: value } : item) }));
+
+  const saveAdminCatalog = async () => {
     try {
+      if (!catalogAdmin || !catalogSha) throw new Error('Bu depoda katalog yazma yetkisi yok.');
+      const validation = validateTestCatalog(catalog);
+      if (!validation.valid) throw new Error(validation.errors.join(' '));
       const token = await loadSecret('github_access_token');
-      if (!token || !githubUser) throw new Error('Önce GitHub girişi yap.');
-      const testId = ({ BMP180: 'bmp180', MS5611: 'ms5611', BMP388: 'bmp388', ICM20689: 'icm20689', 'GENERIC I²C': 'generic-i2c', 'GENERIC SPI': 'generic-spi' })[selectedTest];
-      await dispatchProfileBuild({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', profile, testId });
-      setNotice(`${selectedTest} için GitHub Actions derleme işi ${githubUser.login} adına başlatıldı.`);
-    } catch (error) { setNotice(`Bulut derlemesi başlatılamadı: ${error.message}`); }
+      await saveCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', catalog, sha: catalogSha });
+      const saved = await fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' });
+      setCatalog(saved.catalog); setCatalogSha(saved.sha); setNotice('Sensör-test eşlemesi GitHub kataloğuna kaydedildi.');
+    } catch (error) { setNotice(`Katalog kaydedilemedi: ${error.message}`); }
   };
 
   const exportProject = async () => {
@@ -208,14 +234,15 @@ export default function App() {
         <button className={mode === 'flash' ? 'active' : ''} onClick={() => setMode('flash')}><Upload />Hızlı Yükleme</button>
         <button className={mode === 'workbench' ? 'active' : ''} onClick={() => setMode('workbench')}><FlaskConical />Kart Workbench</button>
         <button className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}><Settings />Entegrasyonlar</button>
+        {catalogAdmin && <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}><ShieldCheck />Test Yönetimi</button>}
       </nav>
       <div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
     </aside>
     <main>
-      <header><div><h1>{mode === 'flash' ? 'HIZLI YÜKLEME' : mode === 'settings' ? 'ENTEGRASYONLAR' : 'KART WORKBENCH'}</h1><p>SWD · F401/F446 · doğrulanabilir donanım profilleri</p></div><div className="bridge"><Radio /><input value={bridge} onChange={(event) => setBridge(event.target.value)} aria-label="ESP32 adresi"/><button onClick={refreshTarget} title="Hedefi yenile"><RefreshCw /></button></div></header>
-      {mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Bu giriş yalnız özel katalog, bulut derleme ve merkezi audit için kullanılır.</p><div className="settings-grid"><input value={githubConfig.clientId || ''} placeholder="GitHub App Client ID" onChange={(event) => updateGithubConfig('clientId', event.target.value)} /><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={!githubConfig.clientId || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : 'GITHUB DEVICE LOGIN'}</button>{deviceLogin && <div className="device-code"><strong>{deviceLogin.user_code}</strong><span>Tarayıcıda <b>{deviceLogin.verification_uri}</b> adresini açıp bu kodu gir.</span></div>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <div className="workspace two-col">
+      <header><div><h1>{mode === 'flash' ? 'HIZLI YÜKLEME' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>SWD · F401/F446 · doğrulanabilir donanım profilleri</p></div><div className="bridge"><Radio /><input value={bridge} onChange={(event) => setBridge(event.target.value)} aria-label="ESP32 adresi"/><button onClick={refreshTarget} title="Hedefi yenile"><RefreshCw /></button></div></header>
+      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Bu ekran yalnız GitHub deposunda yazma yetkisi olan kullanıcıya açılır. Eşlemeler özel deponun katalog dosyasına kaydedilir; test kaynağı gerçekten derlenmeden operatöre “hazır” görünmez.</p><div className="admin-grid"><select value={adminTestId} onChange={(event) => setAdminTestId(event.target.value)}>{catalog.tests.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={adminTest?.sourcePath || ''} placeholder="templates/bmp180.c" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Kaynak yolu, eşleşen parça adları ve desteklenen MCU bilgisi katalogda tutulur. Farklı kart pinleri firmware kaynak dosyasına gömülmez; onaylı BoardProfile derleme girdisidir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Bu giriş yalnız özel katalog, bulut derleme ve merkezi audit için kullanılır.</p><div className="settings-grid"><input value={githubConfig.clientId || ''} placeholder="GitHub App Client ID" onChange={(event) => updateGithubConfig('clientId', event.target.value)} /><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={!githubConfig.clientId || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : 'GITHUB DEVICE LOGIN'}</button>{deviceLogin && <div className="device-code"><strong>{deviceLogin.user_code}</strong><span>Tarayıcıda <b>{deviceLogin.verification_uri}</b> adresini açıp bu kodu gir.</span></div>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <div className="workspace two-col">
         <Section title="SWD HEDEFİ" action={<button className="icon-button" onClick={refreshTarget}><RefreshCw /></button>}>
-          {target?.connected ? <div className="target-card"><Cpu /><div><strong>{target.label || target.model}</strong><p>{target.model} · {target.flashSizeKb} KB · UID {target.uid}</p></div><Badge tone="good">BAĞLI</Badge></div> : <div className="empty">ESP32 ve SWD hattını kontrol et. Bu modda GitHub veya parser gerekmez.</div>}
+          {target?.connected ? <><div className="target-card"><Cpu /><div><strong>{target.label || target.model}</strong><p>{target.model} · {target.flashSizeKb} KB · UID {target.uid}</p></div><Badge tone="good">BAĞLI</Badge></div><div className="quick-board"><BoardMap target={target} components={[]} /></div></> : <div className="empty">ESP32 ve SWD hattını kontrol et. Bu modda GitHub veya parser gerekmez.</div>}
         </Section>
         <Section title="FIRMWARE" action={<Badge>{firmware ? 'HAZIR' : 'DOSYA BEKLENİYOR'}</Badge>}>
           <label className="dropzone"><FileUp /><strong>{firmware?.name || '.BIN / .ELF SEÇ'}</strong><small>{firmware ? `${firmware.size.toLocaleString()} bayt` : 'Mevcut üretim firmware’ini doğrudan yükle.'}</small><input type="file" accept=".bin,.elf,application/octet-stream" onChange={(event) => setFirmware(event.target.files?.[0] || null)} /></label>
@@ -240,13 +267,10 @@ export default function App() {
             <button className="primary ai-run" disabled={aiBusy || !aiKey} onClick={runAiReview}><ShieldCheck />{aiBusy ? 'AI İNCELİYOR…' : 'AI İNCELEMESİNİ BAŞLAT'}</button>
             {aiReview && <div className="ai-result"><strong>{aiReview.summary}</strong>{aiReview.suggestions.length === 0 ? <p>AI düzeltme önermedi.</p> : aiReview.suggestions.map((suggestion) => <label key={suggestion.id} className="ai-suggestion"><input type="checkbox" checked={acceptedSuggestions.includes(suggestion.id)} onChange={(event) => setAcceptedSuggestions((items) => event.target.checked ? [...items, suggestion.id] : items.filter((id) => id !== suggestion.id))}/><span><b>{suggestion.confidence}% · bağlantı #{suggestion.connectionIndex + 1}</b><small>{suggestion.reason} — {suggestion.evidence}</small></span></label>)}{aiReview.suggestions.length > 0 && <button className="secondary" disabled={!acceptedSuggestions.length} onClick={applySelectedAiSuggestions}>SEÇİLİ ÖNERİLERİ UYGULA</button>}</div>}
           </Section>
-          <Section title="TANI TESTLERİ" action={selectedTest && <Badge tone="good">{selectedTest}</Badge>}><div className="catalog">{[
-            ['BMP180', 'Kimlik + basınç örneği'], ['MS5611', 'Kimlik + basınç örneği'], ['BMP388', 'Kimlik + basınç örneği'],
-            ['ICM20689', 'Kimlik + hareket örneği'], ['GENERIC I²C', 'Bus tarama/doğrulama'], ['GENERIC SPI', 'Bus tarama/doğrulama'],
-          ].map(([name, description]) => <button key={name} className={selectedTest === name ? 'catalog-selected' : ''} onClick={() => { setSelectedTest(name); setDiagnosticReport(null); }}><Activity /><strong>{name}</strong><small>{description}</small></button>)}</div>
-            {selectedTest && <div className="test-runner"><label className="secondary"><FileUp />{testArtifact?.name || `${selectedTest} .BIN SEÇ`}<input type="file" accept=".bin,application/octet-stream" onChange={(event) => setTestArtifact(event.target.files?.[0] || null)} /></label><button className="primary" disabled={!testArtifact || !profileValidation.valid} onClick={() => flashFirmware(testArtifact)}><Send />TESTİ FLASHLA VE İZLE</button><button className="secondary" disabled={!profileValidation.valid} onClick={dispatchCloudBuild}><Github />GITHUB ACTIONS DERLE</button></div>}
+          <Section title="SENSÖR TESTİ" action={activeSensor && <Badge>{activeSensor.ref}</Badge>}>
+            {!activeSensor ? <p>Ortadaki kart haritasından test etmek istediğin sensörü seç.</p> : <div className="sensor-test-detail"><div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {activeSensor.protocol || 'Protokol bilinmiyor'}</span></div><p>{sensorTest ? `${sensorTest.name} testi katalogda eşleşti.` : 'Bu sensör için katalogda eşleşen test yok; yönetici eşlemesi gerekiyor.'}</p>{sensorTest && <p>Durum: {sensorTest.status === 'ready' ? 'Katalogda hazır işaretli' : 'Test firmware şablonu henüz üretilmedi'} · Kaynak: {sensorTest.sourcePath || 'Atanmadı'}</p>}{activeSensor && !validateTestTarget(profile, activeSensor.ref).valid && <div className="validation warn">{validateTestTarget(profile, activeSensor.ref).errors.map((error) => <span key={error}>{error}</span>)}</div>}<button className="primary" disabled><Send />TESTİ BAŞLAT</button><small>Donanımcı bu ekranda .BIN seçmez. Otomatik derleme ve güvenilir artefakt indirme akışı bitene kadar test kapalıdır.</small></div>}
             {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID 0x{diagnosticReport.observedDeviceId?.replace('0x', '')}</span><span>ÖLÇÜM {diagnosticReport.primaryMilli}</span></div>}</div>}
-            <p className="catalog-note">Şimdilik test artifact’ını elle seçebilirsin; sıradaki GitHub katalog akışı stable/dev imajını ve özel pinli bulut derlemesini bu alana bağlayacak.</p></Section>
+          </Section>
         </>}
       </div>}
     </main>
