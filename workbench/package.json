@@ -3,7 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
   "scripts": {
-    "test:core": "node src/lib/boardProfile.test.js"
+    "test:core": "node src/lib/boardProfile.test.js && node src/lib/projectArchive.test.js"
   }
 }
