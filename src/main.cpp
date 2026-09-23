@@ -668,6 +668,60 @@ void handleTargetFlashUsage() {
     server.send(200, "application/json", json);
 }
 
+void handleStreamTargetFlashUsage() {
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/event-stream", "");
+
+    // Bu işlem yalnız okur. Analizdeki yoğun trafik için Turbo kullanılır;
+    // sonuçta ACK/parity hatası görülürse arayüz sonucu güvenilir saymaz.
+    swd.setSpeedProfile(SwdSpeedProfile::TURBO);
+    swd.resetTransferStats();
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    TargetProbeInfo target;
+    if (!swd.probe(&target) || target.flashSizeKb == 0 || target.flashSizeKb > 1024) {
+        sendSSE("[HATA] Flash analizi için hedef okunamadı.", "error");
+        server.sendContent("data: {\"error\":true}\n\n");
+        return;
+    }
+
+    const uint32_t totalBytes = (uint32_t)target.flashSizeKb * 1024UL;
+    const uint32_t progressStep = 8 * 1024UL;
+    uint8_t buffer[256];
+    uint32_t programmedBytes = 0;
+    uint32_t startedAt = millis();
+    sendSSE("[ANALİZ] " + String(target.flashSizeKb) + " KB flash, hızlı salt-okunur taramaya alındı.", "info", 0);
+
+    for (uint32_t offset = 0; offset < totalBytes; offset += sizeof(buffer)) {
+        if (!swd.readBlock(FLASH_START_ADDR + offset, buffer, sizeof(buffer))) {
+            sendSSE("[HATA] Flash okuma hatası.", "error");
+            server.sendContent("data: {\"error\":true}\n\n");
+            return;
+        }
+        for (uint16_t i = 0; i < sizeof(buffer); ++i) {
+            if (buffer[i] != 0xFF) programmedBytes++;
+        }
+        uint32_t completed = offset + sizeof(buffer);
+        if (completed % progressStep == 0 || completed >= totalBytes) {
+            int pct = (completed * 100UL) / totalBytes;
+            sendSSE("[ANALİZ] " + String(completed / 1024) + " / " + String(totalBytes / 1024) + " KB tarandı.", "chunk", pct);
+        }
+        if ((offset & 0x1FFF) == 0) delay(0);
+    }
+
+    uint32_t duration = millis() - startedAt;
+    String diagnostics = swd.transferDiagnostics();
+    if (swd.ackFaultCount || swd.parityErrorCount) {
+        sendSSE("[HATA] Analiz sırasında SWD hattı kararsız: " + diagnostics, "error");
+        server.sendContent("data: {\"error\":true}\n\n");
+        return;
+    }
+    String result = "data: {\"done\":true,\"totalBytes\":" + String(totalBytes) +
+                    ",\"programmedBytes\":" + String(programmedBytes) +
+                    ",\"freeBytes\":" + String(totalBytes - programmedBytes) +
+                    ",\"durationMs\":" + String(duration) + "}\n\n";
+    server.sendContent(result);
+}
+
 void handleWifiScan() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     int n = WiFi.scanNetworks(false, true, false, 80); // Hızlı ve kesintisiz 80ms tarama
@@ -802,6 +856,7 @@ void setup() {
     server.on("/api/target/status", HTTP_GET, handleTargetStatus);
     server.on("/api/target/label", HTTP_POST, handleTargetLabel);
     server.on("/api/target/flash-usage", HTTP_GET, handleTargetFlashUsage);
+    server.on("/stream-target-flash-usage", HTTP_GET, handleStreamTargetFlashUsage);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);

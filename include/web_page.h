@@ -188,6 +188,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         .flash-summary { font-family:var(--font-mono); min-width:0; }
         .flash-summary strong { display:block; font-size:19px; letter-spacing:-.04em; }
         .flash-summary span { display:block; margin-top:4px; color:var(--text-sub); font-size:10px; line-height:1.5; }
+        .target-analysis-progress { display:none; margin-top:10px; }
 
         /* DROP ZONE */
         .drop-zone {
@@ -791,6 +792,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                         <button class="btn-sm-scan" id="flashAnalyzeBtn" onclick="analyzeTargetFlash()" style="margin-top:9px;">FLASH'I ANALİZ ET</button>
                     </div>
                 </div>
+                <div class="target-analysis-progress" id="targetAnalysisProgress">
+                    <div class="progress-labels"><span id="analysisStatusText">HAZIRLANIYOR...</span><span id="analysisPctText">0%</span></div>
+                    <div class="progress-track"><div class="progress-bar" id="analysisProgressBar"></div></div>
+                </div>
                 <p class="setting-note">Analiz, tüm flashı SWD ile salt-okunur tarar. “Programlanmış” bayt, değeri <code>FF</code> olmayan fiziksel flash baytıdır.</p>
             </div>
             <div class="section-label">Kart Kimliği</div>
@@ -874,6 +879,10 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const flashPercentText = document.getElementById('flashPercentText');
         const flashUsageText = document.getElementById('flashUsageText');
         const flashAnalyzeBtn = document.getElementById('flashAnalyzeBtn');
+        const targetAnalysisProgress = document.getElementById('targetAnalysisProgress');
+        const analysisStatusText = document.getElementById('analysisStatusText');
+        const analysisPctText = document.getElementById('analysisPctText');
+        const analysisProgressBar = document.getElementById('analysisProgressBar');
 
         let readyBinary = null;
         let isFlashing = false;
@@ -881,6 +890,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         let noticeAction = null;
         let settingsDirty = false;
         let currentTarget = null;
+        let isAnalyzingTarget = false;
 
         function showNotice(title, message, type = 'info', onConfirm = null) {
             noticeTitle.innerText = title;
@@ -925,7 +935,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         }
 
         async function checkConnection() {
-            if (isFlashing) return;
+            if (isFlashing || isAnalyzingTarget) return;
             const start = performance.now();
             try {
                 const controller = new AbortController();
@@ -1041,23 +1051,58 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
         async function analyzeTargetFlash() {
             if (!currentTarget) return;
+            if (isAnalyzingTarget) return;
+            isAnalyzingTarget = true;
             flashAnalyzeBtn.disabled = true;
             flashAnalyzeBtn.innerText = 'ANALİZ EDİLİYOR...';
             flashUsageText.innerText = 'Flash SWD üzerinden okunuyor...';
-            try {
-                const res = await fetch('/api/target/flash-usage', { cache: 'no-store' });
-                if (!res.ok) throw new Error();
-                const usage = await res.json();
-                const percent = usage.totalBytes ? (usage.programmedBytes * 100 / usage.totalBytes) : 0;
-                const circumference = 263.9;
-                flashRing.style.strokeDashoffset = circumference * (1 - percent / 100);
-                flashPercentText.innerText = `${percent.toFixed(1)}%`;
-                const usedKb = (usage.programmedBytes / 1024).toFixed(1);
-                const freeKb = (usage.freeBytes / 1024).toFixed(1);
-                flashUsageText.innerText = `${usedKb} KB programlanmış · ${freeKb} KB boş\n${usage.durationMs} ms`;
-            } catch (e) {
-                flashUsageText.innerText = 'Flash analizi başarısız. SWD temasını kontrol et.';
-            } finally {
+            targetAnalysisProgress.style.display = 'block';
+            analysisProgressBar.style.width = '0%';
+            analysisPctText.innerText = '0%';
+            analysisStatusText.innerText = 'SWD FLASH OKUNUYOR...';
+            const startedAt = performance.now();
+            const stream = new EventSource('/stream-target-flash-usage');
+            stream.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.pct !== undefined) {
+                    analysisProgressBar.style.width = `${data.pct}%`;
+                    analysisPctText.innerText = `${data.pct}%`;
+                    const elapsed = (performance.now() - startedAt) / 1000;
+                    if (data.pct > 2) {
+                        const remaining = Math.max(0, Math.round(elapsed * (100 - data.pct) / data.pct));
+                        analysisStatusText.innerText = `FLASH TARANIYOR · ~${remaining} SN KALDI`;
+                    }
+                }
+                if (data.done) {
+                    stream.close();
+                    const percent = data.totalBytes ? (data.programmedBytes * 100 / data.totalBytes) : 0;
+                    const circumference = 263.9;
+                    flashRing.style.strokeDashoffset = circumference * (1 - percent / 100);
+                    flashPercentText.innerText = `${percent.toFixed(1)}%`;
+                    flashUsageText.innerText = `${(data.programmedBytes / 1024).toFixed(1)} KB programlanmış · ${(data.freeBytes / 1024).toFixed(1)} KB boş · ${(data.durationMs / 1000).toFixed(1)} sn`;
+                    analysisStatusText.innerText = 'ANALİZ TAMAMLANDI';
+                    finishTargetAnalysis();
+                }
+                if (data.error) {
+                    stream.close();
+                    flashUsageText.innerText = 'Flash analizi başarısız. SWD temasını kontrol et.';
+                    analysisStatusText.innerText = 'ANALİZ HATASI';
+                    finishTargetAnalysis();
+                }
+            };
+            stream.onerror = () => {
+                if (!isAnalyzingTarget) return;
+                stream.close();
+                flashUsageText.innerText = 'Flash analizi bağlantısı kesildi.';
+                analysisStatusText.innerText = 'ANALİZ KESİLDİ';
+                finishTargetAnalysis();
+            };
+        }
+
+        function finishTargetAnalysis() {
+            isAnalyzingTarget = false;
+            setTimeout(() => { targetAnalysisProgress.style.display = 'none'; }, 1800);
+            if (!isAnalyzingTarget) {
                 flashAnalyzeBtn.disabled = false;
                 flashAnalyzeBtn.innerText = "FLASH'I ANALİZ ET";
             }
