@@ -172,6 +172,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             border-radius: 8px;
             background: var(--surface-2);
             font-family: var(--font-mono);
+            cursor: pointer;
         }
         .target-state { display: flex; align-items: center; gap: 7px; min-width: 0; }
         .target-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--text-dim); }
@@ -179,6 +180,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         .target-card.missing .target-dot { background: var(--status-yellow); }
         .target-name { font-size: 11px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .target-detail { flex: 0 0 auto; font-size: 9px; color: var(--text-sub); text-align: right; }
+
+        .flash-visual { display:flex; align-items:center; gap:18px; padding:12px 0; }
+        .flash-ring { width:104px; height:104px; flex:0 0 104px; transform:rotate(-90deg); }
+        .flash-ring-bg { fill:none; stroke:var(--surface-3); stroke-width:9; }
+        .flash-ring-value { fill:none; stroke:var(--status-green); stroke-width:9; stroke-linecap:round; transition:stroke-dashoffset .45s ease; }
+        .flash-summary { font-family:var(--font-mono); min-width:0; }
+        .flash-summary strong { display:block; font-size:19px; letter-spacing:-.04em; }
+        .flash-summary span { display:block; margin-top:4px; color:var(--text-sub); font-size:10px; line-height:1.5; }
 
         /* DROP ZONE */
         .drop-zone {
@@ -640,7 +649,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
 
         <!-- DROP ZONE -->
-        <div class="target-card" id="targetCard">
+        <div class="target-card" id="targetCard" onclick="openTargetModal()" title="Hedef ayrıntılarını aç">
             <div class="target-state"><span class="target-dot"></span><span class="target-name" id="targetName">STM32 HEDEFİ TARANIYOR...</span></div>
             <span class="target-detail" id="targetDetail">SWD</span>
         </div>
@@ -714,10 +723,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     <span id="lastFlashText" style="font-weight:700; text-align:right; max-width:220px;">-</span>
                 </div>
                 <p class="setting-note" id="diagnosticsText">Doğrulama: zorunlu.</p>
-                <div class="section-label" style="margin-top:12px;">Algılanan Hedefi Adlandır</div>
-                <input type="text" class="input-text" id="targetLabelInput" maxlength="32" placeholder="Örn. TELEMETRİ KARTI">
-                <button class="btn-submit" id="saveTargetLabelBtn" onclick="saveCurrentTargetLabel()" disabled>Hedef Adını Kaydet</button>
-                <p class="setting-note" id="targetUidText">Önce SWD hedefi algılanmalı.</p>
             </div>
 
             <!-- AKTİF BAĞLANTI -->
@@ -765,6 +770,40 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
             <button class="btn-submit" onclick="saveNewNetwork()">Ağı Kaydet</button>
             <p class="setting-note">Kaydettikten sonra üstteki listeden istediğin ağa <b>BAĞLAN</b> diyebilirsin.</p>
             <button class="btn-submit" id="saveSettingsBtn" onclick="saveProgrammerSettings()" style="margin-top:18px;">Ayarları Kaydet</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="targetModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="targetModalTitle">Hedef Kart</h2>
+                <button class="btn-close" onclick="closeTargetModal()">✕</button>
+            </div>
+            <div class="net-card">
+                <div class="flash-visual">
+                    <svg class="flash-ring" viewBox="0 0 104 104" aria-label="Flash doluluk grafiği">
+                        <circle class="flash-ring-bg" cx="52" cy="52" r="42"></circle>
+                        <circle class="flash-ring-value" id="flashRing" cx="52" cy="52" r="42" stroke-dasharray="263.9" stroke-dashoffset="263.9"></circle>
+                    </svg>
+                    <div class="flash-summary">
+                        <strong id="flashPercentText">—</strong>
+                        <span id="flashUsageText">Flash analizi yapılmadı.</span>
+                        <button class="btn-sm-scan" id="flashAnalyzeBtn" onclick="analyzeTargetFlash()" style="margin-top:9px;">FLASH'I ANALİZ ET</button>
+                    </div>
+                </div>
+                <p class="setting-note">Analiz, tüm flashı SWD ile salt-okunur tarar. “Programlanmış” bayt, değeri <code>FF</code> olmayan fiziksel flash baytıdır.</p>
+            </div>
+            <div class="section-label">Kart Kimliği</div>
+            <div class="net-card">
+                <div class="net-row"><span style="color:var(--text-sub);">MODEL:</span><span id="modalTargetModel" style="font-weight:700;">-</span></div>
+                <div class="net-row"><span style="color:var(--text-sub);">FLASH:</span><span id="modalTargetFlash" style="font-weight:700;">-</span></div>
+                <div class="net-row"><span style="color:var(--text-sub);">DEV / REV:</span><span id="modalTargetDev" style="font-weight:700;">-</span></div>
+                <div class="net-row"><span style="color:var(--text-sub);">ARM DPIDR:</span><span id="modalTargetDpidr" style="font-weight:700;">-</span></div>
+                <p class="setting-note" id="modalTargetUid">UID: -</p>
+            </div>
+            <div class="section-label">Kart Adı</div>
+            <input type="text" class="input-text" id="targetLabelInput" maxlength="32" placeholder="Örn. TELEMETRİ KARTI">
+            <button class="btn-submit" id="saveTargetLabelBtn" onclick="saveCurrentTargetLabel()" disabled>Hedef Adını Kaydet</button>
         </div>
     </div>
 
@@ -822,9 +861,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
         const targetCard = document.getElementById('targetCard');
         const targetName = document.getElementById('targetName');
         const targetDetail = document.getElementById('targetDetail');
+        const targetModal = document.getElementById('targetModal');
         const targetLabelInput = document.getElementById('targetLabelInput');
-        const targetUidText = document.getElementById('targetUidText');
         const saveTargetLabelBtn = document.getElementById('saveTargetLabelBtn');
+        const targetModalTitle = document.getElementById('targetModalTitle');
+        const modalTargetModel = document.getElementById('modalTargetModel');
+        const modalTargetFlash = document.getElementById('modalTargetFlash');
+        const modalTargetDev = document.getElementById('modalTargetDev');
+        const modalTargetDpidr = document.getElementById('modalTargetDpidr');
+        const modalTargetUid = document.getElementById('modalTargetUid');
+        const flashRing = document.getElementById('flashRing');
+        const flashPercentText = document.getElementById('flashPercentText');
+        const flashUsageText = document.getElementById('flashUsageText');
+        const flashAnalyzeBtn = document.getElementById('flashAnalyzeBtn');
 
         let readyBinary = null;
         let isFlashing = false;
@@ -947,7 +996,6 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                     targetCard.className = 'target-card missing';
                     targetName.innerText = 'STM32 HEDEFİ BULUNAMADI';
                     targetDetail.innerText = `ACK ${target.ack ?? '-'}`;
-                    targetUidText.innerText = 'Önce SWD hedefi algılanmalı.';
                     saveTargetLabelBtn.disabled = true;
                     return;
                 }
@@ -957,13 +1005,61 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 targetDetail.innerText = `${target.model} · ${target.flashSizeKb} KB`;
                 targetCard.title = `DPIDR ${target.dpIdcode} · Revizyon ${target.revisionId}`;
                 targetLabelInput.value = target.label || '';
-                targetUidText.innerText = `UID: ${target.uid}`;
                 saveTargetLabelBtn.disabled = false;
             } catch (e) {
                 currentTarget = null;
                 targetCard.className = 'target-card missing';
                 targetName.innerText = 'STM32 DURUMU OKUNAMADI';
                 targetDetail.innerText = 'SWD';
+            }
+        }
+
+        function openTargetModal() {
+            targetModal.style.display = 'flex';
+            if (!currentTarget) {
+                targetModalTitle.innerText = 'HEDEF KART BULUNAMADI';
+                modalTargetModel.innerText = 'SWD yanıtı yok';
+                modalTargetFlash.innerText = '-';
+                modalTargetDev.innerText = '-';
+                modalTargetDpidr.innerText = '-';
+                modalTargetUid.innerText = 'SWCLK ve SWDIO temasını kontrol et.';
+                targetLabelInput.value = '';
+                saveTargetLabelBtn.disabled = true;
+                return;
+            }
+            targetModalTitle.innerText = currentTarget.label || 'HEDEF KART';
+            modalTargetModel.innerText = currentTarget.model;
+            modalTargetFlash.innerText = `${currentTarget.flashSizeKb} KB`;
+            modalTargetDev.innerText = `${currentTarget.deviceId} / ${currentTarget.revisionId}`;
+            modalTargetDpidr.innerText = currentTarget.dpIdcode;
+            modalTargetUid.innerText = `UID: ${currentTarget.uid}`;
+            targetLabelInput.value = currentTarget.label || '';
+            saveTargetLabelBtn.disabled = false;
+        }
+
+        function closeTargetModal() { targetModal.style.display = 'none'; }
+
+        async function analyzeTargetFlash() {
+            if (!currentTarget) return;
+            flashAnalyzeBtn.disabled = true;
+            flashAnalyzeBtn.innerText = 'ANALİZ EDİLİYOR...';
+            flashUsageText.innerText = 'Flash SWD üzerinden okunuyor...';
+            try {
+                const res = await fetch('/api/target/flash-usage', { cache: 'no-store' });
+                if (!res.ok) throw new Error();
+                const usage = await res.json();
+                const percent = usage.totalBytes ? (usage.programmedBytes * 100 / usage.totalBytes) : 0;
+                const circumference = 263.9;
+                flashRing.style.strokeDashoffset = circumference * (1 - percent / 100);
+                flashPercentText.innerText = `${percent.toFixed(1)}%`;
+                const usedKb = (usage.programmedBytes / 1024).toFixed(1);
+                const freeKb = (usage.freeBytes / 1024).toFixed(1);
+                flashUsageText.innerText = `${usedKb} KB programlanmış · ${freeKb} KB boş\n${usage.durationMs} ms`;
+            } catch (e) {
+                flashUsageText.innerText = 'Flash analizi başarısız. SWD temasını kontrol et.';
+            } finally {
+                flashAnalyzeBtn.disabled = false;
+                flashAnalyzeBtn.innerText = "FLASH'I ANALİZ ET";
             }
         }
 
@@ -985,6 +1081,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
                 if (!res.ok) throw new Error();
                 currentTarget.label = label;
                 targetName.innerText = label;
+                targetModalTitle.innerText = label;
                 showNotice('Hedef adlandırıldı', `'${label}' bu STM32'nin değişmeyen UID'sine bağlandı.`, 'info');
             } catch (e) {
                 showNotice('Kart adı kaydedilemedi', 'ESP32 hedef kaydını güncelleyemedi.', 'error');

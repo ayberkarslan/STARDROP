@@ -507,7 +507,7 @@ public:
         if (flashSizeKbOut) *flashSizeKbOut = flashSizeKb;
 
         // Bu geometri yalnız bilinen STM32F4 boyutlarında güvenlidir.
-        if (flashSizeKb != 256 && flashSizeKb != 512 && flashSizeKb != 1024) {
+        if (flashSizeKb != 256 && flashSizeKb != 384 && flashSizeKb != 512 && flashSizeKb != 1024) {
             return massErase();
         }
 

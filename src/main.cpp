@@ -637,6 +637,37 @@ void handleTargetLabel() {
     server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
+void handleTargetFlashUsage() {
+    swd.setSpeedProfile(SwdSpeedProfile::FAST);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    TargetProbeInfo target;
+    if (!swd.probe(&target) || target.flashSizeKb == 0 || target.flashSizeKb > 1024) {
+        server.send(503, "application/json", "{\"status\":\"error\",\"message\":\"Hedef okunamadı\"}");
+        return;
+    }
+
+    const uint32_t totalBytes = (uint32_t)target.flashSizeKb * 1024UL;
+    uint8_t buffer[256];
+    uint32_t programmedBytes = 0;
+    uint32_t startedAt = millis();
+    for (uint32_t offset = 0; offset < totalBytes; offset += sizeof(buffer)) {
+        if (!swd.readBlock(FLASH_START_ADDR + offset, buffer, sizeof(buffer))) {
+            server.send(503, "application/json", "{\"status\":\"error\",\"message\":\"Flash okuma hatası\"}");
+            return;
+        }
+        for (uint16_t i = 0; i < sizeof(buffer); ++i) {
+            if (buffer[i] != 0xFF) programmedBytes++;
+        }
+        if ((offset & 0x1FFF) == 0) delay(0); // Wi-Fi görevine kısa nefes alanı
+    }
+
+    String json = "{\"status\":\"ok\",\"totalBytes\":" + String(totalBytes) +
+                  ",\"programmedBytes\":" + String(programmedBytes) +
+                  ",\"freeBytes\":" + String(totalBytes - programmedBytes) +
+                  ",\"durationMs\":" + String(millis() - startedAt) + "}";
+    server.send(200, "application/json", json);
+}
+
 void handleWifiScan() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     int n = WiFi.scanNetworks(false, true, false, 80); // Hızlı ve kesintisiz 80ms tarama
@@ -770,6 +801,7 @@ void setup() {
     server.on("/api/programmer/settings", HTTP_POST, handleProgrammerSettings);
     server.on("/api/target/status", HTTP_GET, handleTargetStatus);
     server.on("/api/target/label", HTTP_POST, handleTargetLabel);
+    server.on("/api/target/flash-usage", HTTP_GET, handleTargetFlashUsage);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);
