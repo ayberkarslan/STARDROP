@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-f401",
+  "name": "F401 I2C fixture",
+  "mcu": { "part": "STM32F401CCU6", "family": "STM32F401" },
+  "connections": [
+    { "componentRef": "U1", "role": "SCL", "mcuPin": "PB6", "peripheral": "I2C1", "approved": true },
+    { "componentRef": "U1", "role": "SDA", "mcuPin": "PB7", "peripheral": "I2C1", "approved": true }
+  ]
+}

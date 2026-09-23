@@ -1,0 +1,18 @@
+name: Verify diagnostics
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build report ABI host tests
+        run: cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
+      - name: Validate catalog JSON
+        run: node --input-type=module -e "JSON.parse(await (await import('node:fs/promises')).readFile('catalog/catalog.json')); console.log('catalog valid')"

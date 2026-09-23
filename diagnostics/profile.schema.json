@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "STARDROP BoardProfile v1",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "mcu", "connections"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "mcu": {
+      "type": "object",
+      "required": ["part", "family"],
+      "properties": { "part": { "type": "string" }, "family": { "enum": ["STM32F401", "STM32F446"] } }
+    },
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["componentRef", "role", "mcuPin", "peripheral", "approved"],
+        "properties": {
+          "componentRef": { "type": "string" }, "role": { "type": "string" },
+          "mcuPin": { "pattern": "^P[A-K][0-9]{1,2}$" }, "peripheral": { "type": "string" },
+          "approved": { "const": true }
+        }
+      }
+    }
+  }
+}

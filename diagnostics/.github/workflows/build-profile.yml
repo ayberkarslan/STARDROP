@@ -1,0 +1,45 @@
+name: Build custom diagnostic profile
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_id:
+        description: Catalog test identifier
+        required: true
+        type: string
+      profile_json:
+        description: Normalized, approved BoardProfile JSON only
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate selected test
+        env:
+          TEST_ID: ${{ inputs.test_id }}
+        run: node --input-type=module -e "const c=JSON.parse(await (await import('node:fs/promises')).readFile('catalog/catalog.json')); if(!c.tests.some(t=>t.id===process.env.TEST_ID)) throw Error('Unknown catalog test');"
+      - name: Validate BoardProfile
+        env:
+          PROFILE_JSON: ${{ inputs.profile_json }}
+        run: node tools/validate-profile.mjs "$PROFILE_JSON"
+      - name: Verify shared diagnostic runtime
+        run: cmake -S . -B build && cmake --build build && ctest --test-dir build --output-on-failure
+      - name: Package immutable build request
+        env:
+          TEST_ID: ${{ inputs.test_id }}
+          PROFILE_JSON: ${{ inputs.profile_json }}
+          ACTOR: ${{ github.actor }}
+          RUN_ID: ${{ github.run_id }}
+        run: node --input-type=module -e "const fs=await import('node:fs/promises'); const crypto=await import('node:crypto'); const profile=JSON.parse(process.env.PROFILE_JSON); const data=JSON.stringify({testId:process.env.TEST_ID,profile,actor:process.env.ACTOR,runId:process.env.RUN_ID},null,2); await fs.mkdir('out',{recursive:true}); await fs.writeFile('out/build-request.json',data); await fs.writeFile('out/build-request.sha256',crypto.createHash('sha256').update(data).digest('hex')+'  build-request.json\\n');"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stardrop-profile-${{ github.run_id }}
+          path: out/
+          retention-days: 14

@@ -1,0 +1,31 @@
+name: Record STARDROP audit event
+
+on:
+  workflow_dispatch:
+    inputs:
+      event_json:
+        description: Sanitized event (no source NET, PDF, credential, or firmware bytes)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate and record admin-only event
+        uses: actions/github-script@v7
+        env:
+          AUDIT_REPOSITORY: ${{ vars.AUDIT_REPOSITORY }}
+          EVENT_JSON: ${{ inputs.event_json }}
+        with:
+          github-token: ${{ secrets.AUDIT_TOKEN }}
+          script: |
+            const event = JSON.parse(process.env.EVENT_JSON);
+            if (!event.type || !event.projectId) core.setFailed('Audit event is incomplete.');
+            const [owner, repo] = (process.env.AUDIT_REPOSITORY || '').split('/');
+            if (!owner || !repo) core.setFailed('AUDIT_REPOSITORY must be owner/repo.');
+            const body = JSON.stringify({ ...event, githubActor: context.actor, workflowRun: context.runId, recordedAt: new Date().toISOString() }, null, 2);
+            await github.rest.issues.create({ owner, repo, title: `[STARDROP] ${event.type} · ${event.projectId}`, body, labels: ['stardrop-audit'] });
