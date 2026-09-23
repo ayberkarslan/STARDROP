@@ -118,8 +118,11 @@ export function validateBoardProfile(profile) {
       errors.push(`${label} için geçerli bir MCU pini girilmedi.`);
       continue;
     }
-    if (occupiedPins.has(pin)) errors.push(`${pin}, ${occupiedPins.get(pin)} ve ${label} tarafından birlikte kullanılıyor.`);
-    occupiedPins.set(pin, label);
+    const prior = occupiedPins.get(pin);
+    const sharedBus = prior && ['SCL', 'SDA', 'SCK', 'MISO', 'MOSI'].includes(connection.role)
+      && prior.role === connection.role && prior.peripheral === connection.peripheral;
+    if (prior && !sharedBus) errors.push(`${pin}, ${prior.label} ve ${label} tarafından birlikte kullanılıyor.`);
+    occupiedPins.set(pin, { label, role: connection.role, peripheral: connection.peripheral });
 
     if (!connection.approved) warnings.push(`${label} henüz onaylanmadı.`);
     const capability = supportedPeripheral(profile.mcu.part, connection.peripheral, connection.role, pin);
@@ -130,6 +133,21 @@ export function validateBoardProfile(profile) {
     }
   }
   return { valid: errors.length === 0, errors, warnings };
+}
+
+export function validateTestTarget(profile, componentRef) {
+  const base = validateBoardProfile(profile);
+  const errors = [...base.errors];
+  const component = profile?.components?.find((item) => item.ref === componentRef);
+  const connections = profile?.connections?.filter((item) => item.componentRef === componentRef) || [];
+  if (!component) errors.push('Test edilecek bileşen profilde bulunamadı.');
+  if (!connections.length) errors.push('Bu bileşen için MCU pin bağlantısı bulunamadı.');
+  for (const connection of connections) {
+    if (!connection.approved) errors.push(`${componentRef}:${connection.role} bağlantısı henüz onaylanmadı.`);
+    const capability = supportedPeripheral(profile.mcu.part, connection.peripheral, connection.role, connection.mcuPin);
+    if (capability.supported === null) errors.push(`${componentRef}:${connection.role} için pin yeteneği doğrulanamadı.`);
+  }
+  return { valid: errors.length === 0, errors, warnings: base.warnings };
 }
 
 export function addAuditEvent(profile, type, details = {}, actor = 'local') {

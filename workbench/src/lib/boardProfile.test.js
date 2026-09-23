@@ -4,6 +4,7 @@ import {
   newBoardProfile,
   overallConfidence,
   supportedPeripheral,
+  validateTestTarget,
   validateBoardProfile,
 } from './boardProfile.js';
 
@@ -15,6 +16,18 @@ test('F401 I2C1 PB6/PB7 profile is valid', () => {
   ];
   assert.equal(validateBoardProfile(profile).valid, true);
   assert.equal(overallConfidence(profile), 80);
+});
+
+test('shared I2C pins are valid, but an unapproved sensor cannot be tested', () => {
+  const profile = newBoardProfile({ name: 'Two sensors', mcuPart: 'STM32F401CCU6' });
+  profile.components = [{ ref: 'U1' }, { ref: 'U2' }];
+  profile.connections = ['U1', 'U2'].flatMap((ref) => [
+    { componentRef: ref, role: 'SCL', mcuPin: 'PB6', peripheral: 'I2C1', approved: ref === 'U1' },
+    { componentRef: ref, role: 'SDA', mcuPin: 'PB7', peripheral: 'I2C1', approved: ref === 'U1' },
+  ]);
+  assert.equal(validateBoardProfile(profile).valid, true);
+  assert.equal(validateTestTarget(profile, 'U1').valid, true);
+  assert.equal(validateTestTarget(profile, 'U2').valid, false);
 });
 
 test('invalid alternate function and pin collision are rejected', () => {
