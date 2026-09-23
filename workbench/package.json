@@ -4,9 +4,21 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "jszip": "^3.10.1"
+    "@tauri-apps/api": "^2.8.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.0.5"
   },
   "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420",
+    "build": "vite build",
+    "tauri": "tauri",
     "test:core": "node src/lib/boardProfile.test.js && node src/lib/projectArchive.test.js"
   }
 }
