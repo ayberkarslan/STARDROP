@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.21)
+project(stardrop_diagnostics C)
+
+add_library(stardrop_diagnostic_runtime runtime/stardrop_diagnostic_report.c)
+target_include_directories(stardrop_diagnostic_runtime PUBLIC runtime)
+target_compile_features(stardrop_diagnostic_runtime PUBLIC c_std_11)
+target_compile_options(stardrop_diagnostic_runtime PRIVATE -Wall -Wextra -Werror)
+
+option(STARDROP_BUILD_HOST_TESTS "Build ABI tests on the host" ON)
+if(STARDROP_BUILD_HOST_TESTS)
+  enable_testing()
+  add_executable(stardrop_report_test tests/report_test.c)
+  target_link_libraries(stardrop_report_test PRIVATE stardrop_diagnostic_runtime)
+  add_test(NAME stardrop_report_test COMMAND stardrop_report_test)
+endif()
