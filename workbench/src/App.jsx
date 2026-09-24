@@ -5,7 +5,7 @@ import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { loadSecret, saveSecret } from './lib/secretStore.js';
-import { saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
+import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, saveCatalogDocument, waitForProfileArtifact } from './lib/githubClient.js';
 import { downloadDiagnosticArtifact, hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import BoardMap from './BoardMap.jsx';
@@ -67,6 +67,7 @@ export default function App() {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [adminTestId, setAdminTestId] = useState(DEFAULT_TEST_CATALOG.tests[0]?.id || '');
   const [githubLoginBusy, setGithubLoginBusy] = useState(false);
+  const [githubLogoutBusy, setGithubLogoutBusy] = useState(false);
   const [profile, setProfile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null, boardImage: null });
@@ -329,6 +330,21 @@ export default function App() {
     finally { setGithubLoginBusy(false); }
   };
 
+  const logoutGithub = async () => {
+    if (githubLogoutBusy) return;
+    setGithubLogoutBusy(true);
+    try {
+      await clearGitHubSession();
+      setGithubUser(null);
+      setCatalog(DEFAULT_TEST_CATALOG);
+      setCatalogSha(null);
+      setCatalogAdmin(false);
+      setSession('welcome');
+      setNotice('GitHub oturumu kapatıldı. Yeniden giriş yapabilirsin.');
+    } catch (error) { setNotice(`Çıkış başarısız: ${error.message}`); }
+    finally { setGithubLogoutBusy(false); }
+  };
+
   const updateAdminTest = (field, value) => setCatalog((current) => ({ ...current, tests: current.tests.map((item) => item.id === adminTestId ? { ...item, [field]: value } : item) }));
 
   const saveAdminCatalog = async () => {
@@ -426,7 +442,7 @@ export default function App() {
         {session === 'github' && githubUser && <button className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}><Settings />Entegrasyonlar</button>}
         {session === 'github' && githubUser && catalogAdmin && <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}><ShieldCheck />Test Yönetimi</button>}
       </nav>
-      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}<div><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><button onClick={() => setSession('welcome')}>Girişe dön</button></div></div></div><div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
+      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}<div><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions"><button onClick={() => setSession('welcome')}>Girişe dön</button><button onClick={logoutGithub} disabled={githubLogoutBusy}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button></div></div></div></div><div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
     </aside>
     <main>
       <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>

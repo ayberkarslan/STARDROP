@@ -1,4 +1,4 @@
-import { loadSecret, saveSecret } from './secretStore.js';
+import { deleteSecret, loadSecret, saveSecret } from './secretStore.js';
 
 let refreshInFlight = null;
 
@@ -8,6 +8,15 @@ export async function saveGitHubSession(result) {
   if (result.refresh_token) await saveSecret('github_refresh_token', result.refresh_token);
   if (result.expires_in) await saveSecret('github_access_expires_at', String(Date.now() + result.expires_in * 1000));
   return result.access_token;
+}
+
+export async function clearGitHubSession() {
+  if (refreshInFlight) await refreshInFlight.catch(() => {});
+  await Promise.all([
+    deleteSecret('github_access_token'),
+    deleteSecret('github_refresh_token'),
+    deleteSecret('github_access_expires_at'),
+  ]);
 }
 
 export async function validGitHubToken() {
