@@ -10,11 +10,8 @@ export function normalizeEspAddress(value) {
 
 export async function probeEsp(address, timeoutMs = 3500) {
   const base = normalizeEspAddress(address);
-  const response = await fetch(`${base}/ping`, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
-  if (!response.ok || (await response.json()).status !== 'ok') throw new Error('Bu adreste STARDROP ESP32 yanıtı yok.');
-  const wifiResponse = await fetch(`${base}/api/wifi/status`, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
-  if (!wifiResponse.ok) throw new Error('ESP32 Wi-Fi durumu okunamadı.');
-  return { base, wifi: await wifiResponse.json() };
+  if ((await espJson(base, '/ping', { timeoutMs })).status !== 'ok') throw new Error('Bu adreste STARDROP ESP32 yanıtı yok.');
+  return { base, wifi: await espJson(base, '/api/wifi/status', { timeoutMs }) };
 }
 
 export async function discoverEspDevices() {
@@ -33,3 +30,4 @@ export function discoveryCandidates(devices, savedAddress, savedMac) {
   }
   return [...unique];
 }
+import { espJson } from './espTransport.js';

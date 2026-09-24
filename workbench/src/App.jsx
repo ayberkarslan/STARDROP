@@ -11,6 +11,7 @@ import BoardMap from './BoardMap.jsx';
 import EspConsole from './EspConsole.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
+import { espJson, espStream, espUpload } from './lib/espTransport.js';
 import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
@@ -89,9 +90,7 @@ export default function App() {
   const refreshTargetAt = async (base) => {
     setNotice('SWD hedefi sorgulanıyor…');
     try {
-      const result = await fetch(`${base}/api/target/status`, { signal: AbortSignal.timeout(6000), cache: 'no-store' });
-      if (!result.ok) throw new Error(`HTTP ${result.status}`);
-      const nextTarget = await result.json();
+      const nextTarget = await espJson(base, '/api/target/status', { timeoutMs: 6000 });
       setTarget(nextTarget);
       setNotice(nextTarget.connected ? `${nextTarget.label || nextTarget.model} hazır.` : `Hedef bulunamadı (ACK ${nextTarget.ack ?? '-'})`);
     } catch (error) {
@@ -200,9 +199,7 @@ export default function App() {
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(`${normalizedBridge}/api/diagnostic/report`, { signal: AbortSignal.timeout(2500) });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const report = await response.json();
+        const report = await espJson(normalizedBridge, '/api/diagnostic/report', { timeoutMs: 2500 });
         const matches = report.valid && (parseInt(report.testIdHash, 16) >>> 0) === expectedHashes.test
           && (parseInt(report.profileHash, 16) >>> 0) === expectedHashes.profile
           && (parseInt(report.runHash, 16) >>> 0) === expectedHashes.run;
@@ -226,23 +223,11 @@ export default function App() {
     setFlashLog([]); setFlashProgress(0);
     try {
       const image = await prepareFirmware(selected, target?.flashSizeKb);
-      const form = new FormData(); form.append('firmware', image, image.name);
-      const upload = await fetch(`${normalizedBridge}/upload`, { method: 'POST', body: form });
-      if (!upload.ok) throw new Error('Firmware ESP32 belleğine alınamadı.');
+      await espUpload(normalizedBridge, image);
       setFlashLog((logs) => [...logs, `[YÜKLENDİ] ${selected.name} → ${image.size} bayt flash imajı`]);
-      await new Promise((resolve, reject) => {
-        const stream = new EventSource(`${normalizedBridge}/stream-flash`);
-        const timer = window.setTimeout(() => { stream.close(); reject(new Error('Flash süresi aşıldı.')); }, 180000);
-        const finish = (error) => { window.clearTimeout(timer); stream.close(); error ? reject(error) : resolve(); };
-        stream.onmessage = ({ data }) => {
-          let event;
-          try { event = JSON.parse(data); } catch (_) { return; }
-          if (event.msg) setFlashLog((logs) => [...logs.slice(-80), event.msg]);
-          if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
-          if (event.error) finish(new Error(event.msg || 'ESP32 flash doğrulaması başarısız.'));
-          else if (event.done) finish();
-        };
-        stream.onerror = () => finish(new Error('ESP32 flash akışı kesildi.'));
+      await espStream(normalizedBridge, '/stream-flash', (event) => {
+        if (event.msg) setFlashLog((logs) => [...logs.slice(-80), event.msg]);
+        if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
       });
       await refreshTargetAt(activeBridge);
       return true;
@@ -379,9 +364,7 @@ export default function App() {
         testId: sensorTest.id, componentRef: activeSensor.ref, requestId, profileId: profile.id, targetUid: target.uid, mcuPart: profile.mcu.part.toUpperCase(),
         scl: scl.mcuPin, sda: sda.mcuPin, sourcePath: sensorTest.sourcePath, flashSizeKb: target.flashSizeKb,
       } });
-      const liveResponse = await fetch(`${normalizedBridge}/api/target/status`, { signal: AbortSignal.timeout(6000) });
-      if (!liveResponse.ok) throw new Error('Flash öncesi STM32 tekrar sorgulanamadı.');
-      const liveTarget = await liveResponse.json();
+      const liveTarget = await espJson(normalizedBridge, '/api/target/status', { timeoutMs: 6000 });
       if (!liveTarget.connected || liveTarget.uid !== target.uid || !liveTarget.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı kart değişti; yanlış STM32’ye kod yüklememek için durduruldu.');
       setTestStage('ESP32 üzerinden STM32 flashlanıyor…');
       if (!await flashFirmware(builtFirmware)) throw new Error('ESP32 flash işlemi başarısız.');

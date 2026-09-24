@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cpu, FileUp, RefreshCw, Settings, X } from 'lucide-react';
 import { normalizeEspAddress } from './lib/espConnection.js';
-
-async function requestJson(base, path, options) {
-  const response = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(10000), ...options });
-  const data = await response.json();
-  if (!response.ok || data.status === 'error') throw new Error(data.message || data.msg || `HTTP ${response.status}`);
-  return data;
-}
+import { espJson, espStream } from './lib/espTransport.js';
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 
@@ -30,7 +24,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
     if (!base) return;
     try { if (normalizeEspAddress(bridge) !== base) return; } catch (_) { return; }
     try {
-      const [p, w] = await Promise.all([requestJson(base, '/api/programmer/status'), requestJson(base, '/api/wifi/status')]);
+      const [p, w] = await Promise.all([espJson(base, '/api/programmer/status'), espJson(base, '/api/wifi/status')]);
       setProgrammer(p);
       setWifi(w);
     } catch (error) { setNotice(`ESP ayarları okunamadı: ${error.message}`); }
@@ -46,7 +40,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
           (path === '/api/wifi/add' && /["\\]/.test(payload.ssid))) {
         throw new Error('Ad tırnak veya ters eğik çizgi içeremez.');
       }
-      await requestJson(base, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      await espJson(base, path, { method: 'POST', body: payload });
       setNotice(success);
       if (path !== '/api/wifi/switch') await loadSettings();
       if (path === '/api/target/label') await refreshTarget();
@@ -57,25 +51,17 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
 
   const scanWifi = async () => {
     setBusy(true);
-    try { setNetworks((await requestJson(base, '/api/wifi/scan')).filter((item) => item.ssid)); }
+    try { setNetworks((await espJson(base, '/api/wifi/scan')).filter((item) => item.ssid)); }
     catch (error) { setNotice(`Ağ taraması başarısız: ${error.message}`); }
     finally { setBusy(false); }
   };
 
   const readUsage = () => {
     setUsage(null); setUsageProgress(0);
-    const stream = new EventSource(`${base}/stream-target-flash-usage`);
-    const timeout = window.setTimeout(() => { stream.close(); setUsageProgress(null); setNotice('Flash analizi zaman aşımına uğradı.'); }, 120000);
-    const finish = () => { window.clearTimeout(timeout); stream.close(); setUsageProgress(null); };
-    stream.onmessage = ({ data }) => {
-      try {
-        const event = JSON.parse(data);
-        if (Number.isFinite(event.pct)) setUsageProgress(event.pct);
-        if (event.done) { setUsage(event); finish(); }
-        if (event.error) { setNotice('Flash okunamadı; SWD hattını kontrol et.'); finish(); }
-      } catch (_) { /* Bozuk SSE mesajını atla. */ }
-    };
-    stream.onerror = () => { setNotice('Flash okuma akışı kesildi.'); finish(); };
+    espStream(base, '/stream-target-flash-usage', (event) => {
+      if (Number.isFinite(event.pct)) setUsageProgress(event.pct);
+    }, 120000).then(setUsage).catch((error) => setNotice(`Flash okunamadı: ${error.message}`))
+      .finally(() => setUsageProgress(null));
   };
 
   const chooseFile = (file) => {
