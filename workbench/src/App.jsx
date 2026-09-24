@@ -44,6 +44,9 @@ export default function App() {
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
+  const appendFlashLog = (msg, type = 'info') => setFlashLog((logs) => [...logs.slice(-299), {
+    msg, type, time: new Date().toLocaleTimeString('tr-TR'),
+  }]);
   const [flashProgress, setFlashProgress] = useState(0);
   const [flashBusy, setFlashBusy] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
@@ -222,18 +225,20 @@ export default function App() {
     if (esp.status !== 'online' || !activeBridge || !target?.connected) return setNotice('Önce ESP32 ve STM32 hedef bağlantısını doğrula.');
     if (flashBusy) return false;
     setFlashBusy(true);
-    setFlashLog([]); setFlashProgress(0);
+    setFlashLog([{ msg: 'Yazılım ESP32 belleğine aktarılıyor...', type: 'info', time: new Date().toLocaleTimeString('tr-TR') }]);
+    setFlashProgress(0);
     try {
       const image = await prepareFirmware(selected, target?.flashSizeKb);
       await espUpload(normalizedBridge, image);
-      setFlashLog((logs) => [...logs, `[YÜKLENDİ] ${selected.name} → ${image.size} bayt flash imajı`]);
+      appendFlashLog(`Yazılım belleğe alındı. SWD Flash akışı başlıyor... (${selected.name}, ${image.size} bayt)`, 'success');
       await espStream(normalizedBridge, '/stream-flash', (event) => {
-        if (event.msg) setFlashLog((logs) => [...logs.slice(-80), event.msg]);
+        if (event.msg) appendFlashLog(event.msg, event.type || 'info');
         if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
       });
+      appendFlashLog('🎉 STM32 başarıyla programlandı ve çalıştırıldı!', 'success');
       await refreshTargetAt(activeBridge);
       return true;
-    } catch (error) { setNotice(`Flash başarısız: ${error.message}`); return false; }
+    } catch (error) { appendFlashLog(`Hata: ${error.message}`, 'error'); setNotice(`Flash başarısız: ${error.message}`); return false; }
     finally { setFlashBusy(false); }
   };
 
