@@ -18,6 +18,7 @@ export default {
       authorize.searchParams.set('client_id', env.GITHUB_CLIENT_ID);
       authorize.searchParams.set('redirect_uri', callbackUrl);
       authorize.searchParams.set('state', state);
+      authorize.searchParams.set('prompt', 'select_account');
       return Response.redirect(authorize, 302);
     }
     if (url.pathname === CALLBACK_PATH && request.method === 'GET') {

@@ -13,6 +13,7 @@ test('start redirects to GitHub with the registered callback and state', async (
   assert.equal(url.searchParams.get('client_id'), env.GITHUB_CLIENT_ID);
   assert.equal(url.searchParams.get('redirect_uri'), `${origin}/callback`);
   assert.equal(url.searchParams.get('state'), state);
+  assert.equal(url.searchParams.get('prompt'), 'select_account');
 });
 
 test('callback can redirect only to the requested localhost port', async () => {
