@@ -215,9 +215,21 @@ private:
         return ack;
     }
 
+    uint8_t sendPacketWaitRetry(uint8_t ap, uint8_t read, uint8_t addr, uint32_t* data) {
+        uint8_t ack = SWD_ACK_WAIT;
+        for (uint8_t attempt = 0; attempt < 8; ++attempt) {
+            ack = sendPacket(ap, read, addr, data);
+            if (ack != SWD_ACK_WAIT) return ack;
+            delayMicroseconds(25);
+        }
+        return ack;
+    }
+
 public:
     uint8_t lastAck = 0;
     uint32_t lastIdcode = 0;
+    uint32_t lastProbeDpIdcode = 0;
+    const char* lastProbeStage = "DAP";
     uint32_t ackWaitCount = 0;
     uint32_t ackFaultCount = 0;
     uint32_t parityErrorCount = 0;
@@ -312,26 +324,42 @@ public:
             if (ack == SWD_ACK_OK && confirmAck == SWD_ACK_OK &&
                 idcode == confirmIdcode && isArmSwDpId(idcode)) {
                 if (idcode_out) *idcode_out = idcode;
-                Serial.printf("[SWD] ARM Cortex-M DAP Bağlandı! (Deneme %d, IDCODE: 0x%08X)\n", attempt, idcode);
+                lastProbeDpIdcode = idcode;
+                Serial.printf("[SWD] ARM Cortex-M DAP IDCODE doğrulandı (Deneme %d, 0x%08X)\n", attempt, idcode);
 
                 // 6. DAP Hata Temizleme (DP ABORT = 0x1E)
                 uint32_t abortCmd = 0x0000001E;
-                sendPacket(0, 0, 0x00, &abortCmd);
+                sendPacketWaitRetry(0, 0, 0x00, &abortCmd);
 
                 // 7. Debug ve Sistem Güçlerini Aç (CTRL/STAT = 0x50000000)
                 uint32_t ctrl = 0x50000000;
-                sendPacket(0, 0, 0x04, &ctrl);
-                delay(5);
+                lastProbeStage = "POWER_REQUEST";
+                lastAck = sendPacketWaitRetry(0, 0, 0x04, &ctrl);
+                bool powerReady = false;
+                for (uint8_t poll = 0; lastAck == SWD_ACK_OK && poll < 20; ++poll) {
+                    lastProbeStage = "POWER_ACK";
+                    uint32_t status = 0;
+                    lastAck = sendPacketWaitRetry(0, 1, 0x04, &status);
+                    if (lastAck == SWD_ACK_OK && (status & 0xA0000000UL) == 0xA0000000UL) {
+                        powerReady = true;
+                        break;
+                    }
+                    delay(1);
+                }
+                if (powerReady) {
+                    // 8. MEM-AP Seç (APSEL = 0, APBANKSEL = 0)
+                    uint32_t select = 0x00000000;
+                    lastProbeStage = "MEM_AP_SELECT";
+                    lastAck = sendPacketWaitRetry(0, 0, 0x08, &select);
+                    if (lastAck == SWD_ACK_OK) {
+                        // 9. MEM-AP CSW Yapılandır (32-bit, Auto-increment = 0x23000052)
+                        uint32_t csw = 0x23000052;
+                        lastProbeStage = "MEM_AP_CSW";
+                        lastAck = sendPacketWaitRetry(1, 0, 0x00, &csw);
+                    }
+                }
 
-                // 8. MEM-AP Seç (APSEL = 0, APBANKSEL = 0)
-                uint32_t select = 0x00000000;
-                sendPacket(0, 0, 0x08, &select);
-
-                // 9. MEM-AP CSW Yapılandır (32-bit, Auto-increment = 0x23000052)
-                uint32_t csw = 0x23000052;
-                writeAP(0x00, csw);
-
-                if (resetHeld) {
+                if (powerReady && lastAck == SWD_ACK_OK && resetHeld) {
                     // Catch reset before user firmware can enter WFI and gate
                     // the AHB clock needed by MEM-AP. This is only used when
                     // the optional bench NRST wire is physically connected.
@@ -341,7 +369,7 @@ public:
                     delay(5);
                 }
 
-                return true;
+                if (powerReady && lastAck == SWD_ACK_OK) return true;
             }
 
             if (resetHeld) {
@@ -361,17 +389,24 @@ public:
     bool probe(TargetProbeInfo* info) {
         if (!info) return false;
         memset(info, 0, sizeof(*info));
+        lastProbeDpIdcode = 0;
+        lastProbeStage = "DAP";
         uint32_t idcode = 0;
         if (!connect(&idcode)) return false;
+        lastProbeDpIdcode = idcode;
 
         uint32_t dbgId = 0;
         uint32_t flashSizeWord = 0;
-        if (!readMem32Checked(DBGMCU_IDCODE_ADDR, &dbgId) ||
-            !readMem32Checked(STM32F4_FLASH_SIZE_REG & ~0x3UL, &flashSizeWord)) return false;
+        lastProbeStage = "DBGMCU_IDCODE";
+        if (!readMem32Checked(DBGMCU_IDCODE_ADDR, &dbgId)) return false;
+        lastProbeStage = "FLASH_SIZE";
+        if (!readMem32Checked(STM32F4_FLASH_SIZE_REG & ~0x3UL, &flashSizeWord)) return false;
         const uint16_t deviceId = dbgId & 0x0FFF;
         const uint16_t flashSizeKb = (flashSizeWord >> 16) & 0xFFFF;
+        lastProbeStage = "IDENTITY_CHECK";
         if (deviceId == 0 || deviceId == 0x0FFF || flashSizeKb == 0 || flashSizeKb > 1024) return false;
         uint32_t uid[3] = {0, 0, 0};
+        lastProbeStage = "UID";
         for (uint8_t i = 0; i < 3; ++i) {
             if (!readMem32Checked(STM32F4_UID_BASE + i * 4, &uid[i])) return false;
         }
@@ -383,6 +418,7 @@ public:
         info->revisionId = (dbgId >> 16) & 0xFFFF;
         info->flashSizeKb = flashSizeKb;
         memcpy(info->uid, uid, sizeof(uid));
+        lastProbeStage = "READY";
         return true;
     }
 
@@ -406,12 +442,12 @@ public:
 
     bool readMem32Checked(uint32_t addr, uint32_t* value) {
         if (!value) return false;
-        uint8_t ack = writeAP(0x04, addr);
+        uint8_t ack = sendPacketWaitRetry(1, 0, 0x04, &addr);
         if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
         uint32_t dummy = 0;
-        ack = sendPacket(1, 1, 0x0C, &dummy);
+        ack = sendPacketWaitRetry(1, 1, 0x0C, &dummy);
         if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
-        ack = sendPacket(0, 1, 0x0C, value);
+        ack = sendPacketWaitRetry(0, 1, 0x0C, value);
         if (ack != SWD_ACK_OK) { lastAck = ack; return false; }
         return true;
     }

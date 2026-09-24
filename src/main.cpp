@@ -598,8 +598,23 @@ void handleTargetStatus() {
     swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
     TargetProbeInfo target;
     if (!swd.probe(&target)) {
-        server.send(200, "application/json", "{\"connected\":false,\"ack\":" + String(swd.lastAck) + "}");
-        return;
+        const uint32_t fastDpIdcode = swd.lastProbeDpIdcode;
+        const String fastStage = swd.lastProbeStage;
+        const uint8_t fastAck = swd.lastAck;
+        swd.setSpeedProfile(SwdSpeedProfile::SAFE);
+        swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+        if (!swd.probe(&target)) {
+            const bool fastGotFurther = fastDpIdcode != 0 && swd.lastProbeDpIdcode == 0;
+            const uint32_t dpIdcode = fastGotFurther ? fastDpIdcode : swd.lastProbeDpIdcode;
+            const String stage = fastGotFurther ? fastStage : String(swd.lastProbeStage);
+            const uint8_t ack = fastGotFurther ? fastAck : swd.lastAck;
+            char dpHex[11];
+            snprintf(dpHex, sizeof(dpHex), "0x%08lX", (unsigned long)dpIdcode);
+            String json = "{\"connected\":false,\"dpConnected\":" + String(dpIdcode ? "true" : "false");
+            json += ",\"dpIdcode\":\"" + String(dpHex) + "\",\"stage\":\"" + stage + "\",\"ack\":" + String(ack) + "}";
+            server.send(200, "application/json", json);
+            return;
+        }
     }
 
     String uid = formatTargetUid(target);
