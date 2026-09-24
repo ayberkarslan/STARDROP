@@ -1,7 +1,10 @@
 use keyring::Entry;
-use std::net::{Ipv4Addr, UdpSocket};
+use std::io::{Read, Write};
+use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
+
+const AUTH_WORKER: &str = "https://stardrop-auth.ayberkarslann0.workers.dev";
 
 const ESP_GET_PATHS: &[&str] = &[
     "/ping", "/api/wifi/status", "/api/wifi/scan", "/api/programmer/status",
@@ -213,10 +216,93 @@ async fn github_device_request(client_id: String, device_code: Option<String>) -
     response.text().await.map_err(|error| error.to_string())
 }
 
+fn open_auth_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("rundll32.exe");
+        command.arg("url.dll,FileProtocolHandler");
+        command
+    };
+    command.arg(url).spawn().map_err(|error| format!("Tarayıcı açılamadı: {error}"))?;
+    Ok(())
+}
+
+fn reply_to_browser(stream: &mut std::net::TcpStream, status: &str, message: &str) {
+    let body = message.as_bytes();
+    let reply = format!("HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+    let _ = stream.write_all(reply.as_bytes());
+    let _ = stream.write_all(body);
+}
+
+fn wait_for_github_callback(listener: TcpListener, state: &str) -> Result<String, String> {
+    listener.set_nonblocking(true).map_err(|error| error.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while Instant::now() < deadline {
+        let (mut stream, _) = match listener.accept() {
+            Ok(connection) => connection,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(100));
+                continue;
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        stream.set_read_timeout(Some(Duration::from_secs(2))).map_err(|error| error.to_string())?;
+        let mut bytes = [0u8; 4096];
+        let count = match stream.read(&mut bytes) { Ok(count) => count, Err(_) => continue };
+        let request = String::from_utf8_lossy(&bytes[..count]);
+        let Some(target) = request.lines().next().and_then(|line| line.strip_prefix("GET ")).and_then(|line| line.split_whitespace().next()) else { continue };
+        let Ok(url) = reqwest::Url::parse(&format!("http://127.0.0.1{target}")) else { continue };
+        if url.path() != "/callback" { continue; }
+        let valid = url.query_pairs().any(|(key, value)| key == "state" && value == state);
+        if !valid {
+            reply_to_browser(&mut stream, "400 Bad Request", "Geçersiz oturum durumu.");
+            continue;
+        }
+        if let Some(error) = url.query_pairs().find(|(key, _)| key == "error").map(|(_, value)| value.into_owned()) {
+            reply_to_browser(&mut stream, "200 OK", "GitHub girişi iptal edildi. Bu sekmeyi kapatabilirsiniz.");
+            return Err(format!("GitHub yetkilendirmesi reddedildi: {error}"));
+        }
+        let code = url.query_pairs().find(|(key, _)| key == "code").map(|(_, value)| value.into_owned())
+            .filter(|value| !value.is_empty()).ok_or("GitHub yetkilendirme kodu gelmedi")?;
+        reply_to_browser(&mut stream, "200 OK", "STARDROP girişi alındı. Bu sekmeyi kapatabilirsiniz.");
+        return Ok(code);
+    }
+    Err("GitHub girişi 3 dakika içinde tamamlanmadı".into())
+}
+
+#[tauri::command]
+async fn github_browser_login() -> Result<String, String> {
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|error| error.to_string())?;
+    let port = listener.local_addr().map_err(|error| error.to_string())?.port();
+    let state = format!("{}.{:032x}", port, uuid::Uuid::new_v4().as_u128());
+    let start = format!("{AUTH_WORKER}/start?state={state}");
+    let expected = state.clone();
+    let callback = tauri::async_runtime::spawn_blocking(move || wait_for_github_callback(listener, &expected));
+    open_auth_browser(&start)?;
+    let code = callback.await.map_err(|error| error.to_string())??;
+    let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?
+        .post(format!("{AUTH_WORKER}/exchange"))
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "stardrop-workbench")
+        .body(serde_json::json!({ "code": code }).to_string())
+        .send().await.map_err(|error| error.to_string())?;
+    if !response.status().is_success() { return Err(format!("GitHub token değişimi HTTP {}", response.status())); }
+    let body = response.text().await.map_err(|error| error.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(&body).map_err(|error| error.to_string())?;
+    if value.get("access_token").and_then(|token| token.as_str()).is_none() {
+        return Err(value.get("error_description").and_then(|error| error.as_str()).unwrap_or("GitHub erişim token'ı vermedi").into());
+    }
+    Ok(body)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, download_artifact, github_device_request, discover_esp, esp_http, esp_upload, esp_stream])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, download_artifact, github_device_request, github_browser_login, discover_esp, esp_http, esp_upload, esp_stream])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }
