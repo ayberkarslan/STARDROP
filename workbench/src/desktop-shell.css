@@ -72,3 +72,24 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .target-line{gap:0;padding:0}.target-open{display:flex;flex:1;align-items:center;gap:12px;min-height:48px;padding:10px 12px;cursor:pointer}.target-open:hover:not(:disabled){background:#191919}.target-open:disabled{cursor:default}.target-label{display:grid;gap:5px;min-width:0}.target-chevron{margin-left:auto;flex:none;color:#777}.target-line .icon-link.refresh{margin:0 7px 0 0}
 .esp-status:disabled,.icon-link:disabled,.discovered-list button:disabled{opacity:.45;cursor:default}
 .guest-header-actions>button:last-child{background:transparent;border:0;color:#888;font-size:11px}.guest-header-actions>button:last-child:hover{color:#fff}
+/* Pure-black canvas; near-black ink surfaces create separation without gray panels. */
+:root{--surface-1:#060a0b;--surface-2:#0b1214;--surface-3:#121c1f;--border-dim:#1a292d;--border-mid:#2a3d42;--border-bright:#527077;--text-sub:#8a9da1;--text-dim:#596b70}
+body,#root,.guest-layout,.app-shell,.app-shell>main{background:#000}
+.guest-header,.app-shell main>header,.rail,.detail-drawer{background:var(--surface-1);border-color:var(--border-dim)}
+.flash-workspace,.target-line,.firmware-select,.firmware-file-card,.flash-heading .icon-link{border-color:var(--border-dim)}
+.target-line,.firmware-select,.firmware-file-card,.flash-heading .icon-link{background:var(--surface-2)}
+.target-open:hover:not(:disabled),.firmware-select:hover{background:var(--surface-3)}
+.detail-drawer .drawer-title,.detail-drawer .drawer-tabs,.detail-drawer .settings-group{border-color:var(--border-dim)}
+.detail-drawer .detail-row,.detail-drawer .network-row{border-color:var(--border-dim)}
+.detail-drawer input,.detail-drawer .speed-options button,.detail-drawer .network-scan button{background:var(--surface-2);border-color:var(--border-mid)}
+.detail-drawer .speed-options button.selected{background:var(--surface-3);border-color:var(--border-bright)}
+.flash-terminal{border-color:var(--border-dim)}
+/* Exact 104px ring geometry and 263.9 circumference from the ESP page. */
+.target-flash-card{padding:12px;margin-bottom:18px;border:1px solid var(--border-dim);border-radius:8px;background:var(--surface-2)}
+.flash-visual{display:flex;align-items:center;gap:18px;padding:12px 0}
+.flash-ring{width:104px;height:104px;flex:0 0 104px;transform:rotate(-90deg)}
+.flash-ring-bg{fill:none;stroke:var(--surface-3);stroke-width:9}
+.flash-ring-value{fill:none;stroke:var(--status-green);stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .45s ease}
+.flash-summary{min-width:0;font-family:var(--font-mono)}.flash-summary strong{display:block;color:#fff;font-size:19px;letter-spacing:-.04em}.flash-summary span{display:block;margin-top:4px;color:var(--text-sub);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.flash-analyze{margin-top:9px;padding:6px 9px;border:1px solid var(--border-mid);border-radius:5px;background:var(--surface-3);color:#fff;font:700 10px var(--font-mono);letter-spacing:.04em}.flash-analyze:hover:not(:disabled){border-color:var(--border-bright)}.flash-analyze:disabled{opacity:.5;cursor:default}
+.target-analysis-progress{margin-top:10px}.target-analysis-progress .progress{margin-top:6px}.flash-analysis-note{margin:8px 0 0;color:var(--text-sub);font:10px/1.55 var(--font-mono)}

@@ -23,6 +23,8 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
   const [label, setLabel] = useState('');
   const [usage, setUsage] = useState(null);
   const [usageProgress, setUsageProgress] = useState(null);
+  const [usageRemaining, setUsageRemaining] = useState(null);
+  const [usageError, setUsageError] = useState('');
   const [busy, setBusy] = useState(false);
   const base = espBase;
 
@@ -37,7 +39,8 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
   };
 
   useEffect(() => { if (drawer === 'settings' && base) loadSettings(); }, [drawer, base]);
-  useEffect(() => { setLabel(target?.label || ''); setUsage(null); }, [target?.uid]);
+  useEffect(() => { setLabel(target?.label || ''); setUsage(null); setUsageError(''); }, [target?.uid]);
+  useEffect(() => { if (flashBusy) { setUsage(null); setUsageError(''); } }, [flashBusy]);
   useEffect(() => { if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight; }, [flashLog]);
 
   const action = async (path, payload, success) => {
@@ -64,12 +67,48 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
   };
 
   const readUsage = () => {
-    setUsage(null); setUsageProgress(0);
+    setUsage(null); setUsageError(''); setUsageProgress(0); setUsageRemaining(null);
+    const startedAt = performance.now();
     espStream(base, '/stream-target-flash-usage', (event) => {
-      if (Number.isFinite(event.pct)) setUsageProgress(event.pct);
-    }, 120000).then(setUsage).catch((error) => setNotice(`Flash okunamadı: ${error.message}`))
-      .finally(() => setUsageProgress(null));
+      if (Number.isFinite(event.pct)) {
+        setUsageProgress(event.pct);
+        if (event.pct > 2 && event.pct < 100) {
+          const elapsed = (performance.now() - startedAt) / 1000;
+          setUsageRemaining(Math.max(0, Math.round(elapsed * (100 - event.pct) / event.pct)));
+        }
+      }
+    }, 120000).then(setUsage).catch((error) => {
+      setUsageError(`Flash analizi başarısız: ${error.message}`);
+      setNotice(`Flash okunamadı: ${error.message}`);
+    }).finally(() => { setUsageProgress(null); setUsageRemaining(null); });
   };
+
+  const usagePercent = usage?.totalBytes > 0
+    ? Math.max(0, Math.min(100, usage.programmedBytes * 100 / usage.totalBytes)) : 0;
+  const renderTargetBody = () => <div className="drawer-body">
+    <div className="target-drawer-name"><Cpu size={18}/><strong>{target?.label || target?.model}</strong><small>{target?.model}</small></div>
+    <div className="target-flash-card">
+      <div className="flash-visual">
+        <svg className="flash-ring" viewBox="0 0 104 104" role="img" aria-label={`Flash doluluğu ${usage ? usagePercent.toFixed(1) + '%' : 'henüz ölçülmedi'}`}>
+          <circle className="flash-ring-bg" cx="52" cy="52" r="42"/>
+          <circle className="flash-ring-value" cx="52" cy="52" r="42" strokeDasharray="263.9" strokeDashoffset={263.9 * (1 - usagePercent / 100)}/>
+        </svg>
+        <div className="flash-summary">
+          <strong>{usage ? `${usagePercent.toFixed(1)}%` : '—'}</strong>
+          <span>{usageProgress !== null ? 'Flash SWD üzerinden okunuyor...'
+            : usageError || (usage ? `${kb(usage.programmedBytes)} programlanmış · ${kb(usage.freeBytes)} boş · ${(usage.durationMs / 1000).toFixed(1)} sn` : 'Flash analizi yapılmadı.')}</span>
+          <button className="flash-analyze" disabled={usageProgress !== null || flashBusy} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</button>
+        </div>
+      </div>
+      {usageProgress !== null && <div className="target-analysis-progress"><div className="flash-feedback-top"><span>{usageRemaining === null ? 'SWD FLASH OKUNUYOR...' : `FLASH TARANIYOR · ~${usageRemaining} SN KALDI`}</span><strong>{usageProgress}%</strong></div><div className="progress"><i style={{ width: `${usageProgress}%` }}/></div></div>}
+      <p className="flash-analysis-note">Analiz tüm flash’ı SWD üzerinden yalnızca okur. “Programlanmış” bayt, değeri FF olmayan fiziksel flash baytıdır.</p>
+    </div>
+    <div className="detail-row"><span>UID</span><code>{target?.uid || '—'}</code></div>
+    <div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div>
+    <div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div>
+    <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
+    <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>Ad, bu STM32’nin UID’siyle eşleştirilir.</small></div>
+  </div>;
 
   const chooseFile = (file) => {
     if (!file) return;
@@ -109,7 +148,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
 
     {drawer && <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside className="detail-drawer"><div className="drawer-title"><div><span className="eyebrow">{drawer === 'target' ? 'SWD HEDEFİ' : 'ESP32'}</span><h2>{drawer === 'target' ? 'Kart bilgileri' : 'Ayarlar'}</h2></div><button className="icon-link" onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>
       {drawer === 'settings' && <div className="discovered-list"><div className="discovered-list-head"><span>BULUNAN ESP32</span><button onClick={onDiscover} disabled={flashBusy}>Yeniden tara</button></div>{devices.map((device) => <button key={`${device.mac}-${device.replyAddress}`} onClick={() => onConnect(device.replyAddress)} disabled={flashBusy}>{device.name || 'STARDROP'} · {device.replyAddress}<small>{device.rssi ? `${device.rssi} dBm` : 'AP'}</small></button>)}</div>}
-      {drawer === 'target' ? <div className="drawer-body"><div className="target-drawer-name"><Cpu size={18}/><strong>{target?.label || target?.model}</strong><small>{target?.model}</small></div><div className="detail-row"><span>UID</span><code>{target?.uid || '—'}</code></div><div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div><div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div><div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div><div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>Ad, bu STM32’nin UID’siyle eşleştirilir.</small></div><div className="drawer-section"><div className="section-line"><strong>Flash kullanımı</strong><button disabled={usageProgress !== null} onClick={readUsage}>{usageProgress !== null ? `${usageProgress}%` : 'Analiz et'}</button></div>{usageProgress !== null && <div className="progress"><i style={{ width: `${usageProgress}%` }}/></div>}{usage && <><div className="usage-track"><i style={{ width: `${Math.round(usage.programmedBytes * 100 / usage.totalBytes)}%` }}/></div><div className="detail-row"><span>Programlı / boş</span><strong>{kb(usage.programmedBytes)} / {kb(usage.freeBytes)}</strong></div></>}<small>Programlı alan, 0xFF olmayan bayt sayısıdır.</small></div></div>
+      {drawer === 'target' ? renderTargetBody()
       : renderSettingsBody()}
       <div className="drawer-notice" role="status">{notice}</div>
     </aside></div>}
