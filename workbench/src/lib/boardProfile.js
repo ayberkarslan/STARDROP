@@ -79,7 +79,6 @@ export function confidenceForConnection(connection) {
   if (evidence.validAlternateFunction) score += 20;
   if (evidence.schematicConfirmed) score += 10;
   if (evidence.solderBridge) score -= 30;
-  if (connection.source === 'USER') score = Math.max(score, 100);
   return Math.max(0, Math.min(100, score));
 }
 

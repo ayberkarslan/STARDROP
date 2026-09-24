@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Cpu, Download, FileUp, FlaskConical, Github, Radio, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { addAuditEvent, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
+import { addAuditEvent, confidenceForConnection, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
@@ -166,7 +166,16 @@ export default function App() {
   };
 
   const editConnection = (index, field, value) => setProfile((current) => {
-    const connections = current.connections.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value, source: field === 'mcuPin' || field === 'peripheral' ? 'USER' : item.source } : item);
+    const connections = current.connections.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const pinChanged = field === 'mcuPin' && value !== item.mcuPin;
+      const busChanged = field === 'peripheral' && value !== item.peripheral;
+      const evidence = pinChanged ? { ...item.evidence, directTrace: false, namedNet: false, validAlternateFunction: false }
+        : busChanged ? { ...item.evidence, validAlternateFunction: false } : item.evidence;
+      const changed = { ...item, [field]: value, evidence, path: pinChanged ? [] : item.path,
+        source: pinChanged || busChanged ? 'USER' : item.source, approved: pinChanged || busChanged ? false : item.approved };
+      return { ...changed, confidence: confidenceForConnection(changed) };
+    });
     return addAuditEvent({ ...current, connections }, 'PIN_OVERRIDE', { index, field, value });
   });
 

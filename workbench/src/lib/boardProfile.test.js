@@ -59,3 +59,9 @@ test('software I2C accepts custom GPIO while excluding SWD and unavailable packa
   assert.equal(supportedPeripheral('STM32F401CCU6', 'SOFT_I2C_1', 'SCL', 'PC9').supported, false);
   assert.equal(supportedPeripheral('STM32F446RET6', 'SOFT_I2C_1', 'SDA', 'PC9').supported, true);
 });
+
+test('manual source does not turn parser confidence into 100 percent', () => {
+  const profile = newBoardProfile({ mcuPart: 'STM32F401CCU6' });
+  profile.connections = [{ componentRef: 'U2', role: 'SCL', mcuPin: 'PB0', peripheral: 'SOFT_I2C_1', source: 'USER', approved: true, evidence: {} }];
+  assert.equal(overallConfidence(profile), 0);
+});
