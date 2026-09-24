@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Cpu, FileUp, RefreshCw, Settings, X } from 'lucide-react';
+import { ChevronRight, Cpu, FileUp, RefreshCw, Settings, X } from 'lucide-react';
 import { normalizeEspAddress } from './lib/espConnection.js';
 import { espJson, espStream } from './lib/espTransport.js';
 
@@ -93,7 +93,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
   return <main className="flash-workspace">
     <div className="flash-heading"><div><h1>STARDROP</h1><p>Yıldız Roket Takımı • Aviyonik OTA</p></div><button className="icon-link" onClick={() => setDrawer('settings')} title="ESP32 ayarları"><Settings size={17} /><span>Ayarlar</span></button></div>
 
-    <div className={`target-line ${target?.connected ? 'connected' : ''}`}><span className="target-indicator"/><button className="target-open" onClick={() => setDrawer('target')} disabled={!target?.connected || flashBusy}><strong>{target?.connected ? target.label || target.model : target?.dpConnected ? 'SWD bağlı · STM32 okunamıyor' : 'STM32 hedefi bekleniyor'}</strong><small>{target?.connected ? target.model : notice}</small></button><button className="icon-link refresh" onClick={refreshTarget} disabled={flashBusy} aria-label="Hedefi yenile" title="Hedefi yenile"><RefreshCw size={15}/></button></div>
+    <div className={`target-line ${target?.connected ? 'connected' : ''}`}><button className="target-open" onClick={() => setDrawer('target')} disabled={!target?.connected || flashBusy} title={target?.connected ? 'Kart ayrıntıları ve flash analizi' : undefined}><span className="target-indicator"/><span className="target-label"><strong>{target?.connected ? target.label || target.model : target?.dpConnected ? 'SWD bağlı · STM32 okunamıyor' : 'STM32 hedefi bekleniyor'}</strong><small>{target?.connected ? target.model : notice}</small></span>{target?.connected && <ChevronRight className="target-chevron" size={15}/>}</button><button className="icon-link refresh" onClick={refreshTarget} disabled={flashBusy} aria-label="Hedefi yenile" title="Hedefi yenile"><RefreshCw size={15}/></button></div>
     {target?.connected && /başarısız|hata|erişilemedi|okunamadı|zaman aşımı|geçersiz/i.test(notice) && <p className="flash-error" role="alert">{notice}</p>}
 
     <label className="firmware-select" onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }} onDragOver={(event) => event.preventDefault()}><FileUp size={23}/><strong>Firmware dosyası seç</strong><small>.ELF VEYA .BIN SÜRÜKLE</small><input type="file" accept=".bin,.elf" onChange={(event) => chooseFile(event.target.files?.[0])}/></label>
