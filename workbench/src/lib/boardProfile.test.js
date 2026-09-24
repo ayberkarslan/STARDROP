@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   newBoardProfile,
+  createManualI2cProfile,
   overallConfidence,
   supportedPeripheral,
   validateTestTarget,
@@ -64,4 +65,12 @@ test('manual source does not turn parser confidence into 100 percent', () => {
   const profile = newBoardProfile({ mcuPart: 'STM32F401CCU6' });
   profile.connections = [{ componentRef: 'U2', role: 'SCL', mcuPin: 'PB0', peripheral: 'SOFT_I2C_1', source: 'USER', approved: true, evidence: {} }];
   assert.equal(overallConfidence(profile), 0);
+});
+
+test('breadboard profile starts unapproved and uses chosen software I2C pins', () => {
+  const profile = createManualI2cProfile({ name: 'Bench', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'BMP180', scl: 'pb0', sda: 'pb1' });
+  assert.deepEqual(profile.connections.map((item) => item.mcuPin), ['PB0', 'PB1']);
+  assert.equal(profile.connections.every((item) => !item.approved), true);
+  assert.equal(overallConfidence(profile), 0);
+  assert.throws(() => createManualI2cProfile({ name: 'Bad', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'BMP180', scl: 'PA13', sda: 'PB1' }), /yazılımsal I²C/);
 });

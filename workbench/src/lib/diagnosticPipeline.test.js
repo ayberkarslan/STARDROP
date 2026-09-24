@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import JSZip from 'jszip';
 import { profileFromNetlist } from './netlistProfile.js';
-import { validateTestTarget } from './boardProfile.js';
+import { createManualI2cProfile, validateTestTarget } from './boardProfile.js';
 import { readDiagnosticArtifact } from './diagnosticArtifact.js';
 import { DEFAULT_TEST_CATALOG, testForComponent } from './testCatalog.js';
 
@@ -33,11 +33,14 @@ BMP180 U2 Pressure sensor
 for (const fixture of [
   { part: 'STM32F401CCU6', scl: 'PB6', sda: 'PB7', target: 'stm32f401cc', bus: 'I2C1' },
   { part: 'STM32F446RET6', scl: 'PA0', sda: 'PA1', target: 'stm32f446re', bus: 'SOFT_I2C_1' },
+  { part: 'STM32F401CDU6', scl: 'PB0', sda: 'PB1', target: 'stm32f401cc', bus: 'SOFT_I2C_1', manual: true },
 ]) {
-  test(`${fixture.part} NET-to-BIN pipeline validates selected BMP180 pins`, async () => {
+  test(`${fixture.part} ${fixture.manual ? 'manual profile' : 'NET'}-to-BIN pipeline validates selected BMP180 pins`, async () => {
     const output = await mkdtemp(join(tmpdir(), 'stardrop-pipeline-'));
     try {
-      const { profile } = profileFromNetlist(netlist(fixture.part, fixture.scl, fixture.sda));
+      const profile = fixture.manual
+        ? createManualI2cProfile({ name: 'Breadboard', mcuPart: fixture.part, componentRef: 'U2', componentPart: 'BMP180', scl: fixture.scl, sda: fixture.sda })
+        : profileFromNetlist(netlist(fixture.part, fixture.scl, fixture.sda)).profile;
       const component = profile.components.find((item) => item.ref === 'U2');
       assert.equal(testForComponent(DEFAULT_TEST_CATALOG, component, profile.mcu.part)?.id, 'bmp180');
       assert.deepEqual(profile.connections.map((item) => item.peripheral), [fixture.bus, fixture.bus]);

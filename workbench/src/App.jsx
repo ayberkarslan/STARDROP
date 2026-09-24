@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Cpu, Download, FileUp, FlaskConical, Github, Radio, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { addAuditEvent, confidenceForConnection, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
+import { addAuditEvent, confidenceForConnection, createManualI2cProfile, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
@@ -47,6 +47,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null, boardImage: null });
   const [activeComponent, setActiveComponent] = useState(null);
+  const [manualBoard, setManualBoard] = useState({ name: 'Breadboard', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'BMP180', scl: 'PB6', sda: 'PB7' });
   const fileRef = useRef(null);
   const projectRef = useRef(null);
   const diagnosticTimer = useRef(null);
@@ -164,6 +165,17 @@ export default function App() {
       setMode('workbench'); setNotice(`${result.profile.components.length} cihaz adayı bulundu; pinleri onayla.`);
     } catch (error) { setNotice(`NET okunamadı: ${error.message}`); }
   };
+
+  const createManualBoard = (event) => {
+    event.preventDefault();
+    try {
+      const created = createManualI2cProfile(manualBoard);
+      setProfile(created); setAnalysis(null); setSources({ netlist: null, schematic: null, bom: null, boardImage: null });
+      setActiveComponent(created.components[0].ref);
+      setNotice('Manuel kart profili açıldı. Testten önce SCL/SDA pinlerini kontrol edip onayla.');
+    } catch (error) { setNotice(`Manuel profil oluşturulamadı: ${error.message}`); }
+  };
+  const updateManualBoard = (field, value) => setManualBoard((current) => ({ ...current, [field]: value }));
 
   const editConnection = (index, field, value) => setProfile((current) => {
     const connections = current.connections.map((item, itemIndex) => {
@@ -340,7 +352,20 @@ export default function App() {
           <div className="progress"><i style={{ width: `${flashProgress}%` }} /></div><pre className="log">{flashLog.length ? flashLog.join('\n') : 'İşlem günlüğü burada görünecek.'}</pre>
         </Section>
       </div> : <div className="workspace workbench">
-        {!profile ? <Section title="KART DOSYASI"><div className="import-grid"><label className="dropzone"><FileUp /><strong>ALTIUM .NET İÇE AKTAR</strong><small>Elektriksel bağlantı analizi yerelde yapılır.</small><input ref={fileRef} type="file" accept=".net,.NET,.txt" onChange={(event) => loadNetlist(event.target.files?.[0])} /></label><label className="dropzone"><Download /><strong>.STARDROP AÇ</strong><small>Kaynaklar, profil ve test geçmişi tek dosyada.</small><input ref={projectRef} type="file" accept=".stardrop" onChange={(event) => importProject(event.target.files?.[0])} /></label></div></Section> : <>
+        {!profile ? <>
+          <Section title="KART DOSYASI"><div className="import-grid"><label className="dropzone"><FileUp /><strong>ALTIUM .NET İÇE AKTAR</strong><small>Elektriksel bağlantı analizi yerelde yapılır.</small><input ref={fileRef} type="file" accept=".net,.NET,.txt" onChange={(event) => loadNetlist(event.target.files?.[0])} /></label><label className="dropzone"><Download /><strong>.STARDROP AÇ</strong><small>Kaynaklar, profil ve test geçmişi tek dosyada.</small><input ref={projectRef} type="file" accept=".stardrop" onChange={(event) => importProject(event.target.files?.[0])} /></label></div></Section>
+          <Section title="MANUEL KART / BREADBOARD"><p>.NET dosyan yoksa MCU ve sensör bağlantılarını elle gir. Pinler testten önce ayrıca onaylanır.</p>
+            <form className="manual-grid" onSubmit={createManualBoard}>
+              <label>Kart adı<input value={manualBoard.name} onChange={(event) => updateManualBoard('name', event.target.value)} /></label>
+              <label>STM32 modeli<select value={manualBoard.mcuPart} onChange={(event) => updateManualBoard('mcuPart', event.target.value)}><option>STM32F401CCU6</option><option>STM32F401CDU6</option><option>STM32F401CEU6</option><option>STM32F446RET6</option></select></label>
+              <label>Sensör parçası<input value={manualBoard.componentPart} onChange={(event) => updateManualBoard('componentPart', event.target.value)} /></label>
+              <label>Referans<input value={manualBoard.componentRef} onChange={(event) => updateManualBoard('componentRef', event.target.value)} /></label>
+              <label>SCL GPIO<input value={manualBoard.scl} onChange={(event) => updateManualBoard('scl', event.target.value)} /></label>
+              <label>SDA GPIO<input value={manualBoard.sda} onChange={(event) => updateManualBoard('sda', event.target.value)} /></label>
+              <button className="primary" type="submit">MANUEL PROFİL OLUŞTUR</button>
+            </form>
+          </Section>
+        </> : <>
           <div className="summary-row"><Section title="KART PROFİLİ"><strong className="profile-name">{profile.name}</strong><p>{profile.mcu.part} · {components.length} cihaz adayı</p></Section><Section title="DETERMİNİSTİK GÜVEN"><div className="confidence"><strong>{overallConfidence(profile)}%</strong><span>{profileValidation.valid ? 'DERLEMEYE UYGUN' : 'DÜZELTME GEREKİYOR'}</span></div></Section><Section title="PROJE"><div className="summary-actions"><button className="secondary" onClick={exportProject}><Save />.STARDROP EXPORT</button><label className="secondary"><FileUp />{sources.schematic ? 'PDF EKLİ' : 'ŞEMA PDF EKLE'}<input type="file" accept="application/pdf,.pdf" onChange={(event) => setSources((current) => ({ ...current, schematic: event.target.files?.[0] || null }))} /></label></div></Section></div>
           <Section title="KART GÖRÜNÜMÜ" action={<div className="board-map-actions"><Badge tone={target?.connected ? 'good' : 'warn'}>{target?.connected ? 'SWD BAĞLI' : 'HEDEF BEKLENİYOR'}</Badge>{target?.connected && <button className="secondary" onClick={() => setProfile((current) => addAuditEvent({ ...current, targetUid: target.uid }, 'TARGET_UID_BOUND', { uid: target.uid }))}>{profile.targetUid === target.uid ? 'UID EŞLEŞTİ' : 'BU STM32’YE EŞLEŞTİR'}</button>}</div>}><BoardMap profile={profile} components={components} target={target} image={sources.boardImage} selectedRef={activeComponent} onSelect={setActiveComponent} onImageChange={(file) => { if (file && (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024)) { setNotice('Kart fotoğrafı PNG, JPEG veya WebP ve en fazla 8 MB olmalı.'); return; } setSources((current) => ({ ...current, boardImage: file })); }} /><p className="map-disclaimer">Düğümler okunabilirlik için yerleştirilir; fiziksel PCB koordinatı veya bağlantı doğrulaması anlamına gelmez. Bağlı hedef UID: {target?.uid || '—'} · Profil UID: {profile.targetUid || 'atanmadı'}</p></Section>
           <div className="work-grid"><Section title="BİLEŞENLER" action={<Badge>{components.length}</Badge>}><div className="component-list">{components.map((component) => <button key={component.ref} onClick={() => setActiveComponent(component.ref)} className={activeComponent === component.ref ? 'selected' : ''}><span><strong>{component.ref}</strong><small>{component.part}</small></span><Badge tone={profile.connections.filter((entry) => entry.componentRef === component.ref).every((entry) => entry.approved) ? 'good' : 'warn'}>{component.protocol || '?'}</Badge></button>)}</div></Section>

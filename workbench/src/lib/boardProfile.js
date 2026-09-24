@@ -70,6 +70,24 @@ export function newBoardProfile({ name = 'İsimsiz Kart', mcuPart = 'UNKNOWN', s
   };
 }
 
+export function createManualI2cProfile({ name, mcuPart, componentRef, componentPart, scl, sda }) {
+  const cleanName = String(name || '').trim();
+  const part = String(mcuPart || '').trim().toUpperCase();
+  const ref = String(componentRef || '').trim().toUpperCase();
+  const sensor = String(componentPart || '').trim().toUpperCase();
+  if (!cleanName || !/^STM32F401C[CDE]/.test(part) && !part.startsWith('STM32F446RE')) throw new Error('Kart adı ve desteklenen STM32 modeli gerekli.');
+  if (!/^[A-Z]+\d+$/.test(ref) || !sensor) throw new Error('Sensör adı ve U2 gibi bir bileşen referansı gerekli.');
+  const profile = newBoardProfile({ name: cleanName, mcuPart: part });
+  profile.components = [{ ref, part: sensor, category: 'SENSOR', protocol: 'I2C', peripheral: 'SOFT_I2C_1' }];
+  profile.connections = [['SCL', scl], ['SDA', sda]].map(([role, pin]) => ({
+    componentRef: ref, componentPart: sensor, role, sensorPin: role, mcuPin: normalizePin(pin),
+    peripheral: 'SOFT_I2C_1', approved: false, source: 'USER', path: [], evidence: {}, confidence: 0,
+  }));
+  const validation = validateBoardProfile(profile);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  return profile;
+}
+
 export function confidenceForConnection(connection) {
   const evidence = connection.evidence || {};
   let score = 0;
