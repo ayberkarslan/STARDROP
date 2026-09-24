@@ -37,10 +37,13 @@ export default function EspConsole({ bridge, setBridge, target, notice, refreshT
   const action = async (path, payload, success) => {
     setBusy(true);
     try {
+      if (path === '/api/target/label' && (/["\\]/.test(payload.label) || !payload.label.trim())) throw new Error('Kart adı tırnak veya ters eğik çizgi içeremez.');
+      if (path === '/api/wifi/add' && /["\\]/.test(payload.ssid)) throw new Error('Bu ESP sürümünde ağ adı tırnak veya ters eğik çizgi içeremez.');
       await jsonRequest(base, path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       setNotice(success);
-      await loadSettings();
+      if (path !== '/api/wifi/switch') await loadSettings();
       if (path === '/api/target/label') await refreshTarget();
+      if (path === '/api/wifi/add') setPassword('');
     } catch (error) { setNotice(error.message); }
     finally { setBusy(false); }
   };

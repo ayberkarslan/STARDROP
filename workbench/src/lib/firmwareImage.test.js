@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { elfToBin } from './firmwareImage.js';
+import { elfToBin, prepareFirmware } from './firmwareImage.js';
 
 const header = new Uint8Array(128);
 const view = new DataView(header.buffer);
@@ -14,6 +14,14 @@ view.setUint32(64, 0x08000000, true);
 view.setUint32(68, 4, true);
 header.set([1, 2, 3, 4], 96);
 assert.deepEqual([...elfToBin(header.buffer)], [1, 2, 3, 4]);
+const prepared = await prepareFirmware(new File([header], 'blink.elf'), 64);
+assert.equal(prepared.name, 'blink.bin');
+assert.deepEqual([...new Uint8Array(await prepared.arrayBuffer())], [1, 2, 3, 4]);
+await assert.rejects(() => prepareFirmware(new File([new Uint8Array(65 * 1024)], 'large.bin'), 64), /kapasitesini aşıyor/);
+await assert.rejects(() => prepareFirmware(new File([new Uint8Array(1)], 'bad.hex'), 64), /Yalnızca/);
 view.setUint32(64, 0x08004000, true);
 assert.throws(() => elfToBin(header.buffer), /0x08000000/);
+view.setUint32(64, 0x08000000, true);
+view.setUint32(56, 125, true);
+assert.throws(() => elfToBin(header.buffer), /sınırını aşıyor/);
 console.log('firmwareImage tests passed');
