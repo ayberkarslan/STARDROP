@@ -46,3 +46,16 @@ test('capability database recognizes documented F446 SPI2 pins', () => {
   assert.equal(supportedPeripheral('STM32F446RE', 'SPI2', 'MOSI', 'PB15').supported, true);
   assert.equal(supportedPeripheral('STM32F446RE', 'SPI2', 'MOSI', 'PA7').supported, false);
 });
+
+test('software I2C accepts custom GPIO while excluding SWD and unavailable package pins', () => {
+  const profile = newBoardProfile({ name: 'Breadboard BMP180', mcuPart: 'STM32F401CCU6' });
+  profile.components = [{ ref: 'U2', part: 'BMP180', protocol: 'I2C' }];
+  profile.connections = [
+    { componentRef: 'U2', role: 'SCL', mcuPin: 'PB0', peripheral: 'SOFT_I2C_1', approved: true },
+    { componentRef: 'U2', role: 'SDA', mcuPin: 'PB1', peripheral: 'SOFT_I2C_1', approved: true },
+  ];
+  assert.equal(validateTestTarget(profile, 'U2').valid, true);
+  assert.equal(supportedPeripheral('STM32F401CCU6', 'SOFT_I2C_1', 'SCL', 'PA13').supported, false);
+  assert.equal(supportedPeripheral('STM32F401CCU6', 'SOFT_I2C_1', 'SCL', 'PC9').supported, false);
+  assert.equal(supportedPeripheral('STM32F446RET6', 'SOFT_I2C_1', 'SDA', 'PC9').supported, true);
+});

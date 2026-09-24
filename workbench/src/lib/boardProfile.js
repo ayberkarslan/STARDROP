@@ -92,6 +92,14 @@ export function confidenceLevel(score) {
 export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   const family = canonicalMcu(mcuPart);
   const normalized = normalizePin(pin);
+  if (/^SOFT_I2C(?:_[1-9]\d*)?$/.test(peripheral || '') && ['SCL', 'SDA'].includes(role)) {
+    const match = normalized?.match(/^P([A-C])(\d{1,2})$/);
+    const port = match?.[1];
+    const index = match ? Number(match[2]) : -1;
+    const supported = Boolean(match && index <= 15 && !(port === 'A' && (index === 13 || index === 14))
+      && (family === 'STM32F446' || (family === 'STM32F401' && (port !== 'C' || index >= 13))));
+    return { supported, reason: supported ? null : `${normalized || pin || 'Boş pin'} ${mcuPart} yazılımsal I²C için uygun değil.` };
+  }
   const permitted = CAPABILITIES[family]?.[peripheral]?.[role];
   if (!permitted) return { supported: null, reason: 'Bu peripheral/rol için yerel yetenek verisi yok.' };
   return {
