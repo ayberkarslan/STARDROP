@@ -426,7 +426,7 @@ export default function App() {
         {session === 'github' && githubUser && <button className={mode === 'settings' ? 'active' : ''} onClick={() => setMode('settings')}><Settings />Entegrasyonlar</button>}
         {session === 'github' && githubUser && catalogAdmin && <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}><ShieldCheck />Test Yönetimi</button>}
       </nav>
-      <div className="rail-footer"><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><button onClick={() => setSession('welcome')}>Girişe dön</button></div><div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
+      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}<div><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><button onClick={() => setSession('welcome')}>Girişe dön</button></div></div></div><div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
     </aside>
     <main>
       <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
