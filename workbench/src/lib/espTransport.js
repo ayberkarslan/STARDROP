@@ -50,8 +50,9 @@ export async function espStream(base, path, onEvent, timeoutMs = 180000) {
       try { final = receive(payload.data); } catch (error) { eventError = error; }
     });
     try {
-      await invoke('esp_stream', { base, path, streamId });
+      const lastFrame = await invoke('esp_stream', { base, path, streamId });
       if (eventError) throw eventError;
+      if (!final?.done) final = receive(lastFrame);
       if (!final?.done) throw new Error('ESP32 akışı tamamlanmadı.');
       return final;
     } finally { unlisten(); }

@@ -67,7 +67,7 @@ struct EspStreamEvent {
 }
 
 #[tauri::command]
-async fn esp_stream(app: tauri::AppHandle, base: String, path: String, stream_id: String) -> Result<(), String> {
+async fn esp_stream(app: tauri::AppHandle, base: String, path: String, stream_id: String) -> Result<String, String> {
     if path != "/stream-flash" && path != "/stream-target-flash-usage" { return Err("Geçersiz ESP32 akışı".into()); }
     if stream_id.len() != 36 || !stream_id.chars().all(|ch| ch.is_ascii_hexdigit() || ch == '-') { return Err("Geçersiz akış kimliği".into()); }
     let url = esp_url(&base, &path)?;
@@ -90,7 +90,7 @@ async fn esp_stream(app: tauri::AppHandle, base: String, path: String, stream_id
                     .map_err(|error| error.to_string())?;
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(data) {
                     if value.get("done").and_then(|flag| flag.as_bool()) == Some(true)
-                        || value.get("error").and_then(|flag| flag.as_bool()) == Some(true) { return Ok(()); }
+                        || value.get("error").and_then(|flag| flag.as_bool()) == Some(true) { return Ok(data.to_string()); }
                 }
             }
         }

@@ -26,7 +26,7 @@ function EspStatus({ esp, onRetry, disabled = false }) {
   const wifi = esp.wifi;
   const title = esp.status === 'online' ? `${wifi?.connected ? wifi.ssid : wifi?.apSsid || 'ESP32 AP'} · ${wifi?.ip || esp.base}`
     : esp.status === 'searching' ? 'ESP32 aranıyor…' : 'ESP32 çevrimdışı';
-  const signal = esp.status === 'online' && wifi?.connected ? `${wifi.rssi} dBm · %${wifi.pct}` : esp.status === 'online' ? 'AP' : '';
+  const signal = esp.status === 'online' && wifi?.connected ? `${wifi.rssi} dBm` : esp.status === 'online' ? 'AP' : '';
   return <button className={`esp-status ${esp.status}`} onClick={onRetry} disabled={disabled} title={esp.status === 'online' ? `ESP32 ${esp.base} · yeniden tara` : 'ESP32’yi yeniden ara'}><span className="esp-status-dot"/><span><strong>{title}</strong>{signal && <small>{signal}</small>}</span><RefreshCw size={13}/></button>;
 }
 
@@ -92,7 +92,9 @@ export default function App() {
     try {
       const nextTarget = await espJson(base, '/api/target/status', { timeoutMs: 6000 });
       setTarget(nextTarget);
-      setNotice(nextTarget.connected ? `${nextTarget.label || nextTarget.model} hazır.` : `Hedef bulunamadı (ACK ${nextTarget.ack ?? '-'})`);
+      setNotice(nextTarget.connected ? `${nextTarget.label || nextTarget.model} hazır.`
+        : nextTarget.dpConnected ? `SWD DAP bağlı (${nextTarget.dpIdcode}); STM32 okunamadı: ${nextTarget.stage}, ACK ${nextTarget.ack ?? '-'}.`
+        : `SWD bağlantısı kurulamadı (ACK ${nextTarget.ack ?? '-'}).`);
     } catch (error) {
       setTarget(null);
       setNotice(`SWD hedefi sorgulanamadı: ${error.message}`);
