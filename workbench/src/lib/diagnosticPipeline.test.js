@@ -40,8 +40,9 @@ for (const fixture of [
       const { profile } = profileFromNetlist(netlist(fixture.part, fixture.scl, fixture.sda));
       const component = profile.components.find((item) => item.ref === 'U2');
       assert.equal(testForComponent(DEFAULT_TEST_CATALOG, component, profile.mcu.part)?.id, 'bmp180');
+      assert.deepEqual(profile.connections.map((item) => item.peripheral), [fixture.bus, fixture.bus]);
       profile.targetUid = uid;
-      profile.connections.forEach((item) => { item.approved = true; item.peripheral = fixture.bus; });
+      profile.connections.forEach((item) => { item.approved = true; });
       assert.equal(validateTestTarget(profile, 'U2').valid, true);
 
       const profileFile = join(output, 'profile.json');
