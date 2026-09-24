@@ -26,11 +26,14 @@ Workbench'te kart profili, canlı SWD hedefinin UID'siyle kullanıcı tarafında
 
 F401CC/CD/CE ve F446RE için BMP180 kimlik + ham sıcaklık ADC örneği derlenir. Genel I²C ACK taraması yalnız geliştirici bus teşhisidir; bir sensöre otomatik eşleştirilmez ve belirli sensörün sağlam olduğunu **kanıtlamaz**. BMP180 ham ADC sayısı gerçek sıcaklık değildir. Sensör gerektirmeyen MCU self-test'i cihaz ID'si ve SRAM yaz/oku kontrolü yapar. MS5611, BMP388, ICM20689 ve SPI testleri henüz `planned` durumundadır.
 
+I²C tanı firmware'i yazılımsal (bit-bang) bus kullanır. Profilde aynı bus etiketiyle `SOFT_I2C_1` seçilirse MCU paketinde mevcut ve SWD için ayrılmamış GPIO çiftleri kullanılabilir; gerçek kartta doğru voltaj ve pull-up dirençleri hâlâ gereklidir.
+
 Yerel derleme kontrolü:
 
 ```sh
 node tools/build-firmware.mjs tests/valid-profile.json U1 bmp180 build/f401 local-f401
 node tools/build-firmware.mjs tests/valid-f446-profile.json U2 bmp180 build/f446 local-f446
+node tools/build-firmware.mjs tests/valid-f446-soft-profile.json U2 bmp180 build/f446-soft local-f446-soft
 node tools/build-firmware.mjs tests/selftest-f401-profile.json MCU mcu-selftest build/selftest local-mcu
 ```
 

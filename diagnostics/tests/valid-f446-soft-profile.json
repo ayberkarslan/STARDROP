@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture-f446-soft-i2c",
+  "name": "F446 custom GPIO BMP180 fixture",
+  "mcu": { "part": "STM32F446RET6", "family": "STM32F446" },
+  "components": [{ "ref": "U2", "part": "BMP180", "protocol": "I2C" }],
+  "connections": [
+    { "componentRef": "U2", "role": "SCL", "mcuPin": "PA0", "peripheral": "SOFT_I2C_1", "approved": true },
+    { "componentRef": "U2", "role": "SDA", "mcuPin": "PA1", "peripheral": "SOFT_I2C_1", "approved": true }
+  ]
+}

@@ -22,4 +22,5 @@ jobs:
           sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
           node tools/build-firmware.mjs tests/valid-profile.json U1 bmp180 build/f401
           node tools/build-firmware.mjs tests/valid-f446-profile.json U2 bmp180 build/f446
+          node tools/build-firmware.mjs tests/valid-f446-soft-profile.json U2 bmp180 build/f446-soft
           node tools/build-firmware.mjs tests/selftest-f401-profile.json MCU mcu-selftest build/selftest
