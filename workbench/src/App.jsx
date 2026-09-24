@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Cpu, Download, FileUp, FlaskConical, Github, Radio, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
+import { Activity, Download, FileUp, FlaskConical, Github, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { addAuditEvent, confidenceForConnection, createManualI2cProfile, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
@@ -10,6 +10,7 @@ import { downloadDiagnosticArtifact, hash32FromSha256, sha256Hex } from './lib/d
 import BoardMap from './BoardMap.jsx';
 import EspConsole from './EspConsole.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
+import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
@@ -20,11 +21,24 @@ function Section({ title, children, action }) {
   return <section className="panel"><div className="panel-head"><h2>{title}</h2>{action}</div>{children}</section>;
 }
 
+function EspStatus({ esp, onRetry, disabled = false }) {
+  const wifi = esp.wifi;
+  const title = esp.status === 'online' ? `${wifi?.connected ? wifi.ssid : wifi?.apSsid || 'ESP32 AP'} · ${wifi?.ip || esp.base}`
+    : esp.status === 'searching' ? 'ESP32 aranıyor…' : 'ESP32 çevrimdışı';
+  const signal = esp.status === 'online' && wifi?.connected ? `${wifi.rssi} dBm · %${wifi.pct}` : esp.status === 'online' ? 'AP' : '';
+  return <button className={`esp-status ${esp.status}`} onClick={onRetry} disabled={disabled} title={esp.status === 'online' ? `ESP32 ${esp.base} · yeniden tara` : 'ESP32’yi yeniden ara'}><span className="esp-status-dot"/><span><strong>{title}</strong>{signal && <small>{signal}</small>}</span><RefreshCw size={13}/></button>;
+}
+
 export default function App() {
   const [session, setSession] = useState('welcome');
   const [mode, setMode] = useState('flash');
   const [workbenchView, setWorkbenchView] = useState('overview');
   const [bridge, setBridge] = useState(savedBridge);
+  const [activeBridge, setActiveBridge] = useState(null);
+  const [esp, setEsp] = useState({ status: 'searching', wifi: null, base: null });
+  const [discoveredDevices, setDiscoveredDevices] = useState([]);
+  const discoveryRun = useRef(0);
+  const healthMisses = useRef(0);
   const [target, setTarget] = useState(null);
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
   const [firmware, setFirmware] = useState(null);
@@ -71,23 +85,94 @@ export default function App() {
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
 
-  const normalizedBridge = bridge.replace(/\/$/, '');
-  const refreshTarget = async () => {
-    localStorage.setItem('stardrop.bridge', normalizedBridge);
+  const normalizedBridge = activeBridge || bridge.replace(/\/$/, '');
+  const refreshTargetAt = async (base) => {
     setNotice('SWD hedefi sorgulanıyor…');
     try {
-      const result = await fetch(`${normalizedBridge}/api/target/status`, { signal: AbortSignal.timeout(6000) });
+      const result = await fetch(`${base}/api/target/status`, { signal: AbortSignal.timeout(6000), cache: 'no-store' });
       if (!result.ok) throw new Error(`HTTP ${result.status}`);
       const nextTarget = await result.json();
       setTarget(nextTarget);
       setNotice(nextTarget.connected ? `${nextTarget.label || nextTarget.model} hazır.` : `Hedef bulunamadı (ACK ${nextTarget.ack ?? '-'})`);
     } catch (error) {
       setTarget(null);
+      setNotice(`SWD hedefi sorgulanamadı: ${error.message}`);
+    }
+  };
+
+  const connectBridge = async (address) => {
+    const run = ++discoveryRun.current;
+    setEsp((current) => ({ ...current, status: 'searching' }));
+    try {
+      const result = await probeEsp(address);
+      if (run !== discoveryRun.current) return;
+      const matched = discoveredDevices.find((device) => device.replyAddress === new URL(result.base).hostname || device.ip === new URL(result.base).hostname);
+      if (matched?.mac) localStorage.setItem('stardrop.esp.mac', matched.mac);
+      setActiveBridge(result.base); setBridge(result.base);
+      localStorage.setItem('stardrop.bridge', result.base);
+      setEsp({ status: 'online', ...result });
+      healthMisses.current = 0;
+      await refreshTargetAt(result.base);
+    } catch (error) {
+      if (run !== discoveryRun.current) return;
+      setEsp({ status: 'offline', wifi: null, base: null }); setTarget(null);
       setNotice(`ESP32’ye erişilemedi: ${error.message}`);
     }
   };
 
-  useEffect(() => { refreshTarget(); }, []);
+  const autoConnect = async () => {
+    const run = ++discoveryRun.current;
+    setEsp((current) => ({ ...current, status: 'searching' }));
+    let devices = [];
+    try { devices = await discoverEspDevices(); } catch (_) { /* Web önizlemede UDP yok. */ }
+    if (run !== discoveryRun.current) return;
+    setDiscoveredDevices(devices);
+    const candidates = discoveryCandidates(devices, localStorage.getItem('stardrop.bridge') || savedBridge, localStorage.getItem('stardrop.esp.mac'));
+    for (const address of candidates) {
+      try {
+        const result = await probeEsp(address, 2200);
+        if (run !== discoveryRun.current) return;
+        const device = devices.find((item) => normalizeEspAddress(item.replyAddress) === result.base || normalizeEspAddress(item.ip) === result.base);
+        if (device?.mac) localStorage.setItem('stardrop.esp.mac', device.mac);
+        setActiveBridge(result.base); setBridge(result.base);
+        localStorage.setItem('stardrop.bridge', result.base);
+        setEsp({ status: 'online', ...result });
+        healthMisses.current = 0;
+        await refreshTargetAt(result.base);
+        return;
+      } catch (_) { /* Sonraki adresi dene. */ }
+    }
+    if (run !== discoveryRun.current) return;
+    setEsp({ status: 'offline', wifi: null, base: null }); setTarget(null);
+    setNotice('ESP32 bulunamadı. PC ile ESP aynı ağa bağlı mı?');
+  };
+
+  const refreshTarget = () => {
+    try {
+      const typed = normalizeEspAddress(bridge);
+      if (typed !== activeBridge) return connectBridge(typed);
+    } catch (_) { return connectBridge(bridge); }
+    return esp.status === 'online' && activeBridge ? refreshTargetAt(activeBridge) : autoConnect();
+  };
+
+  useEffect(() => { autoConnect(); return () => { discoveryRun.current++; }; }, []);
+  useEffect(() => {
+    if (flashBusy || esp.status === 'searching') return;
+    const timer = window.setInterval(async () => {
+      if (esp.status !== 'online') { autoConnect(); return; }
+      try {
+        const live = await probeEsp(esp.base, 4000);
+        healthMisses.current = 0;
+        setEsp({ status: 'online', ...live });
+      } catch (_) {
+        if (++healthMisses.current >= 2) {
+          setEsp({ status: 'offline', wifi: null, base: null }); setTarget(null);
+          setNotice('ESP32 bağlantısı kesildi; yeniden aranıyor.');
+        }
+      }
+    }, esp.status === 'online' ? 10000 : 15000);
+    return () => window.clearInterval(timer);
+  }, [esp.status, esp.base, flashBusy]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
   useEffect(() => { loadSecret('github_access_token').then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }).catch(() => {}); }, []);
@@ -135,6 +220,7 @@ export default function App() {
 
   const flashFirmware = async (selected = firmware) => {
     if (!selected) return setNotice('Önce bir .bin veya .elf seç.');
+    if (esp.status !== 'online' || !activeBridge || !target?.connected) return setNotice('Önce ESP32 ve STM32 hedef bağlantısını doğrula.');
     if (flashBusy) return false;
     setFlashBusy(true);
     setFlashLog([]); setFlashProgress(0);
@@ -158,7 +244,7 @@ export default function App() {
         };
         stream.onerror = () => finish(new Error('ESP32 flash akışı kesildi.'));
       });
-      await refreshTarget();
+      await refreshTargetAt(activeBridge);
       return true;
     } catch (error) { setNotice(`Flash başarısız: ${error.message}`); return false; }
     finally { setFlashBusy(false); }
@@ -339,7 +425,7 @@ export default function App() {
 
   if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><span className="brand-mark">✦</span><div><strong>STARDROP</strong><small>AVIONICS OTA</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else if (githubConfig.clientId) startGithubLogin(); else setDeviceLogin({ setup: true }); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : 'GitHub ile devam et'}</strong><small>Kart analizi ve sensör testleri</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{deviceLogin?.setup && <div className="welcome-setup"><label>GitHub App Client ID<input value={githubConfig.clientId || ''} onChange={(event) => updateGithubConfig('clientId', event.target.value)} placeholder="Iv1.…" /></label><small>GitHub uygulaması yapılandırılınca giriş açılır.</small><button disabled={!githubConfig.clientId} onClick={startGithubLogin}>Doğrulamayı başlat</button></div>}{deviceLogin?.user_code && <div className="welcome-setup"><strong>{deviceLogin.user_code}</strong><span><a href={deviceLogin.verification_uri} target="_blank" rel="noreferrer">{deviceLogin.verification_uri}</a> adresinde kodu onayla.</span></div>}<div className="welcome-status">{notice}</div></main></div>;
 
-  if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><span className="brand-mark">✦</span><strong>STARDROP</strong></div><button onClick={() => setSession('welcome')}>Girişe dön</button></header><EspConsole bridge={bridge} setBridge={setBridge} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /></div>;
+  if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><span className="brand-mark">✦</span><strong>STARDROP</strong></div><div className="guest-header-actions"><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/><button onClick={() => setSession('welcome')}>Girişe dön</button></div></header><EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /></div>;
 
   return <div className="app-shell">
     <aside className="rail">
@@ -353,8 +439,8 @@ export default function App() {
       <div className="rail-footer"><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><button onClick={() => setSession('welcome')}>Girişe dön</button></div><div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
     </aside>
     <main>
-      <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><div className="bridge"><Radio /><input value={bridge} onChange={(event) => setBridge(event.target.value)} aria-label="ESP32 adresi"/><button onClick={refreshTarget} title="Hedefi yenile"><RefreshCw /></button></div></header>
-      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Bu ekran yalnız GitHub deposunda yazma yetkisi olan kullanıcıya açılır. Eşlemeler özel deponun katalog dosyasına kaydedilir; test kaynağı gerçekten derlenmeden operatöre “hazır” görünmez.</p><div className="admin-grid"><select value={adminTestId} onChange={(event) => setAdminTestId(event.target.value)}>{catalog.tests.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={adminTest?.sourcePath || ''} placeholder="templates/bmp180.c" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Kaynak yolu, eşleşen parça adları ve desteklenen MCU bilgisi katalogda tutulur. Farklı kart pinleri firmware kaynak dosyasına gömülmez; onaylı BoardProfile derleme girdisidir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Bu giriş yalnız özel katalog, bulut derleme ve merkezi audit için kullanılır.</p><div className="settings-grid"><input value={githubConfig.clientId || ''} placeholder="GitHub App Client ID" onChange={(event) => updateGithubConfig('clientId', event.target.value)} /><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={!githubConfig.clientId || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : 'GITHUB DEVICE LOGIN'}</button>{deviceLogin?.user_code && <div className="device-code"><strong>{deviceLogin.user_code}</strong><span>Tarayıcıda <b>{deviceLogin.verification_uri}</b> adresini açıp bu kodu gir.</span></div>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
+      <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
+      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Bu ekran yalnız GitHub deposunda yazma yetkisi olan kullanıcıya açılır. Eşlemeler özel deponun katalog dosyasına kaydedilir; test kaynağı gerçekten derlenmeden operatöre “hazır” görünmez.</p><div className="admin-grid"><select value={adminTestId} onChange={(event) => setAdminTestId(event.target.value)}>{catalog.tests.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={adminTest?.sourcePath || ''} placeholder="templates/bmp180.c" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Kaynak yolu, eşleşen parça adları ve desteklenen MCU bilgisi katalogda tutulur. Farklı kart pinleri firmware kaynak dosyasına gömülmez; onaylı BoardProfile derleme girdisidir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Bu giriş yalnız özel katalog, bulut derleme ve merkezi audit için kullanılır.</p><div className="settings-grid"><input value={githubConfig.clientId || ''} placeholder="GitHub App Client ID" onChange={(event) => updateGithubConfig('clientId', event.target.value)} /><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={!githubConfig.clientId || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : 'GITHUB DEVICE LOGIN'}</button>{deviceLogin?.user_code && <div className="device-code"><strong>{deviceLogin.user_code}</strong><span>Tarayıcıda <b>{deviceLogin.verification_uri}</b> adresini açıp bu kodu gir.</span></div>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
         {!profile ? <>
           <Section title="KART DOSYASI"><div className="import-grid"><label className="dropzone"><FileUp /><strong>ALTIUM .NET İÇE AKTAR</strong><small>Elektriksel bağlantı analizi yerelde yapılır.</small><input ref={fileRef} type="file" accept=".net,.NET,.txt" onChange={(event) => loadNetlist(event.target.files?.[0])} /></label><label className="dropzone"><Download /><strong>.STARDROP AÇ</strong><small>Kaynaklar, profil ve test geçmişi tek dosyada.</small><input ref={projectRef} type="file" accept=".stardrop" onChange={(event) => importProject(event.target.files?.[0])} /></label></div></Section>
           <Section title="MANUEL KART / BREADBOARD"><p>.NET dosyan yoksa MCU ve sensör bağlantılarını elle gir. Pinler testten önce ayrıca onaylanır.</p>
