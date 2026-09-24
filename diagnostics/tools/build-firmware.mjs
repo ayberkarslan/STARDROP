@@ -17,6 +17,7 @@ const target = /^STM32F401C[CDE]/.test(part) ? 'stm32f401cc' : part.startsWith('
 if (!target) throw new Error('Yalnız STM32F401CC/CD/CE ve STM32F446RE için firmware derlenebilir.');
 if (!test.supportedMcu.includes(profile.mcu.family)) throw new Error('MCU bu testi desteklemiyor.');
 const isSelfTest = testId === 'mcu-selftest';
+const isLed = testId === 'led-blink';
 let scl = null;
 let sda = null;
 function parsePin(value) {
@@ -30,8 +31,19 @@ function parsePin(value) {
 }
 let sclPin = { port: 0, pin: 0 };
 let sdaPin = { port: 0, pin: 0 };
+let ledPin = { port: 0, pin: 0 };
+let ledActiveLow = 0;
+let blinkMs = 500;
 if (isSelfTest) {
   if (componentRef !== 'MCU') throw new Error('MCU self-test için bileşen referansı MCU olmalı.');
+} else if (isLed) {
+  const component = profile.components?.find((item) => item.ref === componentRef);
+  const connections = profile.connections?.filter((item) => item.componentRef === componentRef);
+  if (component?.protocol !== 'GPIO' || connections?.length !== 1 || connections[0].role !== 'LED' || !connections[0].approved) throw new Error('Onaylı tek bir LED GPIO bağlantısı gerekli.');
+  ledPin = parsePin(connections[0].mcuPin);
+  ledActiveLow = component.activeLow === true ? 1 : 0;
+  blinkMs = Number(component.blinkMs);
+  if (!Number.isInteger(blinkMs) || blinkMs < 50 || blinkMs > 5000) throw new Error('LED aralığı 50–5000 ms olmalı.');
 } else {
   const component = profile.components?.find((item) => item.ref === componentRef);
   if (!component) throw new Error('Seçilen bileşen profilde yok.');
@@ -48,7 +60,7 @@ if (isSelfTest) {
 const out = resolve(outputDirectory);
 await mkdir(out, { recursive: true });
 const hash32 = (value) => `0x${createHash('sha256').update(value).digest('hex').slice(0, 8)}UL`;
-const header = `#pragma once\n#define STARDROP_SCL_PORT ${sclPin.port}\n#define STARDROP_SCL_PIN ${sclPin.pin}\n#define STARDROP_SDA_PORT ${sdaPin.port}\n#define STARDROP_SDA_PIN ${sdaPin.pin}\n#define STARDROP_USE_I2C ${isSelfTest ? 0 : 1}\n#define STARDROP_F401 ${target === 'stm32f401cc' ? 1 : 0}\n#define STARDROP_TEST_ID_HASH ${hash32(testId)}\n#define STARDROP_PROFILE_HASH ${hash32(JSON.stringify(profile))}\n#define STARDROP_RUN_HASH ${hash32(requestId)}\n`;
+const header = `#pragma once\n#define STARDROP_SCL_PORT ${sclPin.port}\n#define STARDROP_SCL_PIN ${sclPin.pin}\n#define STARDROP_SDA_PORT ${sdaPin.port}\n#define STARDROP_SDA_PIN ${sdaPin.pin}\n#define STARDROP_LED_PORT ${ledPin.port}\n#define STARDROP_LED_PIN ${ledPin.pin}\n#define STARDROP_LED_ACTIVE_LOW ${ledActiveLow}\n#define STARDROP_BLINK_MS ${blinkMs}\n#define STARDROP_VISUAL_TEST ${isLed ? 1 : 0}\n#define STARDROP_USE_I2C ${isSelfTest || isLed ? 0 : 1}\n#define STARDROP_F401 ${target === 'stm32f401cc' ? 1 : 0}\n#define STARDROP_TEST_ID_HASH ${hash32(testId)}\n#define STARDROP_PROFILE_HASH ${hash32(JSON.stringify(profile))}\n#define STARDROP_RUN_HASH ${hash32(requestId)}\n`;
 await writeFile(join(out, 'generated_config.h'), header);
 const elf = join(out, `${testId}-${target}.elf`);
 const bin = join(out, `${testId}-${target}.bin`);
@@ -65,7 +77,8 @@ if (converted.error) throw converted.error;
 if (converted.status !== 0) throw new Error('BIN oluşturulamadı.');
 const bytes = await readFile(bin);
 const manifest = { schemaVersion: 1, testId, componentRef, requestId, mcuPart: part, profileId: profile.id, targetUid: profile.targetUid || null,
-  pins: { scl: scl?.mcuPin || null, sda: sda?.mcuPin || null }, size: bytes.length,
+  pins: { scl: scl?.mcuPin || null, sda: sda?.mcuPin || null, led: isLed ? profile.connections.find((item) => item.componentRef === componentRef).mcuPin : null },
+  activeLow: isLed ? Boolean(ledActiveLow) : null, blinkMs: isLed ? blinkMs : null, size: bytes.length,
   sha256: createHash('sha256').update(bytes).digest('hex'), sourcePath: test.sourcePath };
 await writeFile(join(out, 'artifact.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(JSON.stringify({ bin, manifest }));

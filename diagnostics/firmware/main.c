@@ -2,6 +2,7 @@
 #include "generated_config.h"
 
 void platform_i2c_init(void);
+__attribute__((weak)) void diagnostic_idle(void) { __asm__ volatile ("nop"); }
 #define DEMCR (*(volatile unsigned int *)0xE000EDFCUL)
 #define DWT_CTRL (*(volatile unsigned int *)0xE0001000UL)
 #define DWT_CYCCNT (*(volatile unsigned int *)0xE0001004UL)
@@ -27,9 +28,9 @@ int main(void) {
     report->reserved[1] = (uint8_t)(STARDROP_RUN_HASH >> 8);
     report->reserved[2] = (uint8_t)(STARDROP_RUN_HASH >> 16);
     report->reserved[3] = (uint8_t)(STARDROP_RUN_HASH >> 24);
-    stardrop_report_finish_at(report, passed ? STARDROP_REPORT_PASS : STARDROP_REPORT_FAIL,
+    stardrop_report_finish_at(report, passed ? (STARDROP_VISUAL_TEST ? STARDROP_REPORT_RUNNING : STARDROP_REPORT_PASS) : STARDROP_REPORT_FAIL,
                               passed ? STARDROP_ERROR_NONE : result.error);
     /* Keep the AHB/MEM-AP accessible so a two-wire SWD host can read the
      * completed SRAM report without an NRST wire or an external wake event. */
-    for (;;) { __asm__ volatile ("nop"); }
+    for (;;) diagnostic_idle();
 }

@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "channel": "development",
   "tests": [
+    { "id": "led-blink", "name": "LED Blink", "matchParts": ["LED"], "protocol": "GPIO", "resultRule": "visual-confirmation", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "templates/led_blink.c", "status": "ready" },
     { "id": "mcu-selftest", "name": "STM32 Self-test", "matchParts": [], "protocol": "MCU", "resultRule": "core-id-and-sram", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "templates/mcu_selftest.c", "status": "ready" },
     { "id": "bmp180", "name": "BMP180", "matchParts": ["BMP180", "BMP085"], "protocol": "I2C", "resultRule": "chip-id-and-raw-temperature", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "templates/bmp180.c", "status": "ready" },
     { "id": "ms5611", "name": "MS5611", "matchParts": ["MS5611"], "protocol": "I2C", "resultRule": "chip-id-and-measurement", "supportedMcu": ["STM32F401", "STM32F446"], "sourcePath": "", "status": "planned" },
