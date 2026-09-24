@@ -31,13 +31,13 @@ function classifyComponent(des, partVal, desc) {
     const text = `${des} ${partVal} ${desc}`.toUpperCase();
     
     // Core ICs
-    if (/\b(STM32|RP2040|ESP32|SAMD|NRF52|ATMEGA|PIC\d+)\b/.test(text)) return "MCU";
-    if (/\b(W25Q|AT25|SST25|MX25|FLASH|EEPROM|SDCARD|EMMC)\b/.test(text)) return "MEMORY";
-    if (/\b(MCP25|SN65|TJA|MAX30|CAN|RS485|RS232)\b/.test(text)) return "TRANSCEIVER";
+    if (/\b(?:STM32[A-Z0-9]*|RP2040|ESP32[A-Z0-9]*|SAMD[A-Z0-9]*|NRF52[A-Z0-9]*|ATMEGA[A-Z0-9]*|PIC\d+[A-Z0-9]*)\b/.test(text)) return "MCU";
+    if (/\b(?:W25Q[A-Z0-9]*|AT25[A-Z0-9]*|SST25[A-Z0-9]*|MX25[A-Z0-9]*|FLASH|EEPROM|SDCARD|EMMC)\b/.test(text)) return "MEMORY";
+    if (/\b(?:MCP25[A-Z0-9]*|SN65[A-Z0-9]*|TJA[A-Z0-9]*|MAX30[A-Z0-9]*|CAN|RS485|RS232)\b/.test(text)) return "TRANSCEIVER";
     
     // Sensors
-    if (/\b(BMP|MS5611|DPS310|LPS22|BME)\b/.test(text)) return "BAROMETER";
-    if (/\b(BHI|MPU|ICM|LSM|BMI|ADXL|FXOS)\b/.test(text)) return "IMU";
+    if (/\b(?:BMP\d+|MS5611|DPS310|LPS22[A-Z0-9]*|BME\d+)\b/.test(text)) return "BAROMETER";
+    if (/\b(?:BHI\d+|MPU\d+|ICM\d+|LSM\d+|BMI\d+|ADXL\d+|FXOS[A-Z0-9]*)\b/.test(text)) return "IMU";
     if (/\b(GPS|GNSS|NEO|UBLOX)\b/.test(text)) return "GPS";
     
     // Power & Analog
@@ -101,7 +101,7 @@ export class DeterministicBoardParser {
             
             for (const [des, comp] of Object.entries(this.components)) {
                 if (des === mcuRef) continue;
-                if (["BAROMETER", "IMU", "FLASH_MEMORY", "TRANSCEIVER"].includes(comp.category)) {
+                if (["BAROMETER", "IMU", "MEMORY", "TRANSCEIVER"].includes(comp.category)) {
                     targetSensors.push([des, comp]);
                 } else if ((des.startsWith("IC") || des.startsWith("U") || des.startsWith("SEN")) && !["VOLTAGE_REGULATOR", "PASSIVE"].includes(comp.category)) {
                     const pins = this.componentToPins[des] || [];
