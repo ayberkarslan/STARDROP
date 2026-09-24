@@ -5,6 +5,7 @@ import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { loadSecret, saveSecret } from './lib/secretStore.js';
+import { saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, saveCatalogDocument, waitForProfileArtifact } from './lib/githubClient.js';
 import { downloadDiagnosticArtifact, hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import BoardMap from './BoardMap.jsx';
@@ -179,13 +180,13 @@ export default function App() {
   }, [esp.status, esp.base, flashBusy]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
-  useEffect(() => { loadSecret('github_access_token').then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }).catch(() => {}); }, []);
+  useEffect(() => { validGitHubToken().then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!githubUser || !githubConfig.repository) return;
     let cancelled = false;
     setCatalogLoading(true);
-    loadSecret('github_access_token').then(async (token) => {
+    validGitHubToken().then(async (token) => {
       const [{ catalog: remote, sha }, canWrite] = await Promise.all([
         fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' }),
         catalogWritePermission({ token, repository: githubConfig.repository }),
@@ -321,8 +322,7 @@ export default function App() {
       const { invoke } = await import('@tauri-apps/api/core');
       const result = JSON.parse(await invoke('github_browser_login'));
       const user = await currentGitHubUser(result.access_token);
-      await saveSecret('github_access_token', result.access_token);
-      if (result.refresh_token) await saveSecret('github_refresh_token', result.refresh_token);
+      await saveGitHubSession(result);
       setGithubUser(user); setSession('github'); setMode('workbench');
       setNotice(`GitHub girişi tamamlandı: ${user.login}`);
     } catch (error) { setNotice(`GitHub girişi başarısız: ${error.message}`); }
@@ -336,7 +336,7 @@ export default function App() {
       if (!catalogAdmin || !catalogSha) throw new Error('Bu depoda katalog yazma yetkisi yok.');
       const validation = validateTestCatalog(catalog);
       if (!validation.valid) throw new Error(validation.errors.join(' '));
-      const token = await loadSecret('github_access_token');
+      const token = await validGitHubToken();
       await saveCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', catalog, sha: catalogSha });
       const saved = await fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' });
       setCatalog(saved.catalog); setCatalogSha(saved.sha); setNotice('Sensör-test eşlemesi GitHub kataloğuna kaydedildi.');
@@ -360,7 +360,7 @@ export default function App() {
       if (!target?.connected || !target.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı STM32 ile kart profilinin MCU ailesi uyuşmuyor.');
       if (profile.targetUid !== target.uid) throw new Error('Kart profili bağlı STM32 UID’siyle eşleşmiyor.');
       if (!/^[0-9A-F]{24}$/.test(target.uid || '') || /^0+$/.test(target.uid)) throw new Error('Hedef STM32 UID güvenilir okunamadı.');
-      const token = await loadSecret('github_access_token');
+      const token = await validGitHubToken();
       if (!token) throw new Error('GitHub oturumu bulunamadı.');
       setTestStage('GitHub derlemesi başlatılıyor…');
       const startedAt = Date.now();

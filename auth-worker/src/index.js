@@ -30,18 +30,22 @@ export default {
       }
       return Response.redirect(local, 302);
     }
-    if (url.pathname === '/exchange' && request.method === 'POST') {
+    if ((url.pathname === '/exchange' || url.pathname === '/refresh') && request.method === 'POST') {
       if (request.headers.has('Origin')) return response('Tarayıcı erişimi kapalı.', 403);
       if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) return response('GitHub kimlik bilgileri eksik.', 503);
       if (Number(request.headers.get('Content-Length') || 0) > 1024) return response('İstek çok büyük.', 413);
       let payload;
       try { payload = await request.json(); } catch { return response('Geçersiz JSON.', 400); }
-      if (!/^[A-Za-z0-9_-]{1,256}$/.test(payload?.code || '')) return response('Geçersiz GitHub kodu.', 400);
+      const refreshing = url.pathname === '/refresh';
+      const credential = refreshing ? payload?.refresh_token : payload?.code;
+      if (!/^[A-Za-z0-9_-]{1,256}$/.test(credential || '')) return response('Geçersiz GitHub kimliği.', 400);
+      const form = { client_id: env.GITHUB_CLIENT_ID, client_secret: env.GITHUB_CLIENT_SECRET };
+      if (refreshing) { form.grant_type = 'refresh_token'; form.refresh_token = credential; }
+      else { form.code = credential; form.redirect_uri = callbackUrl; }
       const github = await fetch('https://github.com/login/oauth/access_token', {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ client_id: env.GITHUB_CLIENT_ID, client_secret: env.GITHUB_CLIENT_SECRET,
-          code: payload.code, redirect_uri: callbackUrl }),
+        body: new URLSearchParams(form),
       });
       const body = await github.text();
       return response(body, github.status, { 'Content-Type': 'application/json; charset=utf-8' });

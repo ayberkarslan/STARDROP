@@ -194,28 +194,6 @@ async fn download_artifact(repository: String, artifact_id: u64) -> Result<tauri
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
-#[tauri::command]
-async fn github_device_request(client_id: String, device_code: Option<String>) -> Result<String, String> {
-    if client_id.is_empty() || !client_id.chars().all(|ch| ch.is_ascii_alphanumeric()) {
-        return Err("Geçersiz GitHub Client ID".into());
-    }
-    let (url, mut form) = if let Some(code) = device_code {
-        ("https://github.com/login/oauth/access_token", vec![
-            ("client_id", client_id), ("device_code", code),
-            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code".to_string()),
-        ])
-    } else {
-        ("https://github.com/login/device/code", vec![("client_id", client_id)])
-    };
-    let response = reqwest::Client::new().post(url)
-        .header("Accept", "application/json")
-        .header("User-Agent", "stardrop-workbench")
-        .form(&form).send().await.map_err(|error| error.to_string())?;
-    form.clear();
-    if !response.status().is_success() { return Err(format!("GitHub giriş HTTP {}", response.status())); }
-    response.text().await.map_err(|error| error.to_string())
-}
-
 fn open_auth_browser(url: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     let mut command = std::process::Command::new("xdg-open");
@@ -299,10 +277,30 @@ async fn github_browser_login() -> Result<String, String> {
     Ok(body)
 }
 
+#[tauri::command]
+async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
+    if !refresh_token.starts_with("ghr_") || refresh_token.len() > 256 {
+        return Err("Geçersiz GitHub yenileme token'ı".into());
+    }
+    let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?
+        .post(format!("{AUTH_WORKER}/refresh"))
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "stardrop-workbench")
+        .body(serde_json::json!({ "refresh_token": refresh_token }).to_string())
+        .send().await.map_err(|error| error.to_string())?;
+    if !response.status().is_success() { return Err(format!("GitHub oturum yenileme HTTP {}", response.status())); }
+    let body = response.text().await.map_err(|error| error.to_string())?;
+    let value: serde_json::Value = serde_json::from_str(&body).map_err(|error| error.to_string())?;
+    if value.get("access_token").and_then(|token| token.as_str()).is_none() {
+        return Err(value.get("error_description").and_then(|error| error.as_str()).unwrap_or("GitHub oturumu yenilenemedi").into());
+    }
+    Ok(body)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, download_artifact, github_device_request, github_browser_login, discover_esp, esp_http, esp_upload, esp_stream])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, download_artifact, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }
@@ -326,5 +324,21 @@ mod tests {
         assert_eq!(serde_json::from_str::<serde_json::Value>(&ping).unwrap()["status"], "ok");
         let wifi = tauri::async_runtime::block_on(esp_http(base, "/api/wifi/status".into(), "GET".into(), None, Some(4000))).unwrap();
         assert!(serde_json::from_str::<serde_json::Value>(&wifi).unwrap()["ip"].is_string());
+    }
+
+    #[test]
+    fn github_callback_rejects_wrong_state_before_accepting_code() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = std::thread::spawn(move || wait_for_github_callback(listener, "expected"));
+        for state in ["wrong", "expected"] {
+            let mut stream = std::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+            let request = format!("GET /callback?state={state}&code=valid-code HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+            stream.write_all(request.as_bytes()).unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).unwrap();
+            assert!(response.starts_with(if state == "wrong" { "HTTP/1.1 400" } else { "HTTP/1.1 200" }));
+        }
+        assert_eq!(worker.join().unwrap().unwrap(), "valid-code");
     }
 }

@@ -38,3 +38,20 @@ test('exchange keeps the client secret server-side', async () => {
     assert.equal((await response.json()).access_token, 'test-token');
   } finally { globalThis.fetch = oldFetch; }
 });
+
+test('refresh rotates expiring GitHub credentials', async () => {
+  const oldFetch = globalThis.fetch;
+  let sent;
+  globalThis.fetch = async (_url, init) => {
+    sent = init.body;
+    return new Response(JSON.stringify({ access_token: 'new-token', refresh_token: 'new-refresh' }));
+  };
+  try {
+    const response = await worker.fetch(new Request(`${origin}/refresh`, {
+      method: 'POST', body: JSON.stringify({ refresh_token: 'ghr_old-token' }),
+    }), env);
+    assert.equal(response.status, 200);
+    assert.equal(sent.get('grant_type'), 'refresh_token');
+    assert.equal(sent.get('refresh_token'), 'ghr_old-token');
+  } finally { globalThis.fetch = oldFetch; }
+});

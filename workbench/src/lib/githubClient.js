@@ -1,5 +1,4 @@
 const GITHUB_API = 'https://api.github.com';
-let nextDevicePollAt = 0;
 
 export function parseRepository(repository) {
   const match = String(repository || '').trim().match(/^([\w.-]+)\/([\w.-]+)$/);
@@ -18,42 +17,6 @@ async function api(path, { token, method = 'GET', body } = {}) {
     throw new Error(`GitHub API HTTP ${response.status}: ${failure.message || 'İstek reddedildi.'}`);
   }
   return response.status === 204 ? null : response.json();
-}
-
-export async function beginGitHubDeviceLogin(clientId) {
-  if (!clientId) throw new Error('GitHub App Client ID zorunludur.');
-  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return JSON.parse(await invoke('github_device_request', { clientId, deviceCode: null }));
-  }
-  const response = await fetch('https://github.com/login/device/code', {
-    method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: clientId }),
-  });
-  if (!response.ok) throw new Error(`GitHub Device Login HTTP ${response.status}`);
-  return response.json();
-}
-
-export async function pollGitHubDeviceLogin(clientId, deviceCode) {
-  if (Date.now() < nextDevicePollAt) return null;
-  let result;
-  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    result = JSON.parse(await invoke('github_device_request', { clientId, deviceCode }));
-  } else {
-    const response = await fetch('https://github.com/login/oauth/access_token', {
-      method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: clientId, device_code: deviceCode, grant_type: 'urn:ietf:params:oauth:grant-type:device_code' }),
-    });
-    result = await response.json();
-  }
-  if (result.access_token) return result.access_token;
-  if (result.error === 'slow_down') {
-    nextDevicePollAt = Date.now() + Math.max(10000, (result.interval || 10) * 1000);
-    return null;
-  }
-  if (result.error === 'authorization_pending') return null;
-  throw new Error(result.error_description || result.error || 'GitHub giriş isteği reddedildi.');
 }
 
 export async function currentGitHubUser(token) {
