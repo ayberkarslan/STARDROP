@@ -76,9 +76,10 @@ while (Date.now() < deadline) {
     if (report.valid && (parseInt(report.testIdHash, 16) >>> 0) === expected.test
       && (parseInt(report.profileHash, 16) >>> 0) === expected.profile
       && (parseInt(report.runHash, 16) >>> 0) === expected.run
-      && ['PASS', 'FAIL', 'FATAL'].includes(report.state)) {
+      && (['PASS', 'FAIL', 'FATAL'].includes(report.state) || (testId === 'led-blink' && report.state === 'RUNNING'))) {
       console.log(JSON.stringify(report, null, 2));
-      process.exit(report.state === 'PASS' ? 0 : 1);
+      if (testId === 'led-blink' && report.state === 'RUNNING') console.log('LED firmware çalışıyor; fiziksel yanıp sönmeyi kullanıcı doğrulamalı.');
+      process.exit(report.state === 'PASS' || testId === 'led-blink' && report.state === 'RUNNING' ? 0 : 1);
     }
   } catch (_) { /* SWD reset penceresinde tekrar dene. */ }
   await new Promise((resolve) => setTimeout(resolve, 750));

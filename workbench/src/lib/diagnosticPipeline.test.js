@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import JSZip from 'jszip';
 import { profileFromNetlist } from './netlistProfile.js';
-import { createManualI2cProfile, validateTestTarget } from './boardProfile.js';
+import { createManualI2cProfile, createManualLedProfile, validateTestTarget } from './boardProfile.js';
 import { readDiagnosticArtifact } from './diagnosticArtifact.js';
 import { DEFAULT_TEST_CATALOG, testForComponent } from './testCatalog.js';
 
@@ -75,3 +75,25 @@ for (const fixture of [
     }
   });
 }
+
+test('one LED template compiles distinct BlackPill images from generated pin defines', async () => {
+  const output = await mkdtemp(join(tmpdir(), 'stardrop-led-pipeline-'));
+  try {
+    const binaries = [];
+    for (const blinkMs of [100, 1000]) {
+      const profile = createManualLedProfile({ name: 'BlackPill', mcuPart: 'STM32F401CCU6', pin: 'PC13', activeLow: true, blinkMs });
+      profile.targetUid = uid;
+      profile.connections[0].approved = true;
+      const directory = join(output, String(blinkMs));
+      const profileFile = join(output, `profile-${blinkMs}.json`);
+      await writeFile(profileFile, JSON.stringify(profile));
+      execFileSync(process.execPath, [builder, profileFile, 'D1', 'led-blink', directory, `led-${blinkMs}`], { cwd: diagnostics, stdio: 'pipe' });
+      const header = await readFile(join(directory, 'generated_config.h'), 'utf8');
+      assert.match(header, /#define STARDROP_LED_PORT 2/);
+      assert.match(header, /#define STARDROP_LED_PIN 13/);
+      assert.match(header, new RegExp(`#define STARDROP_BLINK_MS ${blinkMs}`));
+      binaries.push(await readFile(join(directory, 'led-blink-stm32f401cc.bin')));
+    }
+    assert.notDeepEqual(binaries[0], binaries[1]);
+  } finally { await rm(output, { recursive: true, force: true }); }
+});

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   newBoardProfile,
   createManualI2cProfile,
+  createManualLedProfile,
   overallConfidence,
   supportedPeripheral,
   validateTestTarget,
@@ -73,4 +74,15 @@ test('breadboard profile starts unapproved and uses chosen software I2C pins', (
   assert.equal(profile.connections.every((item) => !item.approved), true);
   assert.equal(overallConfidence(profile), 0);
   assert.throws(() => createManualI2cProfile({ name: 'Bad', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'BMP180', scl: 'PA13', sda: 'PB1' }), /yazılımsal I²C/);
+});
+
+test('LED profile validates BlackPill PC13 and rejects SWD pins', () => {
+  const profile = createManualLedProfile({ name: 'BlackPill', mcuPart: 'STM32F401CCU6', pin: 'pc13', activeLow: true, blinkMs: 100 });
+  assert.equal(profile.connections[0].mcuPin, 'PC13');
+  assert.equal(profile.components[0].activeLow, true);
+  assert.equal(validateTestTarget(profile, 'D1').valid, false);
+  profile.connections[0].approved = true;
+  assert.equal(validateTestTarget(profile, 'D1').valid, true);
+  assert.throws(() => createManualLedProfile({ name: 'Bad', mcuPart: 'STM32F401CCU6', pin: 'PA13' }), /uygun değil/);
+  assert.throws(() => createManualLedProfile({ name: 'Bad', mcuPart: 'STM32F401CCU6', pin: 'PC9' }), /uygun değil/);
 });
