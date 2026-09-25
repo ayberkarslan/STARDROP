@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
+mod local_build;
 
 const AUTH_WORKER: &str = "https://stardrop-auth.ayberkarslann0.workers.dev";
 
@@ -300,7 +301,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, download_artifact, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, download_artifact, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::compile_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }

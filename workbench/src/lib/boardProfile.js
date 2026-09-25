@@ -88,6 +88,21 @@ export function createManualI2cProfile({ name, mcuPart, componentRef, componentP
   return profile;
 }
 
+export function createManualLedProfile({ name, mcuPart, pin, activeLow = true, blinkMs = 100 }) {
+  const part = String(mcuPart || '').trim().toUpperCase();
+  const gpio = normalizePin(pin);
+  if (!String(name || '').trim() || !/^STM32F401C[CDE]/.test(part) && !part.startsWith('STM32F446RE')) throw new Error('Kart adı ve desteklenen STM32 modeli gerekli.');
+  const capability = supportedPeripheral(part, 'GPIO', 'LED', gpio);
+  if (capability.supported !== true) throw new Error(capability.reason || 'LED GPIO geçersiz.');
+  const interval = Number(blinkMs);
+  if (!Number.isInteger(interval) || interval < 50 || interval > 5000) throw new Error('LED aralığı 50–5000 ms olmalı.');
+  const profile = newBoardProfile({ name: String(name).trim(), mcuPart: part });
+  profile.components = [{ ref: 'D1', part: 'LED', category: 'OUTPUT', protocol: 'GPIO', peripheral: 'GPIO', activeLow: Boolean(activeLow), blinkMs: interval }];
+  profile.connections = [{ componentRef: 'D1', componentPart: 'LED', role: 'LED', sensorPin: 'LED', mcuPin: gpio,
+    peripheral: 'GPIO', approved: false, source: 'USER', path: [], evidence: {}, confidence: 0 }];
+  return profile;
+}
+
 export function confidenceForConnection(connection) {
   const evidence = connection.evidence || {};
   let score = 0;
@@ -109,6 +124,14 @@ export function confidenceLevel(score) {
 export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   const family = canonicalMcu(mcuPart);
   const normalized = normalizePin(pin);
+  if (peripheral === 'GPIO' && role === 'LED') {
+    const match = normalized?.match(/^P([ABC])(\d{1,2})$/);
+    const port = match?.[1];
+    const index = match ? Number(match[2]) : -1;
+    const supported = Boolean(['STM32F401', 'STM32F446'].includes(family) && index <= 15
+      && !(port === 'A' && (index === 13 || index === 14)) && (port !== 'C' || index >= 13));
+    return { supported, reason: supported ? null : `${normalized || pin || 'Boş pin'} ${mcuPart} LED testi için uygun değil.` };
+  }
   if (/^SOFT_I2C(?:_[1-9]\d*)?$/.test(peripheral || '') && ['SCL', 'SDA'].includes(role)) {
     const match = normalized?.match(/^P([A-C])(\d{1,2})$/);
     const port = match?.[1];
