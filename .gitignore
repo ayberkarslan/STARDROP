@@ -6,6 +6,7 @@ workbench/node_modules/
 workbench/dist/
 workbench/src-tauri/target/
 workbench/src-tauri/gen/
+workbench/src-tauri/toolchain/
 workbench/.env
 workbench/.env.*
 

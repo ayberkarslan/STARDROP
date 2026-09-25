@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run prepare:toolchain",
     "frontendDist": "../dist"
   },
   "app": {
@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": ["toolchain/"],
     "category": "DeveloperTool",
     "shortDescription": "STARDROP STM32 hardware validation workbench"
   }
