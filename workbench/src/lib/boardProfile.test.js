@@ -85,4 +85,5 @@ test('LED profile validates BlackPill PC13 and rejects SWD pins', () => {
   assert.equal(validateTestTarget(profile, 'D1').valid, true);
   assert.throws(() => createManualLedProfile({ name: 'Bad', mcuPart: 'STM32F401CCU6', pin: 'PA13' }), /uygun değil/);
   assert.throws(() => createManualLedProfile({ name: 'Bad', mcuPart: 'STM32F401CCU6', pin: 'PC9' }), /uygun değil/);
+  assert.equal(createManualLedProfile({ name: 'Nucleo', mcuPart: 'STM32F446RET6', pin: 'PC9' }).connections[0].mcuPin, 'PC9');
 });

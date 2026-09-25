@@ -41,7 +41,7 @@ if (isSelfTest) {
   const connections = profile.connections?.filter((item) => item.componentRef === componentRef);
   if (component?.protocol !== 'GPIO' || connections?.length !== 1 || connections[0].role !== 'LED' || !connections[0].approved) throw new Error('Onaylı tek bir LED GPIO bağlantısı gerekli.');
   ledPin = parsePin(connections[0].mcuPin);
-  if (ledPin.port === 2 && ledPin.pin < 13) throw new Error('LED için bu MCU paketinde doğrulanmamış GPIO.');
+  if (target === 'stm32f401cc' && ledPin.port === 2 && ledPin.pin < 13) throw new Error('LED için bu MCU paketinde doğrulanmamış GPIO.');
   ledActiveLow = component.activeLow === true ? 1 : 0;
   blinkMs = Number(component.blinkMs);
   if (!Number.isInteger(blinkMs) || blinkMs < 50 || blinkMs > 5000) throw new Error('LED aralığı 50–5000 ms olmalı.');

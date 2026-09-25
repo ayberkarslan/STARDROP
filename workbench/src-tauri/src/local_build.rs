@@ -185,7 +185,7 @@ fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRe
     if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C') { return Err("LED GPIO geçersiz".into()); }
     let port = bytes[1] - b'A';
     let number: u8 = pin[2..].parse().map_err(|_| "LED GPIO geçersiz")?;
-    if number > 15 || (port == 0 && (number == 13 || number == 14)) || (port == 2 && number < 13) { return Err("GPIO bu hedef için uygun değil".into()); }
+    if number > 15 || (port == 0 && (number == 13 || number == 14)) || (port == 2 && target == "stm32f401cc" && number < 13) { return Err("GPIO bu hedef için uygun değil".into()); }
     let interval = component["blinkMs"].as_u64().ok_or("LED aralığı eksik")?;
     if !(50..=5000).contains(&interval) { return Err("LED aralığı 50–5000 ms olmalı".into()); }
     let active_low = component["activeLow"].as_bool().ok_or("LED polaritesi eksik")?;
@@ -250,6 +250,16 @@ mod tests {
         bad.profile_json = bad.profile_json.replace("PC13", "PA13");
         let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../diagnostics");
         assert!(compile_led_at(&source, Path::new("arm-none-eabi-gcc"), Path::new("arm-none-eabi-objcopy"), bad, "test-source".into()).is_err());
+    }
+
+    #[test]
+    fn led_builder_allows_f446_port_c() {
+        let mut request = fixture(100);
+        request.profile_json = request.profile_json.replace("STM32F401CDU6", "STM32F446RET6").replace("PC13", "PC9");
+        request.mcu_part = "STM32F446RET6".into();
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../diagnostics");
+        let result = compile_led_at(&source, Path::new("arm-none-eabi-gcc"), Path::new("arm-none-eabi-objcopy"), request, "test-source".into()).unwrap();
+        assert!(result.header.contains("#define STARDROP_LED_PIN 9"));
     }
 
     #[test]

@@ -129,7 +129,8 @@ export function supportedPeripheral(mcuPart, peripheral, role, pin) {
     const port = match?.[1];
     const index = match ? Number(match[2]) : -1;
     const supported = Boolean(['STM32F401', 'STM32F446'].includes(family) && index <= 15
-      && !(port === 'A' && (index === 13 || index === 14)) && (port !== 'C' || index >= 13));
+      && !(port === 'A' && (index === 13 || index === 14))
+      && (port !== 'C' || family === 'STM32F446' || index >= 13));
     return { supported, reason: supported ? null : `${normalized || pin || 'Boş pin'} ${mcuPart} LED testi için uygun değil.` };
   }
   if (/^SOFT_I2C(?:_[1-9]\d*)?$/.test(peripheral || '') && ['SCL', 'SDA'].includes(role)) {
