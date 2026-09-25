@@ -11,12 +11,15 @@ import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, saveCa
 import { hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import BoardMap from './BoardMap.jsx';
 import EspConsole from './EspConsole.jsx';
+import SelectMenu from './SelectMenu.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { espJson, espStream, espUpload } from './lib/espTransport.js';
 import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
+const mcuOptions = ['STM32F401CCU6', 'STM32F401CDU6', 'STM32F401CEU6', 'STM32F446RET6'].map((value) => ({ value, label: value }));
+const ledTypeOptions = [{ value: 'low', label: 'Aktif düşük · BlackPill LED' }, { value: 'high', label: 'Aktif yüksek · harici LED' }];
 
 function Badge({ children, tone = 'muted' }) { return <span className={`badge ${tone}`}>{children}</span>; }
 
@@ -66,6 +69,7 @@ export default function App() {
   const [acceptedSuggestions, setAcceptedSuggestions] = useState([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [githubConfig, setGithubConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.github.config') || '{"repository":"","ref":"main"}'));
+  const [blackpillProject, setBlackpillProject] = useState(() => localStorage.getItem('stardrop.blackpill.project') || (import.meta.env.DEV ? '/home/ayberk/YRT_Projects/blackpill' : ''));
   const [githubUser, setGithubUser] = useState(null);
   const [catalog, setCatalog] = useState(DEFAULT_TEST_CATALOG);
   const [catalogSha, setCatalogSha] = useState(null);
@@ -95,7 +99,8 @@ export default function App() {
     : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu prototip yalnız STM32F401CC/CD/CE ve STM32F446RE firmware’i derler.'
     : !isLedTest ? 'Sensör testleri yerel derlemeye henüz taşınmadı; LED pilotu kullanılabilir.'
-    : !sourceStatus?.activeSha ? 'Önce LED test kaynağını GitHub’dan indir.'
+    : blackpillProject.trim() && !/^STM32F401C[CD]/.test(profile?.mcu?.part || '') ? 'Yerel BlackPill CubeMX projesi yalnız STM32F401CC/CD hedefini destekler.'
+    : !blackpillProject.trim() && !sourceStatus?.activeSha ? 'Önce LED test kaynağını GitHub’dan indir.'
     : !Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000 ? 'Blink aralığı 50–5000 ms olmalı.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
@@ -418,8 +423,10 @@ export default function App() {
     try {
       const profileJson = JSON.stringify(profile);
       setTestStage('LED yazılımı bilgisayarda derleniyor…');
-      const built = await invoke('compile_led', { request: { repository: githubConfig.repository || '', account: githubUser.login,
-        profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid } });
+      const useBlackpillProject = Boolean(blackpillProject.trim());
+      const built = await invoke(useBlackpillProject ? 'compile_blackpill_led' : 'compile_led', { request: { repository: githubConfig.repository || '', account: githubUser.login,
+        profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid,
+        projectPath: useBlackpillProject ? blackpillProject.trim() : null } });
       const firmwareBytes = Uint8Array.from(built.bytes);
       if (await sha256Hex(new Blob([firmwareBytes])) !== built.sha256) throw new Error('Derlenen BIN özeti uyuşmuyor.');
       if (firmwareBytes.length > target.flashSizeKb * 1024) throw new Error('BIN hedef flash kapasitesini aşıyor.');
@@ -430,6 +437,15 @@ export default function App() {
       setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
       const file = new File([firmwareBytes], 'stardrop-led.bin', { type: 'application/octet-stream' });
       if (!await flashFirmware(file)) throw new Error('ESP32 flash işlemi başarısız.');
+      if (useBlackpillProject) {
+        setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
+          testId: 'led-blink', targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
+          firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin,
+          blinkMs: activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
+        setVisualPending(requestId);
+        setTestStage('BlackPill HAL firmware yüklendi. LED’yi gözle kontrol et.');
+        return;
+      }
       setTestStage('STM32’nin başlangıç raporu bekleniyor…');
       const report = await waitForDiagnosticReport({
         test: hash32FromSha256(await sha256Hex('led-blink')),
@@ -502,10 +518,10 @@ export default function App() {
             <div className="manual-kind"><button type="button" className={manualKind === 'led' ? 'active' : ''} onClick={() => setManualKind('led')}>LED TESTİ</button><button type="button" className={manualKind === 'i2c' ? 'active' : ''} onClick={() => setManualKind('i2c')}>I²C SENSÖR</button></div>
             <form className="manual-grid" onSubmit={createManualBoard}>
               <label>Kart adı<input value={manualBoard.name} onChange={(event) => updateManualBoard('name', event.target.value)} /></label>
-              <label>STM32 modeli<select value={manualBoard.mcuPart} onChange={(event) => { updateManualBoard('mcuPart', event.target.value); if (manualKind === 'led') setManualLed((current) => ({ ...current, pin: event.target.value.startsWith('STM32F446') ? 'PA5' : 'PC13', activeLow: !event.target.value.startsWith('STM32F446') })); }}><option>STM32F401CCU6</option><option>STM32F401CDU6</option><option>STM32F401CEU6</option><option>STM32F446RET6</option></select></label>
+              <label>STM32 modeli<SelectMenu ariaLabel="STM32 modeli" value={manualBoard.mcuPart} options={mcuOptions} onChange={(part) => { updateManualBoard('mcuPart', part); if (manualKind === 'led') setManualLed((current) => ({ ...current, pin: part.startsWith('STM32F446') ? 'PA5' : 'PC13', activeLow: !part.startsWith('STM32F446') })); }} /></label>
               {manualKind === 'led' ? <>
                 <label>LED GPIO<input value={manualLed.pin} placeholder="PC13" onChange={(event) => setManualLed((current) => ({ ...current, pin: event.target.value.toUpperCase() }))} /></label>
-                <label>LED tipi<select value={manualLed.activeLow ? 'low' : 'high'} onChange={(event) => setManualLed((current) => ({ ...current, activeLow: event.target.value === 'low' }))}><option value="low">Aktif düşük</option><option value="high">Aktif yüksek</option></select></label>
+                <label>LED tipi<SelectMenu ariaLabel="LED tipi" value={manualLed.activeLow ? 'low' : 'high'} options={ledTypeOptions} onChange={(value) => setManualLed((current) => ({ ...current, activeLow: value === 'low' }))} /></label>
                 <label>Blink aralığı (ms)<input type="number" min="50" max="5000" step="50" value={manualLed.blinkMs} onChange={(event) => setManualLed((current) => ({ ...current, blinkMs: event.target.value }))} /></label>
               </> : <>
                 <label>Sensör parçası<input value={manualBoard.componentPart} onChange={(event) => updateManualBoard('componentPart', event.target.value)} /></label>
@@ -538,13 +554,16 @@ export default function App() {
             {!activeSensor ? <p>Kart görünümünden test edilecek bileşeni seç.</p> : isLedTest ? <div className="sensor-test-detail">
               <div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {componentConnections[0]?.mcuPin || 'GPIO seçilmedi'} · {activeSensor.blinkMs} ms · {activeSensor.activeLow ? 'aktif düşük' : 'aktif yüksek'}</span></div>
               <div className="led-config">
-                <label>LED GPIO<select value={componentConnections[0]?.mcuPin || ''} onChange={(event) => editConnection(profile.connections.indexOf(componentConnections[0]), 'mcuPin', event.target.value)}>{['A', 'B', 'C'].flatMap((port) => Array.from({ length: 16 }, (_, number) => `P${port}${number}`)).filter((pin) => supportedPeripheral(profile.mcu.part, 'GPIO', 'LED', pin).supported).map((pin) => <option key={pin}>{pin}</option>)}</select></label>
-                <label>Polarite<select value={activeSensor.activeLow ? 'low' : 'high'} onChange={(event) => updateLedSetting('activeLow', event.target.value === 'low')}><option value="low">Aktif düşük</option><option value="high">Aktif yüksek</option></select></label>
+                <label>LED GPIO<SelectMenu ariaLabel="LED GPIO" value={componentConnections[0]?.mcuPin || ''} options={['A', 'B', 'C'].flatMap((port) => Array.from({ length: 16 }, (_, number) => `P${port}${number}`)).filter((pin) => supportedPeripheral(profile.mcu.part, 'GPIO', 'LED', pin).supported).map((pin) => ({ value: pin, label: pin }))} onChange={(pin) => editConnection(profile.connections.indexOf(componentConnections[0]), 'mcuPin', pin)} /></label>
+                <label>Polarite<SelectMenu ariaLabel="LED polaritesi" value={activeSensor.activeLow ? 'low' : 'high'} options={ledTypeOptions} onChange={(value) => updateLedSetting('activeLow', value === 'low')} /></label>
                 <label>Blink aralığı (ms)<input type="number" min="50" max="5000" step="50" value={activeSensor.blinkMs} onChange={(event) => updateLedSetting('blinkMs', Number(event.target.value))} /></label>
               </div>
-              <div className="source-line"><span>TEST KAYNAĞI · {sourceStatus?.activeSha ? sourceStatus.activeSha.slice(0, 10) : 'İNDİRİLMEDİ'}{sourceStatus?.offline ? ' · ÇEVRİMDIŞI ÖNBELLEK' : ''}</span><button className="secondary" disabled={sourceBusy} onClick={refreshSource}><RefreshCw />SÜRÜMÜ KONTROL ET</button></div>
-              {sourceStatus?.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha && <div className="source-update"><span>Yeni kaynak sürümü: {sourceStatus.latestSha.slice(0, 10)}. Etkin sürüm sen onaylayana kadar değişmez.</span><button className="secondary" disabled={sourceBusy} onClick={activateSource}>İNDİR VE ETKİNLEŞTİR</button></div>}
-              {sourceError && <div className="validation warn">{sourceError}</div>}
+              <label className="local-project-label">YEREL BLACKPILL PROJESİ<input value={blackpillProject} placeholder="/home/.../blackpill · boş bırak: tanı şablonu" onChange={(event) => { setBlackpillProject(event.target.value); localStorage.setItem('stardrop.blackpill.project', event.target.value); }} /><small>Bu klasördeki Makefile çalıştırılır. Yalnız güvendiğin projeyi seç; boş bırakırsan mevcut tanı şablonu kullanılır.</small></label>
+              {blackpillProject.trim() ? <div className="source-line"><span>KAYNAK · YEREL CUBEMX PROJESİ</span><span>Başlık her derlemede profilden üretilir.</span></div> : <>
+                <div className="source-line"><span>TEST KAYNAĞI · {sourceStatus?.activeSha ? sourceStatus.activeSha.slice(0, 10) : 'İNDİRİLMEDİ'}{sourceStatus?.offline ? ' · ÇEVRİMDIŞI ÖNBELLEK' : ''}</span><button className="secondary" disabled={sourceBusy} onClick={refreshSource}><RefreshCw />SÜRÜMÜ KONTROL ET</button></div>
+                {sourceStatus?.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha && <div className="source-update"><span>Yeni kaynak sürümü: {sourceStatus.latestSha.slice(0, 10)}. Etkin sürüm sen onaylayana kadar değişmez.</span><button className="secondary" disabled={sourceBusy} onClick={activateSource}>İNDİR VE ETKİNLEŞTİR</button></div>}
+              </>}
+              {!blackpillProject.trim() && sourceError && <div className="validation warn">{sourceError}</div>}
               <p className="destructive-note">Bu test STM32’deki mevcut yazılımı siler. LED’nin gerçekten çalıştığını yalnız sen gözle doğrulayabilirsin.</p>
               <button className="primary" disabled={testBusy || Boolean(testBlocker)} onClick={() => setConfirmLedFlash(true)}><Send />{testBusy ? 'TEST ÇALIŞIYOR…' : 'YERELDE DERLE VE YÜKLE'}</button>
               {testBlocker && <div className="validation warn">{testBlocker}</div>}
