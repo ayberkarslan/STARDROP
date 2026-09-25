@@ -18,6 +18,7 @@ export default function SelectMenu({ value, options, onChange, ariaLabel }) {
     if (event.key === 'Escape') { setOpen(false); root.current?.querySelector('.select-trigger')?.focus(); return; }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
+    if (!open) { setOpen(true); requestAnimationFrame(() => list.current?.querySelector('[aria-selected="true"]')?.focus()); return; }
     const choices = [...(list.current?.querySelectorAll('.select-option') || [])];
     if (!choices.length) return;
     const current = choices.indexOf(document.activeElement);

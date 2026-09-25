@@ -434,6 +434,12 @@ export default function App() {
       if (!live.connected || live.uid !== target.uid || live.uid !== profile.targetUid || !live.model?.startsWith(profile.mcu.family)) {
         throw new Error('Canlı STM32 hedefi profille uyuşmuyor; flash yapılmadı.');
       }
+      const expectedDeviceId = profile.mcu.part.startsWith('STM32F401CC') ? '0x423'
+        : profile.mcu.part.startsWith('STM32F401C') ? '0x433'
+        : profile.mcu.part.startsWith('STM32F446RE') ? '0x421' : null;
+      if (expectedDeviceId && live.deviceId?.toLowerCase() !== expectedDeviceId) {
+        throw new Error(`STM32 varyantı uyuşmuyor: ${expectedDeviceId} beklenirken ${live.deviceId || 'bilinmiyor'} okundu.`);
+      }
       setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
       const file = new File([firmwareBytes], 'stardrop-led.bin', { type: 'application/octet-stream' });
       if (!await flashFirmware(file)) throw new Error('ESP32 flash işlemi başarısız.');
@@ -558,7 +564,7 @@ export default function App() {
                 <label>Polarite<SelectMenu ariaLabel="LED polaritesi" value={activeSensor.activeLow ? 'low' : 'high'} options={ledTypeOptions} onChange={(value) => updateLedSetting('activeLow', value === 'low')} /></label>
                 <label>Blink aralığı (ms)<input type="number" min="50" max="5000" step="50" value={activeSensor.blinkMs} onChange={(event) => updateLedSetting('blinkMs', Number(event.target.value))} /></label>
               </div>
-              <label className="local-project-label">YEREL BLACKPILL PROJESİ<input value={blackpillProject} placeholder="/home/.../blackpill · boş bırak: tanı şablonu" onChange={(event) => { setBlackpillProject(event.target.value); localStorage.setItem('stardrop.blackpill.project', event.target.value); }} /><small>Bu klasördeki Makefile çalıştırılır. Yalnız güvendiğin projeyi seç; boş bırakırsan mevcut tanı şablonu kullanılır.</small></label>
+              <label className="local-project-label">YEREL BLACKPILL PROJESİ<input value={blackpillProject} placeholder="/home/.../blackpill · boş bırak: tanı şablonu" onChange={(event) => { setBlackpillProject(event.target.value); localStorage.setItem('stardrop.blackpill.project', event.target.value); }} /><small>Projedeki stardrop-project.json kaynak listesini kullanır; Makefile çalıştırılmaz. Boş bırakırsan mevcut tanı şablonu kullanılır.</small></label>
               {blackpillProject.trim() ? <div className="source-line"><span>KAYNAK · YEREL CUBEMX PROJESİ</span><span>Başlık her derlemede profilden üretilir.</span></div> : <>
                 <div className="source-line"><span>TEST KAYNAĞI · {sourceStatus?.activeSha ? sourceStatus.activeSha.slice(0, 10) : 'İNDİRİLMEDİ'}{sourceStatus?.offline ? ' · ÇEVRİMDIŞI ÖNBELLEK' : ''}</span><button className="secondary" disabled={sourceBusy} onClick={refreshSource}><RefreshCw />SÜRÜMÜ KONTROL ET</button></div>
                 {sourceStatus?.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha && <div className="source-update"><span>Yeni kaynak sürümü: {sourceStatus.latestSha.slice(0, 10)}. Etkin sürüm sen onaylayana kadar değişmez.</span><button className="secondary" disabled={sourceBusy} onClick={activateSource}>İNDİR VE ETKİNLEŞTİR</button></div>}

@@ -124,6 +124,7 @@ pub async fn activate_source(app: tauri::AppHandle, account: String, repository:
 pub struct LedBuildRequest {
     repository: String, account: String, profile_json: String, component_ref: String,
     request_id: String, mcu_part: String, target_uid: String,
+    #[serde(default)] project_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -171,6 +172,29 @@ fn compile_led_blocking(app: &tauri::AppHandle, request: LedBuildRequest) -> Res
 }
 
 fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest, sha: String) -> Result<LedBuildResult, String> {
+    let (port, number, interval, active_low, target) = validate_led_request(&request)?;
+    let header = format!("#pragma once\n#define STARDROP_SCL_PORT 0\n#define STARDROP_SCL_PIN 0\n#define STARDROP_SDA_PORT 0\n#define STARDROP_SDA_PIN 0\n#define STARDROP_LED_PORT {port}\n#define STARDROP_LED_PIN {number}\n#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_BLINK_MS {interval}\n#define STARDROP_VISUAL_TEST 1\n#define STARDROP_USE_I2C 0\n#define STARDROP_F401 {}\n#define STARDROP_TEST_ID_HASH {}\n#define STARDROP_PROFILE_HASH {}\n#define STARDROP_RUN_HASH {}\n", active_low as u8, (target == "stm32f401cc") as u8, hash32(b"led-blink"), hash32(request.profile_json.as_bytes()), hash32(request.request_id.as_bytes()));
+    let work = tempfile::tempdir().map_err(|error| error.to_string())?;
+    fs::write(work.path().join("generated_config.h"), &header).map_err(|error| error.to_string())?;
+    let elf = work.path().join("led.elf");
+    let bin = work.path().join("led.bin");
+    let output = Command::new(gcc)
+        .args(["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft", "-Os", "-std=c11", "-ffreestanding", "-fno-builtin", "-ffunction-sections", "-fdata-sections", "-Wall", "-Wextra", "-Werror"])
+        .arg("-I").arg(work.path()).arg("-I").arg(source.join("runtime")).arg("-I").arg(source.join("firmware"))
+        .arg(source.join("firmware/startup.c")).arg(source.join("firmware/main.c")).arg(source.join("firmware/platform_i2c.c"))
+        .arg(source.join("runtime/stardrop_diagnostic_report.c")).arg(source.join("templates/led_blink.c"))
+        .args(["-nostdlib", "-Wl,--gc-sections"]).arg("-T").arg(source.join(format!("firmware/{target}.ld")))
+        .arg("-lgcc").arg("-o").arg(&elf).output().map_err(|error| format!("Derleyici başlatılamadı: {error}"))?;
+    if !output.status.success() { return Err(format!("LED derlenemedi: {}", String::from_utf8_lossy(&output.stderr).chars().take(1600).collect::<String>())); }
+    let converted = Command::new(objcopy).args(["-O", "binary"]).arg(&elf).arg(&bin).output().map_err(|error| error.to_string())?;
+    if !converted.status.success() { return Err(format!("BIN oluşturulamadı: {}", String::from_utf8_lossy(&converted.stderr))); }
+    let bytes = fs::read(bin).map_err(|error| error.to_string())?;
+    let maximum = if target == "stm32f401cc" { 256 * 1024 } else { 512 * 1024 };
+    if bytes.len() < 64 || bytes.len() > maximum { return Err("Derlenen BIN flash boyutuna uymuyor".into()); }
+    Ok(LedBuildResult { sha256: digest(&bytes), bytes, source_sha: sha, profile_hash: hash32(request.profile_json.as_bytes()), request_id: request.request_id, header })
+}
+
+fn validate_led_request(request: &LedBuildRequest) -> Result<(u8, u8, u64, bool, &'static str), String> {
     let profile: serde_json::Value = serde_json::from_str(&request.profile_json).map_err(|_| "Kart profili geçersiz")?;
     let component = profile["components"].as_array().and_then(|items| items.iter().find(|item| item["ref"] == request.component_ref)).ok_or("LED bileşeni yok")?;
     let connections: Vec<&serde_json::Value> = profile["connections"].as_array().ok_or("Pin listesi yok")?.iter().filter(|item| item["componentRef"] == request.component_ref).collect();
@@ -192,25 +216,97 @@ fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRe
     if !(50..=5000).contains(&interval) { return Err("LED aralığı 50–5000 ms olmalı".into()); }
     let active_low = component["activeLow"].as_bool().ok_or("LED polaritesi eksik")?;
     if request.request_id.len() > 100 || !request.request_id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-') { return Err("Çalıştırma kimliği geçersiz".into()); }
-    let header = format!("#pragma once\n#define STARDROP_SCL_PORT 0\n#define STARDROP_SCL_PIN 0\n#define STARDROP_SDA_PORT 0\n#define STARDROP_SDA_PIN 0\n#define STARDROP_LED_PORT {port}\n#define STARDROP_LED_PIN {number}\n#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_BLINK_MS {interval}\n#define STARDROP_VISUAL_TEST 1\n#define STARDROP_USE_I2C 0\n#define STARDROP_F401 {}\n#define STARDROP_TEST_ID_HASH {}\n#define STARDROP_PROFILE_HASH {}\n#define STARDROP_RUN_HASH {}\n", active_low as u8, (target == "stm32f401cc") as u8, hash32(b"led-blink"), hash32(request.profile_json.as_bytes()), hash32(request.request_id.as_bytes()));
+    Ok((port, number, interval, active_low, target))
+}
+
+#[tauri::command]
+pub async fn compile_blackpill_led(app: tauri::AppHandle, request: LedBuildRequest) -> Result<LedBuildResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let gcc = compiler(&app, "arm-none-eabi-gcc")?;
+        let objcopy = compiler(&app, "arm-none-eabi-objcopy")?;
+        let project = request.project_path.clone().ok_or("Yerel BlackPill proje klasörü seçilmedi")?;
+        compile_blackpill_at(Path::new(&project), &gcc, &objcopy, request)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectManifest {
+    schema_version: u8,
+    target: String,
+    linker_script: String,
+    cpu: String,
+    fpu: String,
+    float_abi: String,
+    defines: Vec<String>,
+    include_dirs: Vec<String>,
+    sources: Vec<String>,
+}
+
+fn safe_relative(value: &str) -> bool {
+    let path = Path::new(value);
+    !value.is_empty() && value.len() <= 180 && path.components().all(|part| matches!(part, std::path::Component::Normal(_)))
+}
+
+fn compile_blackpill_at(project: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest) -> Result<LedBuildResult, String> {
+    let (port, number, interval, active_low, target) = validate_led_request(&request)?;
+    if target != "stm32f401cc" { return Err("Bu CubeMX projesi yalnız STM32F401xC için üretildi".into()); }
+    if !request.mcu_part.starts_with("STM32F401CC") && !request.mcu_part.starts_with("STM32F401CD") {
+        return Err("Bu CubeMX projesi F401CC/CD için hazırlandı".into());
+    }
+    let project = project.canonicalize().map_err(|_| "BlackPill proje klasörü bulunamadı")?;
+    for required in ["stardrop-project.json", "Src/main.c", "Inc/main.h", "Inc/pin_configurations.h"] {
+        if !project.join(required).is_file() { return Err(format!("BlackPill projesinde {required} eksik")); }
+    }
+    let manifest: ProjectManifest = serde_json::from_slice(&fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Proje manifesti geçersiz: {error}"))?;
+    if manifest.schema_version != 1 || manifest.target != "STM32F401xC" || manifest.cpu != "cortex-m4"
+        || manifest.fpu != "fpv4-sp-d16" || manifest.float_abi != "hard" { return Err("Proje manifesti F401xC LED hedefiyle uyuşmuyor".into()); }
+    if manifest.sources.is_empty() || manifest.sources.len() > 64 || manifest.include_dirs.len() > 16
+        || !safe_relative(&manifest.linker_script) || manifest.sources.iter().any(|item| !safe_relative(item))
+        || manifest.include_dirs.iter().any(|item| !safe_relative(item))
+        || manifest.defines.iter().any(|item| item.len() > 50 || !item.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
+        return Err("Proje manifestinde geçersiz dosya veya derleme tanımı var".into());
+    }
+    let letter = (b'A' + port) as char;
+    let header = format!("#ifndef STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_SCHEMA_VERSION 1\n#define STARDROP_LED_GPIO_PORT GPIO{letter}\n#define STARDROP_LED_GPIO_PIN GPIO_PIN_{number}\n#define STARDROP_LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIO{letter}_CLK_ENABLE()\n#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8);
     let work = tempfile::tempdir().map_err(|error| error.to_string())?;
-    fs::write(work.path().join("generated_config.h"), &header).map_err(|error| error.to_string())?;
-    let elf = work.path().join("led.elf");
-    let bin = work.path().join("led.bin");
-    let output = Command::new(gcc)
-        .args(["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft", "-Os", "-std=c11", "-ffreestanding", "-fno-builtin", "-ffunction-sections", "-fdata-sections", "-Wall", "-Wextra", "-Werror"])
-        .arg("-I").arg(work.path()).arg("-I").arg(source.join("runtime")).arg("-I").arg(source.join("firmware"))
-        .arg(source.join("firmware/startup.c")).arg(source.join("firmware/main.c")).arg(source.join("firmware/platform_i2c.c"))
-        .arg(source.join("runtime/stardrop_diagnostic_report.c")).arg(source.join("templates/led_blink.c"))
-        .args(["-nostdlib", "-Wl,--gc-sections"]).arg("-T").arg(source.join(format!("firmware/{target}.ld")))
-        .arg("-lgcc").arg("-o").arg(&elf).output().map_err(|error| format!("Derleyici başlatılamadı: {error}"))?;
-    if !output.status.success() { return Err(format!("LED derlenemedi: {}", String::from_utf8_lossy(&output.stderr).chars().take(1600).collect::<String>())); }
-    let converted = Command::new(objcopy).args(["-O", "binary"]).arg(&elf).arg(&bin).output().map_err(|error| error.to_string())?;
-    if !converted.status.success() { return Err(format!("BIN oluşturulamadı: {}", String::from_utf8_lossy(&converted.stderr))); }
-    let bytes = fs::read(bin).map_err(|error| error.to_string())?;
-    let maximum = if target == "stm32f401cc" { 256 * 1024 } else { 512 * 1024 };
-    if bytes.len() < 64 || bytes.len() > maximum { return Err("Derlenen BIN flash boyutuna uymuyor".into()); }
-    Ok(LedBuildResult { sha256: digest(&bytes), bytes, source_sha: sha, profile_hash: hash32(request.profile_json.as_bytes()), request_id: request.request_id, header })
+    fs::write(work.path().join("pin_configurations.h"), &header).map_err(|error| error.to_string())?;
+    let mut objects = Vec::new();
+    for (index, source) in manifest.sources.iter().enumerate() {
+        let input = project.join(source);
+        if !input.is_file() { return Err(format!("Proje kaynağı eksik: {source}")); }
+        let object = work.path().join(format!("source-{index}.o"));
+        let mut command = Command::new(gcc);
+        command.args(["-c", "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-Og", "-Wall", "-fdata-sections", "-ffunction-sections"]);
+        if source.ends_with(".s") { command.args(["-x", "assembler-with-cpp"]); }
+        else if !source.ends_with(".c") { return Err(format!("Desteklenmeyen kaynak uzantısı: {source}")); }
+        for define in &manifest.defines { command.arg(format!("-D{define}")); }
+        command.arg("-I").arg(work.path());
+        for include in &manifest.include_dirs { command.arg("-I").arg(project.join(include)); }
+        let output = command.arg(&input).arg("-o").arg(&object).output().map_err(|error| format!("ARM derleyici başlatılamadı: {error}"))?;
+        if !output.status.success() { return Err(format!("{source} derlenemedi: {}", String::from_utf8_lossy(&output.stderr).chars().take(2000).collect::<String>())); }
+        objects.push(object);
+    }
+    let elf = work.path().join("blackpill.elf");
+    let bin = work.path().join("blackpill.bin");
+    let mut link = Command::new(gcc);
+    link.args(["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-specs=nano.specs"]);
+    for object in &objects { link.arg(object); }
+    let linked = link.arg("-T").arg(project.join(&manifest.linker_script))
+        .args(["-Wl,--gc-sections", "-lc", "-lm", "-lnosys"]).arg("-o").arg(&elf)
+        .output().map_err(|error| format!("ARM linker başlatılamadı: {error}"))?;
+    if !linked.status.success() { return Err(format!("BlackPill bağlama hatası: {}", String::from_utf8_lossy(&linked.stderr).chars().take(2000).collect::<String>())); }
+    let converted = Command::new(objcopy).args(["-O", "binary", "-S"]).arg(&elf).arg(&bin)
+        .output().map_err(|error| format!("Objcopy başlatılamadı: {error}"))?;
+    if !converted.status.success() { return Err(format!("BIN oluşturulamadı: {}", String::from_utf8_lossy(&converted.stderr).chars().take(2000).collect::<String>())); }
+    let bytes = fs::read(bin).map_err(|error| format!("BIN okunamadı: {error}"))?;
+    if bytes.len() < 64 || bytes.len() > 256 * 1024 { return Err("Derlenen BIN boyutu geçersiz".into()); }
+    let source = [fs::read(project.join("Src/main.c")).map_err(|error| error.to_string())?,
+        fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?].concat();
+    Ok(LedBuildResult { sha256: digest(&bytes), bytes,
+        source_sha: format!("local-{}", &digest(&source)[..12]), profile_hash: hash32(request.profile_json.as_bytes()),
+        request_id: request.request_id, header })
 }
 
 #[tauri::command]
@@ -233,7 +329,7 @@ mod tests {
         });
         LedBuildRequest { repository: String::new(), account: "tester".into(), profile_json: profile.to_string(),
             component_ref: "D1".into(), request_id: format!("test-{interval}"), mcu_part: "STM32F401CDU6".into(),
-            target_uid: "004B00344231501920393037".into() }
+            target_uid: "004B00344231501920393037".into(), project_path: None }
     }
 
     #[test]
@@ -279,5 +375,24 @@ mod tests {
         assert!(verified_source(&source));
         fs::write(source.join("templates/led_blink.c"), b"modified").unwrap();
         assert!(!verified_source(&source));
+    }
+
+    #[test]
+    fn local_blackpill_project_uses_generated_header() {
+        let Ok(project) = std::env::var("STARDROP_BLACKPILL_PROJECT") else { return; };
+        let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("toolchain/bin/arm-none-eabi-gcc");
+        let gcc = if bundled.is_file() { bundled } else { PathBuf::from("/usr/bin/arm-none-eabi-gcc") };
+        let objcopy = gcc.with_file_name("arm-none-eabi-objcopy");
+        let fast = compile_blackpill_at(Path::new(&project), &gcc, &objcopy, fixture(100)).unwrap();
+        let slow = compile_blackpill_at(Path::new(&project), &gcc, &objcopy, fixture(1000)).unwrap();
+        let mut other_pin = fixture(100);
+        other_pin.profile_json = other_pin.profile_json.replace("PC13", "PB0");
+        let moved = compile_blackpill_at(Path::new(&project), &gcc, &objcopy, other_pin).unwrap();
+        assert!(fast.header.contains("#define STARDROP_LED_GPIO_PORT GPIOC"));
+        assert!(slow.header.contains("#define STARDROP_LED_BLINK_MS 1000"));
+        assert!(moved.header.contains("#define STARDROP_LED_GPIO_PORT GPIOB"));
+        assert_ne!(fast.sha256, slow.sha256);
+        assert_ne!(fast.sha256, moved.sha256);
+        if let Ok(path) = std::env::var("STARDROP_BLACKPILL_EXPORT") { fs::write(path, fast.bytes).unwrap(); }
     }
 }

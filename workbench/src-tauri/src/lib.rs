@@ -282,7 +282,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::compile_led, local_build::clear_source_cache])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }

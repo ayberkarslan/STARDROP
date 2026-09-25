@@ -17,6 +17,10 @@ Programlayıcıda `.bin` veya STM32 için derlenmiş 32-bit little-endian ARM `.
 
 F401CC/CD/CE ve F446RE LED pilotunda desteklenir. Sensör şablonlarının Workbench'te yerel derlemesi henüz yoktur; sensör düğmeleri yanlış başarı göstermesin diye devre dışıdır. Misafir ve GitHub kullanıcıları Hızlı Yükleme ekranından hazır `.bin`/`.elf` yüklemeye devam edebilir.
 
+Geliştirme sırasında BlackPill'in gerçek CubeMX/HAL projesini kullanmak için LED testi ekranındaki **Yerel BlackPill projesi** alanına `/home/ayberk/YRT_Projects/blackpill` klasörünü yaz. Bu makinede alan varsayılan olarak o klasörü gösterir. Workbench `stardrop-project.json` listesindeki kaynakları doğrudan ARM GCC ile derler; `Makefile` veya kaynak `build/` dizinini çalıştırmaz/değiştirmez. `pin_configurations.h` şeması proje içinde sabit, seçilen pin/polarite/zamanla doldurulmuş kopyası geçici derleme dizinindedir. Bu gerçek HAL projesi yalnız F401CC/CD ile uyumludur. Kodda SRAM tanı raporu olmadığından flash doğrulamasından sonra LED sonucunu kullanıcı gözle kaydeder. Alanı boşaltırsan önceki hafif tanı şablonu ve onun SRAM başlangıç raporu kullanılır.
+
+Yerel klasör seçimi, GitHub kaynak indirme özelliğinden ayrıdır. BlackPill projesinin GitHub deposunu henüz Workbench'e bağlamadık; Entegrasyonlar'daki tanı deposu ayarı mevcut `diagnostics/` kataloğuna aittir. BlackPill deposu hazırlanıp GitHub App'e erişim verildiğinde ayrı bir kaynak adaptörü gerekecek. Bu ayrım, iki farklı depo biçiminin yanlışlıkla aynı derleme yoluymuş gibi görünmesini önler.
+
 Paketleme sırasında `npm run prepare:toolchain` resmi ARM GNU Toolchain 14.3.rel1 arşivini indirir, sabit SHA-256 ile doğrular ve uygulamanın kaynaklarına ekler. Desteklenen paketleme makineleri x64 Linux ve x64 Windows'tur; geliştirme modunda sistemdeki `arm-none-eabi-gcc` yedek olarak kullanılabilir. İlk indirme ve paket boyutu büyüktür. Derleyici veya kaynak deposu bulunamadığında hedefe flash yapılmaz.
 
 Geliştirme testleri: `npm run test:core`, `npm run test:firmware`, `npm run build` ve `cd src-tauri && cargo test --locked`.
