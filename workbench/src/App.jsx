@@ -214,7 +214,7 @@ export default function App() {
     let cancelled = false;
     setSourceStatus(null);
     invoke('source_status', { account: githubUser.login, repository: githubConfig.repository || '', reference: githubConfig.ref || 'main' })
-      .then((status) => { if (!cancelled) { setSourceStatus(status); setSourceError(''); } })
+      .then((status) => { if (!cancelled) { setSourceStatus(status); setSourceError(status.warning || ''); } })
       .catch((error) => { if (!cancelled) setSourceError(String(error)); });
     return () => { cancelled = true; };
   }, [githubUser, githubConfig.repository, githubConfig.ref]);
@@ -225,7 +225,7 @@ export default function App() {
     try {
       await validGitHubToken();
       const status = await invoke('source_status', { account: githubUser.login, repository: githubConfig.repository || '', reference: githubConfig.ref || 'main' });
-      setSourceStatus(status); setSourceError('');
+      setSourceStatus(status); setSourceError(status.warning || '');
     } catch (error) { setSourceError(String(error)); }
     finally { setSourceBusy(false); }
   };

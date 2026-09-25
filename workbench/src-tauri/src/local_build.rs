@@ -54,12 +54,13 @@ pub struct SourceStatus {
     active_sha: Option<String>,
     latest_sha: Option<String>,
     offline: bool,
+    warning: Option<String>,
 }
 
 #[tauri::command]
 pub async fn source_status(app: tauri::AppHandle, account: String, repository: String, reference: String) -> Result<SourceStatus, String> {
     #[cfg(debug_assertions)]
-    if repository.is_empty() { return Ok(SourceStatus { active_sha: Some("local-dev".into()), latest_sha: Some("local-dev".into()), offline: false }); }
+    if repository.is_empty() { return Ok(SourceStatus { active_sha: Some("local-dev".into()), latest_sha: Some("local-dev".into()), offline: false, warning: None }); }
     let root = source_root(&app, &account, &repository)?;
     if !safe_segment(&reference) { return Err("Geçersiz kaynak dalı".into()); }
     let active = active_sha(&root);
@@ -73,8 +74,9 @@ pub async fn source_status(app: tauri::AppHandle, account: String, repository: S
         Ok::<String, String>(sha.to_string())
     }.await;
     match result {
-        Ok(latest) => Ok(SourceStatus { active_sha: active, latest_sha: Some(latest), offline: false }),
-        Err(_) if active.is_some() => Ok(SourceStatus { active_sha: active, latest_sha: None, offline: true }),
+        Ok(latest) => Ok(SourceStatus { active_sha: active, latest_sha: Some(latest), offline: false, warning: None }),
+        Err(error) if active.is_some() => Ok(SourceStatus { active_sha: active, latest_sha: None,
+            offline: !error.starts_with("GitHub kaynak denetimi HTTP") && !error.contains("GitHub oturumu"), warning: Some(error) }),
         Err(error) => Err(error),
     }
 }
@@ -114,7 +116,7 @@ pub async fn activate_source(app: tauri::AppHandle, account: String, repository:
         fs::rename(stage.path(), &destination).map_err(|error| error.to_string())?;
     }
     fs::write(root.join("active-sha"), &sha).map_err(|error| error.to_string())?;
-    Ok(SourceStatus { active_sha: Some(sha.clone()), latest_sha: Some(sha), offline: false })
+    Ok(SourceStatus { active_sha: Some(sha.clone()), latest_sha: Some(sha), offline: false, warning: None })
 }
 
 #[derive(Deserialize)]
