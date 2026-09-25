@@ -248,8 +248,44 @@ fn safe_relative(value: &str) -> bool {
     !value.is_empty() && value.len() <= 180 && path.components().all(|part| matches!(part, std::path::Component::Normal(_)))
 }
 
+fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, String> {
+    let profile: serde_json::Value = serde_json::from_str(profile_json).map_err(|_| "Kart profili geçersiz")?;
+    let component = profile["components"].as_array().and_then(|items| items.iter().find(|item| item["ref"] == component_ref))
+        .ok_or("Başlık için bileşen bulunamadı")?;
+    let protocol = component["protocol"].as_str().ok_or("Bileşen protokolü eksik")?;
+    let namespace = match protocol { "GPIO" if component["part"] == "LED" => "LED", "GPIO" => "GPIO", "I2C" => "I2C", "SPI" => "SPI", _ => return Err("Pin başlığı için protokol desteklenmiyor".into()) };
+    let f401 = profile["mcu"]["part"].as_str().unwrap_or("").starts_with("STM32F401C");
+    let mut header = String::from("#ifndef STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_SCHEMA_VERSION 1\n");
+    let mut roles = std::collections::HashSet::new();
+    let mut pins = std::collections::HashSet::new();
+    let mut count = 0;
+    for connection in profile["connections"].as_array().ok_or("Pin listesi yok")? {
+        if connection["componentRef"] != component_ref { continue; }
+        if connection["approved"] != true { return Err("Pin bağlantısı henüz onaylanmadı".into()); }
+        let role = connection["role"].as_str().ok_or("Pin rolü eksik")?;
+        if !matches!(role, "LED" | "SCL" | "SDA" | "SCK" | "MISO" | "MOSI" | "CS" | "INT" | "RESET") || !roles.insert(role) {
+            return Err("Tekrarlı veya bilinmeyen pin rolü".into());
+        }
+        let pin = connection["mcuPin"].as_str().ok_or("MCU pini eksik")?;
+        if !pins.insert(pin) { return Err("İki rol aynı MCU pinine atanmış".into()); }
+        let bytes = pin.as_bytes();
+        if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C') { return Err("MCU pini geçersiz".into()); }
+        let number: u8 = pin[2..].parse().map_err(|_| "MCU pini geçersiz")?;
+        if number > 15 || bytes[1] == b'A' && (number == 13 || number == 14) || f401 && bytes[1] == b'C' && number < 13 {
+            return Err("SWD veya MCU paketinde bulunmayan pin".into());
+        }
+        let letter = bytes[1] as char;
+        let prefix = if namespace == "LED" && role == "LED" { "STARDROP_LED".to_string() }
+            else { format!("STARDROP_{namespace}_{role}") };
+        header.push_str(&format!("#define {prefix}_GPIO_PORT GPIO{letter}\n#define {prefix}_GPIO_PIN GPIO_PIN_{number}\n#define {prefix}_GPIO_CLK_ENABLE() __HAL_RCC_GPIO{letter}_CLK_ENABLE()\n"));
+        count += 1;
+    }
+    if count == 0 { return Err("Bileşenin onaylı pini yok".into()); }
+    Ok(header)
+}
+
 fn compile_blackpill_at(project: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest) -> Result<LedBuildResult, String> {
-    let (port, number, interval, active_low, target) = validate_led_request(&request)?;
+    let (_port, _number, interval, active_low, target) = validate_led_request(&request)?;
     if target != "stm32f401cc" { return Err("Bu CubeMX projesi yalnız STM32F401xC için üretildi".into()); }
     if !request.mcu_part.starts_with("STM32F401CC") && !request.mcu_part.starts_with("STM32F401CD") {
         return Err("Bu CubeMX projesi F401CC/CD için hazırlandı".into());
@@ -268,8 +304,8 @@ fn compile_blackpill_at(project: &Path, gcc: &Path, objcopy: &Path, request: Led
         || manifest.defines.iter().any(|item| item.len() > 50 || !item.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
         return Err("Proje manifestinde geçersiz dosya veya derleme tanımı var".into());
     }
-    let letter = (b'A' + port) as char;
-    let header = format!("#ifndef STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_SCHEMA_VERSION 1\n#define STARDROP_LED_GPIO_PORT GPIO{letter}\n#define STARDROP_LED_GPIO_PIN GPIO_PIN_{number}\n#define STARDROP_LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIO{letter}_CLK_ENABLE()\n#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8);
+    let mut header = role_pin_header(&request.profile_json, &request.component_ref)?;
+    header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8));
     let work = tempfile::tempdir().map_err(|error| error.to_string())?;
     fs::write(work.path().join("pin_configurations.h"), &header).map_err(|error| error.to_string())?;
     let mut objects = Vec::new();
@@ -375,6 +411,24 @@ mod tests {
         assert!(verified_source(&source));
         fs::write(source.join("templates/led_blink.c"), b"modified").unwrap();
         assert!(!verified_source(&source));
+    }
+
+    #[test]
+    fn generic_pin_header_supports_i2c_roles_without_board_refs() {
+        let profile = serde_json::json!({
+            "mcu": {"part": "STM32F401CDU6"},
+            "components": [{"ref": "U23", "part": "BMP180", "protocol": "I2C"}],
+            "connections": [
+                {"componentRef": "U23", "role": "SCL", "mcuPin": "PB6", "approved": true},
+                {"componentRef": "U23", "role": "SDA", "mcuPin": "PB7", "approved": true}
+            ]
+        });
+        let header = role_pin_header(&profile.to_string(), "U23").unwrap();
+        assert!(header.contains("STARDROP_I2C_SCL_GPIO_PIN GPIO_PIN_6"));
+        assert!(header.contains("STARDROP_I2C_SDA_GPIO_PORT GPIOB"));
+        assert!(!header.contains("U23"));
+        let bad = profile.to_string().replace("PB7", "PA13");
+        assert!(role_pin_header(&bad, "U23").is_err());
     }
 
     #[test]
