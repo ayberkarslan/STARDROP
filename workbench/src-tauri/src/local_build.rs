@@ -28,7 +28,16 @@ fn source_root(app: &tauri::AppHandle, account: &str, repository: &str) -> Resul
 
 fn active_sha(root: &Path) -> Option<String> {
     fs::read_to_string(root.join("active-sha")).ok().map(|text| text.trim().to_string())
-        .filter(|sha| sha.len() == 40 && sha.chars().all(|ch| ch.is_ascii_hexdigit()) && root.join(sha).join("templates/led_blink.c").is_file())
+        .filter(|sha| sha.len() == 40 && sha.chars().all(|ch| ch.is_ascii_hexdigit()) && verified_source(&root.join(sha)))
+}
+
+fn verified_source(source: &Path) -> bool {
+    let Ok(manifest) = fs::read(source.join("source-files.sha256.json")) else { return false; };
+    let Ok(hashes) = serde_json::from_slice::<std::collections::HashMap<String, String>>(&manifest) else { return false; };
+    FILES.iter().all(|file| {
+        let Some(expected) = hashes.get(*file) else { return false; };
+        fs::read(source.join(file)).map(|bytes| digest(&bytes) == *expected).unwrap_or(false)
+    })
 }
 
 fn github_client() -> Result<reqwest::Client, String> {
@@ -49,6 +58,8 @@ pub struct SourceStatus {
 
 #[tauri::command]
 pub async fn source_status(app: tauri::AppHandle, account: String, repository: String, reference: String) -> Result<SourceStatus, String> {
+    #[cfg(debug_assertions)]
+    if repository.is_empty() { return Ok(SourceStatus { active_sha: Some("local-dev".into()), latest_sha: Some("local-dev".into()), offline: false }); }
     let root = source_root(&app, &account, &repository)?;
     if !safe_segment(&reference) { return Err("Geçersiz kaynak dalı".into()); }
     let active = active_sha(&root);
@@ -73,7 +84,8 @@ pub async fn activate_source(app: tauri::AppHandle, account: String, repository:
     let root = source_root(&app, &account, &repository)?;
     if sha.len() != 40 || !sha.chars().all(|ch| ch.is_ascii_hexdigit()) { return Err("Geçersiz commit kimliği".into()); }
     let destination = root.join(&sha);
-    if !destination.join("templates/led_blink.c").is_file() {
+    if !verified_source(&destination) {
+        if destination.exists() { return Err("Önbellekteki kaynak değişmiş veya bozulmuş; bu sürümü etkinleştirmeden önce önbelleği temizle".into()); }
         let response = github_client()?.get(format!("https://api.github.com/repos/{repository}/zipball/{sha}"))
             .header("User-Agent", "stardrop-workbench").bearer_auth(token()?).send().await.map_err(|error| error.to_string())?;
         if !response.status().is_success() { return Err(format!("GitHub kaynak indirme HTTP {}", response.status())); }
@@ -83,17 +95,22 @@ pub async fn activate_source(app: tauri::AppHandle, account: String, repository:
         let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| error.to_string())?;
         let stage = tempfile::tempdir_in(&root).map_err(|error| error.to_string())?;
         let mut found = std::collections::HashSet::new();
+        let mut hashes = std::collections::HashMap::new();
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index).map_err(|error| error.to_string())?;
             let Some((_, relative)) = entry.name().split_once('/') else { continue; };
-            if !FILES.contains(&relative) || entry.size() > 200_000 || !found.insert(relative.to_string()) { continue; }
-            let path = stage.path().join(relative);
+            let relative = relative.to_string();
+            if !FILES.contains(&relative.as_str()) || entry.size() > 200_000 || !found.insert(relative.clone()) { continue; }
+            let path = stage.path().join(&relative);
             if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
             let mut contents = Vec::new();
             entry.read_to_end(&mut contents).map_err(|error| error.to_string())?;
+            hashes.insert(relative, digest(&contents));
             fs::write(path, contents).map_err(|error| error.to_string())?;
         }
         if FILES.iter().any(|file| !found.contains(*file)) { return Err("GitHub kaynağında gerekli LED dosyaları eksik".into()); }
+        fs::write(stage.path().join("source-files.sha256.json"), serde_json::to_vec(&hashes).map_err(|error| error.to_string())?)
+            .map_err(|error| error.to_string())?;
         fs::rename(stage.path(), &destination).map_err(|error| error.to_string())?;
     }
     fs::write(root.join("active-sha"), &sha).map_err(|error| error.to_string())?;
@@ -135,9 +152,23 @@ pub async fn compile_led(app: tauri::AppHandle, request: LedBuildRequest) -> Res
 }
 
 fn compile_led_blocking(app: &tauri::AppHandle, request: LedBuildRequest) -> Result<LedBuildResult, String> {
-    let root = source_root(app, &request.account, &request.repository)?;
-    let sha = active_sha(&root).ok_or("Önce GitHub LED kaynağını indir")?;
-    let source = root.join(&sha);
+    #[cfg(debug_assertions)]
+    let development = request.repository.is_empty();
+    #[cfg(not(debug_assertions))]
+    let development = false;
+    let (sha, source) = if development {
+        ("local-dev".to_string(), PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../diagnostics"))
+    } else {
+        let root = source_root(app, &request.account, &request.repository)?;
+        let sha = active_sha(&root).ok_or("Önce GitHub LED kaynağını indir")?;
+        let source = root.join(&sha);
+        if !verified_source(&source) { return Err("Kaynak önbelleği değişmiş; derleme durduruldu".into()); }
+        (sha, source)
+    };
+    compile_led_at(&source, &compiler(app, "arm-none-eabi-gcc")?, &compiler(app, "arm-none-eabi-objcopy")?, request, sha)
+}
+
+fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest, sha: String) -> Result<LedBuildResult, String> {
     let profile: serde_json::Value = serde_json::from_str(&request.profile_json).map_err(|_| "Kart profili geçersiz")?;
     let component = profile["components"].as_array().and_then(|items| items.iter().find(|item| item["ref"] == request.component_ref)).ok_or("LED bileşeni yok")?;
     let connections: Vec<&serde_json::Value> = profile["connections"].as_array().ok_or("Pin listesi yok")?.iter().filter(|item| item["componentRef"] == request.component_ref).collect();
@@ -146,13 +177,15 @@ fn compile_led_blocking(app: &tauri::AppHandle, request: LedBuildRequest) -> Res
     }
     if profile["mcu"]["part"] != request.mcu_part || profile["targetUid"] != request.target_uid { return Err("Profil/hedef bilgisi uyuşmuyor".into()); }
     if request.target_uid.len() != 24 || !request.target_uid.chars().all(|ch| ch.is_ascii_hexdigit()) { return Err("STM32 UID geçersiz".into()); }
-    let target = if request.mcu_part.starts_with("STM32F401C") { "stm32f401cc" } else if request.mcu_part.starts_with("STM32F446RE") { "stm32f446re" } else { return Err("MCU desteklenmiyor".into()); };
+    let target = if ["STM32F401CC", "STM32F401CD", "STM32F401CE"].iter().any(|prefix| request.mcu_part.starts_with(prefix)) {
+        "stm32f401cc"
+    } else if request.mcu_part.starts_with("STM32F446RE") { "stm32f446re" } else { return Err("MCU desteklenmiyor".into()); };
     let pin = connections[0]["mcuPin"].as_str().ok_or("LED GPIO eksik")?;
     let bytes = pin.as_bytes();
     if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C') { return Err("LED GPIO geçersiz".into()); }
     let port = bytes[1] - b'A';
     let number: u8 = pin[2..].parse().map_err(|_| "LED GPIO geçersiz")?;
-    if number > 15 || (port == 0 && (number == 13 || number == 14)) || (target == "stm32f401cc" && port == 2 && number < 13) { return Err("GPIO bu hedef için uygun değil".into()); }
+    if number > 15 || (port == 0 && (number == 13 || number == 14)) || (port == 2 && number < 13) { return Err("GPIO bu hedef için uygun değil".into()); }
     let interval = component["blinkMs"].as_u64().ok_or("LED aralığı eksik")?;
     if !(50..=5000).contains(&interval) { return Err("LED aralığı 50–5000 ms olmalı".into()); }
     let active_low = component["activeLow"].as_bool().ok_or("LED polaritesi eksik")?;
@@ -162,7 +195,7 @@ fn compile_led_blocking(app: &tauri::AppHandle, request: LedBuildRequest) -> Res
     fs::write(work.path().join("generated_config.h"), &header).map_err(|error| error.to_string())?;
     let elf = work.path().join("led.elf");
     let bin = work.path().join("led.bin");
-    let output = Command::new(compiler(app, "arm-none-eabi-gcc")?)
+    let output = Command::new(gcc)
         .args(["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft", "-Os", "-std=c11", "-ffreestanding", "-fno-builtin", "-ffunction-sections", "-fdata-sections", "-Wall", "-Wextra", "-Werror"])
         .arg("-I").arg(work.path()).arg("-I").arg(source.join("runtime")).arg("-I").arg(source.join("firmware"))
         .arg(source.join("firmware/startup.c")).arg(source.join("firmware/main.c")).arg(source.join("firmware/platform_i2c.c"))
@@ -170,7 +203,7 @@ fn compile_led_blocking(app: &tauri::AppHandle, request: LedBuildRequest) -> Res
         .args(["-nostdlib", "-Wl,--gc-sections"]).arg("-T").arg(source.join(format!("firmware/{target}.ld")))
         .arg("-lgcc").arg("-o").arg(&elf).output().map_err(|error| format!("Derleyici başlatılamadı: {error}"))?;
     if !output.status.success() { return Err(format!("LED derlenemedi: {}", String::from_utf8_lossy(&output.stderr).chars().take(1600).collect::<String>())); }
-    let converted = Command::new(compiler(app, "arm-none-eabi-objcopy")?).args(["-O", "binary"]).arg(&elf).arg(&bin).output().map_err(|error| error.to_string())?;
+    let converted = Command::new(objcopy).args(["-O", "binary"]).arg(&elf).arg(&bin).output().map_err(|error| error.to_string())?;
     if !converted.status.success() { return Err(format!("BIN oluşturulamadı: {}", String::from_utf8_lossy(&converted.stderr))); }
     let bytes = fs::read(bin).map_err(|error| error.to_string())?;
     let maximum = if target == "stm32f401cc" { 256 * 1024 } else { 512 * 1024 };
@@ -184,4 +217,55 @@ pub fn clear_source_cache(app: tauri::AppHandle, account: String) -> Result<(), 
     let root = app.path().app_cache_dir().map_err(|error| error.to_string())?.join("diagnostic-sources").join(account);
     if root.exists() { fs::remove_dir_all(root).map_err(|error| error.to_string())?; }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture(interval: u64) -> LedBuildRequest {
+        let profile = serde_json::json!({
+            "mcu": { "part": "STM32F401CDU6" }, "targetUid": "004B00344231501920393037",
+            "components": [{ "ref": "D1", "part": "LED", "protocol": "GPIO", "activeLow": true, "blinkMs": interval }],
+            "connections": [{ "componentRef": "D1", "role": "LED", "mcuPin": "PC13", "approved": true }]
+        });
+        LedBuildRequest { repository: String::new(), account: "tester".into(), profile_json: profile.to_string(),
+            component_ref: "D1".into(), request_id: format!("test-{interval}"), mcu_part: "STM32F401CDU6".into(),
+            target_uid: "004B00344231501920393037".into() }
+    }
+
+    #[test]
+    fn led_builder_changes_binary_without_editing_source() {
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../diagnostics");
+        let fast = compile_led_at(&source, Path::new("arm-none-eabi-gcc"), Path::new("arm-none-eabi-objcopy"), fixture(100), "test-source".into()).unwrap();
+        let slow = compile_led_at(&source, Path::new("arm-none-eabi-gcc"), Path::new("arm-none-eabi-objcopy"), fixture(1000), "test-source".into()).unwrap();
+        assert!(fast.header.contains("#define STARDROP_LED_PIN 13"));
+        assert!(slow.header.contains("#define STARDROP_BLINK_MS 1000"));
+        assert_ne!(fast.sha256, slow.sha256);
+    }
+
+    #[test]
+    fn led_builder_rejects_swd_pin() {
+        let mut bad = fixture(100);
+        bad.profile_json = bad.profile_json.replace("PC13", "PA13");
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../diagnostics");
+        assert!(compile_led_at(&source, Path::new("arm-none-eabi-gcc"), Path::new("arm-none-eabi-objcopy"), bad, "test-source".into()).is_err());
+    }
+
+    #[test]
+    fn source_cache_detects_modified_files() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        let mut hashes = std::collections::HashMap::new();
+        for file in FILES {
+            let path = source.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, b"approved").unwrap();
+            hashes.insert(file.to_string(), digest(b"approved"));
+        }
+        fs::write(source.join("source-files.sha256.json"), serde_json::to_vec(&hashes).unwrap()).unwrap();
+        assert!(verified_source(&source));
+        fs::write(source.join("templates/led_blink.c"), b"modified").unwrap();
+        assert!(!verified_source(&source));
+    }
 }
