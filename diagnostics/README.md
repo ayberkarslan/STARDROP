@@ -10,21 +10,19 @@ Ana ESP32/Workbench deposundan bağımsız sürümlenmelidir.
 - `templates/`: Her sensör için `diagnostic_run()` uygulayan küçük C dosyaları.
 - `firmware/`: Ortak Cortex-M4 başlangıç kodu, yazılımsal I²C ve SRAM raporu.
 - `boards/`: İncelenmiş kart profilleri.
-- `.github/workflows/`: host testleri, katalog doğrulama, özel profil ve audit işleri.
+- `.github/workflows/`: kaynak/test doğrulaması ve isteğe bağlı audit işi. Kart başına bulut derlemesi yoktur.
 
 ## GitHub kurulumu
 
-1. Bu klasörü özel `stardrop-diagnostics` deposuna taşıyın.
-2. STARDROP GitHub App'i yalnız bu depoya kurun; Device Flow'u etkinleştirin. Prototip için uygulama izinleri `Contents: read/write`, `Actions: read/write` olmalıdır. Katalog düzenleme ekranı yalnız depo yöneticisine gösterilir; üretimde kaynak kod izinlerini ayrı bir servis veya korumalı depo ile ayırın.
-3. `audit-event.yml` için yöneticiye özel `stardrop-audit` deposunu oluşturun; diagnostic deposuna `AUDIT_REPOSITORY` variable'ı ve bu repoya yalnız issue yazabilen `AUDIT_TOKEN` secret'ı ekleyin.
-4. Operatörlerin workflow dispatch yetkisi olmalıdır. Bu prototipte GitHub yetki modeli ayrı bir yönetim servisi olmadan “salt okunur kaynak + dispatch” ayrımını kesin olarak sağlayamaz; üretim erişim politikası ayrıca tasarlanmalıdır.
+1. Bu klasörü ayrı bir özel `stardrop-diagnostics` deposuna koyun ve `main` dalını açın. Workbench'te Entegrasyonlar alanına `owner/stardrop-diagnostics` yazın.
+2. STARDROP GitHub App'i bu depoya kurun. Giriş için GitHub App kullanıcı yetkilendirmesi, kaynak okumak için `Contents: read`, katalogu Workbench'ten düzenlemek isteyen yöneticiler için `Contents: write` gerekir. Kullanıcıların tamamına yazma yetkisi vermeyin; mevcut prototipte yönetici arayüzü GitHub yetkisini kontrol etse de ayrıca bir sunucu tarafı rol katmanı bulunmaz.
+3. İsteğe bağlı `audit-event.yml` kullanacaksanız yöneticiye özel `stardrop-audit` deposunu, `AUDIT_REPOSITORY` variable'ını ve bu depoya yalnız issue yazabilen `AUDIT_TOKEN` secret'ını ayrıca kurun. LED testi bunlara bağlı değildir.
 
-`workflow_dispatch` girdi olarak yalnız normalize edilmiş `BoardProfile` JSON alır. Ham `.NET`, PDF veya API anahtarı CI'a gönderilmez.
-Workbench'te kart profili, canlı SWD hedefinin UID'siyle kullanıcı tarafından eşleştirilmelidir; Actions artefaktı bu UID, MCU, sensör ve onaylı pinler uyuşmadan flashlanmaz.
+Kart profili, canlı SWD hedefinin UID'siyle kullanıcı tarafından eşleştirilir. Workbench seçilen GitHub commit'ini yerel önbelleğe indirir, `generated_config.h` dosyasını onaylı profil pinlerinden üretir ve firmware'i bilgisayarda derler. `.NET`, PDF, API anahtarı ve kart profili GitHub Actions'a gönderilmez. Yeni commit otomatik etkinleşmez; Workbench'teki sürüm onayı gerekir. Çevrimdışıyken son etkin kaynakla derleme yapılabilir.
 
 ## Çalışan prototip kapsamı
 
-F401CC/CD/CE ve F446RE için BMP180 kimlik + ham sıcaklık ADC örneği derlenir. Genel I²C ACK taraması yalnız geliştirici bus teşhisidir; bir sensöre otomatik eşleştirilmez ve belirli sensörün sağlam olduğunu **kanıtlamaz**. BMP180 ham ADC sayısı gerçek sıcaklık değildir. Sensör gerektirmeyen MCU self-test'i cihaz ID'si ve SRAM yaz/oku kontrolü yapar. MS5611, BMP388, ICM20689 ve SPI testleri henüz `planned` durumundadır.
+Workbench'teki uçtan uca yerel derleme pilotu F401CC/CD/CE ve F446RE için LED blink testidir. GPIO, polarite ve 50–5000 ms blink aralığı profilden gelir; LED'nin gerçekten yanıp söndüğüne operatör karar verir. STM32 SRAM raporundaki `RUNNING`, firmware'in başladığını doğrular ama LED donanımının sağlamlığını kanıtlamaz. BMP180 ve MCU self-test şablonları komut satırında derlenir; Workbench sensör testleri henüz yerel derleme akışına taşınmadığı için UI'de kapalıdır. Genel I²C ACK taraması yalnız geliştirici bus teşhisidir. BMP180 ham ADC sayısı gerçek sıcaklık değildir. MS5611, BMP388, ICM20689 ve SPI testleri `planned` durumundadır.
 
 I²C tanı firmware'i yazılımsal (bit-bang) bus kullanır. Profilde aynı bus etiketiyle `SOFT_I2C_1` seçilirse MCU paketinde mevcut ve SWD için ayrılmamış GPIO çiftleri kullanılabilir; gerçek kartta doğru voltaj ve pull-up dirençleri hâlâ gereklidir.
 
@@ -35,9 +33,10 @@ node tools/build-firmware.mjs tests/valid-profile.json U1 bmp180 build/f401 loca
 node tools/build-firmware.mjs tests/valid-f446-profile.json U2 bmp180 build/f446 local-f446
 node tools/build-firmware.mjs tests/valid-f446-soft-profile.json U2 bmp180 build/f446-soft local-f446-soft
 node tools/build-firmware.mjs tests/selftest-f401-profile.json MCU mcu-selftest build/selftest local-mcu
+node tools/build-firmware.mjs tests/led-f401-profile.json D1 led-blink build/led-fast local-led-fast
 ```
 
-`arm-none-eabi-gcc` ve `arm-none-eabi-objcopy` gerekir. CI bunları kurar. Üretilen `artifact.json` hedef MCU, pinler, çalıştırma kimliği ve `.bin` SHA-256 değerini taşır. Workbench bu veriler uyuşmadan flashlamaz. Tanı firmware'i hedefteki mevcut uygulamayı siler; test bitince üretim yazılımı ayrıca yeniden yüklenir.
+Bu komut satırı örnekleri için `arm-none-eabi-gcc` ve `arm-none-eabi-objcopy` PATH'te olmalıdır. Paketli Workbench kendi doğrulanmış derleyicisini kullanır. Üretilen `artifact.json` hedef MCU, pinler, çalıştırma kimliği ve `.bin` SHA-256 değerini taşır. Workbench de binarın özetini ve flash öncesi canlı UID'yi yeniden kontrol eder. Tanı firmware'i hedefteki mevcut uygulamayı siler; test bitince üretim yazılımı ayrıca yeniden yüklenir.
 
 Özel GitHub deposu henüz kurulmadan geliştirici masasında uçtan uca test:
 
