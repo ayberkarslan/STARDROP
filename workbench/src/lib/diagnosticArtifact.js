@@ -6,21 +6,6 @@ export async function sha256Hex(value) {
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function downloadDiagnosticArtifact({ token, repository, artifactId, expected }) {
-  let bytes;
-  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    bytes = await invoke('download_artifact', { repository, artifactId });
-  } else {
-    const response = await fetch(`https://api.github.com/repos/${repository}/actions/artifacts/${artifactId}/zip`, {
-      headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error(`Artefakt indirilemedi: HTTP ${response.status}`);
-    bytes = await response.arrayBuffer();
-  }
-  return readDiagnosticArtifact(bytes, expected);
-}
-
 export async function readDiagnosticArtifact(bytes, expected) {
   const zip = await JSZip.loadAsync(bytes);
   const manifestEntry = zip.file('artifact.json');
