@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { Activity, Download, FileUp, FlaskConical, Github, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { addAuditEvent, confidenceForConnection, createManualI2cProfile, overallConfidence, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
+import { addAuditEvent, confidenceForConnection, createManualI2cProfile, createManualLedProfile, overallConfidence, supportedPeripheral, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
-import { catalogWritePermission, currentGitHubUser, dispatchProfileBuild, fetchCatalogDocument, saveCatalogDocument, waitForProfileArtifact } from './lib/githubClient.js';
-import { downloadDiagnosticArtifact, hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
+import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, saveCatalogDocument } from './lib/githubClient.js';
+import { hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import BoardMap from './BoardMap.jsx';
 import EspConsole from './EspConsole.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
@@ -54,6 +55,11 @@ export default function App() {
   const [testStage, setTestStage] = useState('');
   const [diagnosticReport, setDiagnosticReport] = useState(null);
   const [testHistory, setTestHistory] = useState([]);
+  const [sourceStatus, setSourceStatus] = useState(null);
+  const [sourceBusy, setSourceBusy] = useState(false);
+  const [sourceError, setSourceError] = useState('');
+  const [confirmLedFlash, setConfirmLedFlash] = useState(false);
+  const [visualPending, setVisualPending] = useState(null);
   const [aiConfig, setAiConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.ai.config') || '{"endpoint":"https://api.openai.com/v1","model":"gpt-4.1-mini"}'));
   const [aiKey, setAiKey] = useState('');
   const [aiReview, setAiReview] = useState(null);
@@ -73,21 +79,24 @@ export default function App() {
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null, boardImage: null });
   const [activeComponent, setActiveComponent] = useState(null);
   const [manualBoard, setManualBoard] = useState({ name: 'Breadboard', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'BMP180', scl: 'PB6', sda: 'PB7' });
+  const [manualKind, setManualKind] = useState('led');
+  const [manualLed, setManualLed] = useState({ pin: 'PC13', activeLow: true, blinkMs: 100 });
   const fileRef = useRef(null);
   const projectRef = useRef(null);
   const diagnosticTimer = useRef(null);
 
   const profileValidation = useMemo(() => profile ? validateBoardProfile(profile) : null, [profile]);
   const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
+  const isLedTest = activeSensor?.protocol === 'GPIO' && activeSensor?.part === 'LED';
   const sensorTest = testForComponent(catalog, activeSensor, profile?.mcu?.part);
   const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref) : null;
   const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
     : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
     : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
-    : !catalogSha ? 'Özel test deposu kataloğu henüz yüklenmedi.'
-    : !sensorTest ? 'Bu sensör için katalog eşlemesi yok.'
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu prototip yalnız STM32F401CC/CD/CE ve STM32F446RE firmware’i derler.'
-    : sensorTest.status !== 'ready' ? 'Bu sensörün test kodu henüz hazır değil.'
+    : !isLedTest ? 'Sensör testleri yerel derlemeye henüz taşınmadı; LED pilotu kullanılabilir.'
+    : !sourceStatus?.activeSha ? 'Önce LED test kaynağını GitHub’dan indir.'
+    : !Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000 ? 'Blink aralığı 50–5000 ms olmalı.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
 
@@ -199,9 +208,42 @@ export default function App() {
     return () => { cancelled = true; };
   }, [githubUser, githubConfig.repository, githubConfig.ref]);
 
+  useEffect(() => {
+    if (!githubUser) { setSourceStatus(null); return; }
+    if (!githubConfig.repository && !import.meta.env.DEV) { setSourceStatus(null); return; }
+    let cancelled = false;
+    setSourceStatus(null);
+    invoke('source_status', { account: githubUser.login, repository: githubConfig.repository || '', reference: githubConfig.ref || 'main' })
+      .then((status) => { if (!cancelled) { setSourceStatus(status); setSourceError(''); } })
+      .catch((error) => { if (!cancelled) setSourceError(String(error)); });
+    return () => { cancelled = true; };
+  }, [githubUser, githubConfig.repository, githubConfig.ref]);
+
+  const refreshSource = async () => {
+    if (!githubUser) return;
+    setSourceBusy(true);
+    try {
+      await validGitHubToken();
+      const status = await invoke('source_status', { account: githubUser.login, repository: githubConfig.repository || '', reference: githubConfig.ref || 'main' });
+      setSourceStatus(status); setSourceError('');
+    } catch (error) { setSourceError(String(error)); }
+    finally { setSourceBusy(false); }
+  };
+
+  const activateSource = async () => {
+    if (!githubUser || !sourceStatus?.latestSha) return;
+    setSourceBusy(true);
+    try {
+      await validGitHubToken();
+      const status = await invoke('activate_source', { account: githubUser.login, repository: githubConfig.repository, sha: sourceStatus.latestSha });
+      setSourceStatus(status); setSourceError('');
+    } catch (error) { setSourceError(String(error)); }
+    finally { setSourceBusy(false); }
+  };
+
   useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
 
-  const waitForDiagnosticReport = async (expectedHashes) => {
+  const waitForDiagnosticReport = async (expectedHashes, allowRunning = false) => {
     setDiagnosticReport({ state: 'WAITING', valid: false });
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
@@ -212,7 +254,7 @@ export default function App() {
           && (parseInt(report.runHash, 16) >>> 0) === expectedHashes.run;
         if (matches) {
           setDiagnosticReport(report);
-          if (['PASS', 'FAIL', 'FATAL'].includes(report.state)) return report;
+          if (['PASS', 'FAIL', 'FATAL'].includes(report.state) || (allowRunning && report.state === 'RUNNING')) return report;
         }
       } catch (_) {
         // Reset sırasında kısa SWD kesintisi normaldir.
@@ -259,15 +301,17 @@ export default function App() {
   const createManualBoard = (event) => {
     event.preventDefault();
     try {
-      const created = createManualI2cProfile(manualBoard);
+      const created = manualKind === 'led'
+        ? createManualLedProfile({ name: manualBoard.name, mcuPart: manualBoard.mcuPart, ...manualLed })
+        : createManualI2cProfile(manualBoard);
       setProfile(created); setAnalysis(null); setSources({ netlist: null, schematic: null, bom: null, boardImage: null });
       setActiveComponent(created.components[0].ref);
-      setNotice('Manuel kart profili açıldı. Testten önce SCL/SDA pinlerini kontrol edip onayla.');
+      setNotice('Manuel kart profili açıldı. Testten önce pinleri kontrol edip onayla.');
     } catch (error) { setNotice(`Manuel profil oluşturulamadı: ${error.message}`); }
   };
   const updateManualBoard = (field, value) => setManualBoard((current) => ({ ...current, [field]: value }));
 
-  const editConnection = (index, field, value) => setProfile((current) => {
+  const editConnection = (index, field, value) => { setVisualPending(null); setProfile((current) => {
     const connections = current.connections.map((item, itemIndex) => {
       if (itemIndex !== index) return item;
       const pinChanged = field === 'mcuPin' && value !== item.mcuPin;
@@ -279,12 +323,18 @@ export default function App() {
       return { ...changed, confidence: confidenceForConnection(changed) };
     });
     return addAuditEvent({ ...current, connections }, 'PIN_OVERRIDE', { index, field, value });
-  });
+  }); };
 
   const approveComponent = (componentRef) => setProfile((current) => {
     const connections = current.connections.map((item) => item.componentRef === componentRef ? { ...item, approved: true } : item);
     return addAuditEvent({ ...current, connections }, 'CONNECTIONS_APPROVED', { componentRef });
   });
+
+  const updateLedSetting = (field, value) => {
+    setVisualPending(null);
+    setProfile((current) => addAuditEvent({ ...current, components: current.components.map((component) =>
+      component.ref === activeComponent ? { ...component, [field]: value } : component) }, 'LED_CONFIG_CHANGED', { componentRef: activeComponent, field, value }));
+  };
 
   const updateAiConfig = (field, value) => setAiConfig((current) => {
     const next = { ...current, [field]: value };
@@ -334,8 +384,10 @@ export default function App() {
     if (githubLogoutBusy) return;
     setGithubLogoutBusy(true);
     try {
+      if (githubUser?.login) await invoke('clear_source_cache', { account: githubUser.login });
       await clearGitHubSession();
       setGithubUser(null);
+      setSourceStatus(null);
       setCatalog(DEFAULT_TEST_CATALOG);
       setCatalogSha(null);
       setCatalogAdmin(false);
@@ -359,54 +411,51 @@ export default function App() {
     } catch (error) { setNotice(`Katalog kaydedilemedi: ${error.message}`); }
   };
 
-  const runDiagnosticTest = async () => {
-    if (testBusy || !profile || !activeSensor || !sensorTest) return;
-    const validation = validateTestTarget(profile, activeSensor.ref);
-    if (!validation.valid) { setNotice(validation.errors.join(' ')); return; }
-    const selectedProfile = { schemaVersion: profile.schemaVersion, id: profile.id, name: profile.name, targetUid: profile.targetUid, mcu: profile.mcu,
-      components: [activeSensor], connections: profile.connections.filter((item) => item.componentRef === activeSensor.ref && ['SCL', 'SDA'].includes(item.role)) };
-    const scl = selectedProfile.connections.find((item) => item.role === 'SCL');
-    const sda = selectedProfile.connections.find((item) => item.role === 'SDA');
+  const runLedTest = async () => {
+    if (testBusy || !isLedTest || testBlocker) return;
     const requestId = crypto.randomUUID();
-    setTestBusy(true); setDiagnosticReport(null);
+    setConfirmLedFlash(false); setVisualPending(null); setTestBusy(true); setDiagnosticReport(null);
     try {
-      if (!githubUser || !githubConfig.repository || !catalogSha) throw new Error('Özel test deposuna GitHub girişi gerekli.');
-      if (sensorTest.status !== 'ready' || !sensorTest.sourcePath) throw new Error('Bu sensörün derlenebilir test şablonu henüz yok.');
-      if (!buildableTargetPart(profile.mcu.part)) throw new Error('Bu prototip yalnız STM32F401CC/CD/CE ve STM32F446RE destekler.');
-      if (!target?.connected || !target.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı STM32 ile kart profilinin MCU ailesi uyuşmuyor.');
-      if (profile.targetUid !== target.uid) throw new Error('Kart profili bağlı STM32 UID’siyle eşleşmiyor.');
-      if (!/^[0-9A-F]{24}$/.test(target.uid || '') || /^0+$/.test(target.uid)) throw new Error('Hedef STM32 UID güvenilir okunamadı.');
-      const token = await validGitHubToken();
-      if (!token) throw new Error('GitHub oturumu bulunamadı.');
-      setTestStage('GitHub derlemesi başlatılıyor…');
-      const startedAt = Date.now();
-      await dispatchProfileBuild({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', profile: selectedProfile, testId: sensorTest.id, componentRef: activeSensor.ref, requestId });
-      const { artifact } = await waitForProfileArtifact({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', actor: githubUser.login, requestId, testId: sensorTest.id, startedAt, onStatus: setTestStage });
-      setTestStage('Firmware indiriliyor ve SHA-256 doğrulanıyor…');
-      const { firmware: builtFirmware, manifest } = await downloadDiagnosticArtifact({ token, repository: githubConfig.repository, artifactId: artifact.id, expected: {
-        testId: sensorTest.id, componentRef: activeSensor.ref, requestId, profileId: profile.id, targetUid: target.uid, mcuPart: profile.mcu.part.toUpperCase(),
-        scl: scl.mcuPin, sda: sda.mcuPin, sourcePath: sensorTest.sourcePath, flashSizeKb: target.flashSizeKb,
-      } });
-      const liveTarget = await espJson(normalizedBridge, '/api/target/status', { timeoutMs: 6000 });
-      if (!liveTarget.connected || liveTarget.uid !== target.uid || !liveTarget.model?.startsWith(profile.mcu.family)) throw new Error('Bağlı kart değişti; yanlış STM32’ye kod yüklememek için durduruldu.');
-      setTestStage('ESP32 üzerinden STM32 flashlanıyor…');
-      if (!await flashFirmware(builtFirmware)) throw new Error('ESP32 flash işlemi başarısız.');
-      setTestStage('STM32 SRAM test raporu bekleniyor…');
-      const hashes = {
-        test: hash32FromSha256(await sha256Hex(sensorTest.id)),
-        profile: hash32FromSha256(await sha256Hex(JSON.stringify(selectedProfile))),
+      const profileJson = JSON.stringify(profile);
+      setTestStage('LED yazılımı bilgisayarda derleniyor…');
+      const built = await invoke('compile_led', { request: { repository: githubConfig.repository || '', account: githubUser.login,
+        profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid } });
+      const firmwareBytes = Uint8Array.from(built.bytes);
+      if (await sha256Hex(new Blob([firmwareBytes])) !== built.sha256) throw new Error('Derlenen BIN özeti uyuşmuyor.');
+      if (firmwareBytes.length > target.flashSizeKb * 1024) throw new Error('BIN hedef flash kapasitesini aşıyor.');
+      const live = await espJson(normalizedBridge, '/api/target/status', { timeoutMs: 6000 });
+      if (!live.connected || live.uid !== target.uid || live.uid !== profile.targetUid || !live.model?.startsWith(profile.mcu.family)) {
+        throw new Error('Canlı STM32 hedefi profille uyuşmuyor; flash yapılmadı.');
+      }
+      setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
+      const file = new File([firmwareBytes], 'stardrop-led.bin', { type: 'application/octet-stream' });
+      if (!await flashFirmware(file)) throw new Error('ESP32 flash işlemi başarısız.');
+      setTestStage('STM32’nin başlangıç raporu bekleniyor…');
+      const report = await waitForDiagnosticReport({
+        test: hash32FromSha256(await sha256Hex('led-blink')),
+        profile: hash32FromSha256(await sha256Hex(profileJson)),
         run: hash32FromSha256(await sha256Hex(requestId)),
-      };
-      const report = await waitForDiagnosticReport(hashes);
-      const outcome = report.state === 'PASS' ? 'PASS' : 'FAIL';
-      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref, testId: sensorTest.id, targetUid: liveTarget.uid, status: outcome, firmwareSha256: manifest.sha256, report }]);
-      setTestStage(outcome === 'PASS' ? 'Test geçti.' : `Test başarısız: hata kodu ${report.error}`);
-      setNotice(`${activeSensor.ref} · ${sensorTest.name}: ${outcome}`);
+      }, true);
+      if (report.state !== 'RUNNING') throw new Error(`LED yazılımı başlayamadı: ${report.error}`);
+      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
+        testId: 'led-blink', targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
+        firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin, report }]);
+      setVisualPending(requestId);
+      setTestStage('Firmware çalışıyor. LED’yi gözle kontrol et.');
     } catch (error) {
-      setTestStage(`Test durdu: ${error.message}`);
-      setNotice(`Sensör testi başarısız: ${error.message}`);
-      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref, testId: sensorTest.id, status: 'ERROR', error: error.message }]);
+      setTestStage(`LED testi durdu: ${error.message}`);
+      setNotice(`LED testi başarısız: ${error.message}`);
+      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
+        testId: 'led-blink', status: 'ERROR', error: error.message }]);
     } finally { setTestBusy(false); }
+  };
+
+  const finishVisualTest = (passed) => {
+    if (!visualPending) return;
+    setTestHistory((items) => items.map((item) => item.requestId === visualPending && item.status === 'PENDING_VISUAL'
+      ? { ...item, status: passed ? 'PASS' : 'FAIL', confirmedAt: new Date().toISOString(), confirmation: 'VISUAL' } : item));
+    setVisualPending(null);
+    setTestStage(passed ? 'LED gözlemi başarılı olarak kaydedildi.' : 'LED gözlemi başarısız olarak kaydedildi.');
   };
 
   const exportProject = async () => {
@@ -429,7 +478,7 @@ export default function App() {
   const components = profile?.components || [];
   const componentConnections = profile?.connections.filter((item) => item.componentRef === activeComponent) || [];
 
-  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><span className="brand-mark">✦</span><div><strong>STARDROP</strong><small>AVIONICS OTA</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve sensör testleri</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div><div className="welcome-status">{notice}</div></main></div>;
+  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><span className="brand-mark">✦</span><div><strong>STARDROP</strong><small>AVIONICS OTA</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div><div className="welcome-status">{notice}</div></main></div>;
 
   if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><span className="brand-mark">✦</span><strong>STARDROP</strong></div><div className="guest-header-actions"><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/><button onClick={() => setSession('welcome')}>Girişe dön</button></div></header><EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /></div>;
 
@@ -446,27 +495,35 @@ export default function App() {
     </aside>
     <main>
       <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
-      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Bu ekran yalnız GitHub deposunda yazma yetkisi olan kullanıcıya açılır. Eşlemeler özel deponun katalog dosyasına kaydedilir; test kaynağı gerçekten derlenmeden operatöre “hazır” görünmez.</p><div className="admin-grid"><select value={adminTestId} onChange={(event) => setAdminTestId(event.target.value)}>{catalog.tests.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={adminTest?.sourcePath || ''} placeholder="templates/bmp180.c" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Kaynak yolu, eşleşen parça adları ve desteklenen MCU bilgisi katalogda tutulur. Farklı kart pinleri firmware kaynak dosyasına gömülmez; onaylı BoardProfile derleme girdisidir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Bu giriş yalnız özel katalog, bulut derleme ve merkezi audit için kullanılır.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button></Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
+      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Kaynak eşlemeleri özel GitHub kataloğunda tutulur. Yerel derleme desteği henüz yalnız LED pilotunda aktiftir.</p><div className="admin-grid"><select value={adminTestId} onChange={(event) => setAdminTestId(event.target.value)}>{catalog.tests.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={adminTest?.sourcePath || ''} placeholder="templates/bmp180.c" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Katalog kaynak kodu ve parça eşleşmesini tanımlar; pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. GitHub hesabı özel test kaynaklarını ve kataloğu okumak için kullanılır; derleme bilgisayarında yapılır.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button></Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
         {!profile ? <>
           <Section title="KART DOSYASI"><div className="import-grid"><label className="dropzone"><FileUp /><strong>ALTIUM .NET İÇE AKTAR</strong><small>Elektriksel bağlantı analizi yerelde yapılır.</small><input ref={fileRef} type="file" accept=".net,.NET,.txt" onChange={(event) => loadNetlist(event.target.files?.[0])} /></label><label className="dropzone"><Download /><strong>.STARDROP AÇ</strong><small>Kaynaklar, profil ve test geçmişi tek dosyada.</small><input ref={projectRef} type="file" accept=".stardrop" onChange={(event) => importProject(event.target.files?.[0])} /></label></div></Section>
-          <Section title="MANUEL KART / BREADBOARD"><p>.NET dosyan yoksa MCU ve sensör bağlantılarını elle gir. Pinler testten önce ayrıca onaylanır.</p>
+          <Section title="MANUEL KART / BREADBOARD"><p>.NET dosyan yoksa bağlantıları elle gir. Pinler testten önce ayrıca onaylanır.</p>
+            <div className="manual-kind"><button type="button" className={manualKind === 'led' ? 'active' : ''} onClick={() => setManualKind('led')}>LED TESTİ</button><button type="button" className={manualKind === 'i2c' ? 'active' : ''} onClick={() => setManualKind('i2c')}>I²C SENSÖR</button></div>
             <form className="manual-grid" onSubmit={createManualBoard}>
               <label>Kart adı<input value={manualBoard.name} onChange={(event) => updateManualBoard('name', event.target.value)} /></label>
-              <label>STM32 modeli<select value={manualBoard.mcuPart} onChange={(event) => updateManualBoard('mcuPart', event.target.value)}><option>STM32F401CCU6</option><option>STM32F401CDU6</option><option>STM32F401CEU6</option><option>STM32F446RET6</option></select></label>
-              <label>Sensör parçası<input value={manualBoard.componentPart} onChange={(event) => updateManualBoard('componentPart', event.target.value)} /></label>
-              <label>Referans<input value={manualBoard.componentRef} onChange={(event) => updateManualBoard('componentRef', event.target.value)} /></label>
-              <label>SCL GPIO<input value={manualBoard.scl} onChange={(event) => updateManualBoard('scl', event.target.value)} /></label>
-              <label>SDA GPIO<input value={manualBoard.sda} onChange={(event) => updateManualBoard('sda', event.target.value)} /></label>
+              <label>STM32 modeli<select value={manualBoard.mcuPart} onChange={(event) => { updateManualBoard('mcuPart', event.target.value); if (manualKind === 'led') setManualLed((current) => ({ ...current, pin: event.target.value.startsWith('STM32F446') ? 'PA5' : 'PC13', activeLow: !event.target.value.startsWith('STM32F446') })); }}><option>STM32F401CCU6</option><option>STM32F401CDU6</option><option>STM32F401CEU6</option><option>STM32F446RET6</option></select></label>
+              {manualKind === 'led' ? <>
+                <label>LED GPIO<input value={manualLed.pin} placeholder="PC13" onChange={(event) => setManualLed((current) => ({ ...current, pin: event.target.value.toUpperCase() }))} /></label>
+                <label>LED tipi<select value={manualLed.activeLow ? 'low' : 'high'} onChange={(event) => setManualLed((current) => ({ ...current, activeLow: event.target.value === 'low' }))}><option value="low">Aktif düşük</option><option value="high">Aktif yüksek</option></select></label>
+                <label>Blink aralığı (ms)<input type="number" min="50" max="5000" step="50" value={manualLed.blinkMs} onChange={(event) => setManualLed((current) => ({ ...current, blinkMs: event.target.value }))} /></label>
+              </> : <>
+                <label>Sensör parçası<input value={manualBoard.componentPart} onChange={(event) => updateManualBoard('componentPart', event.target.value)} /></label>
+                <label>Referans<input value={manualBoard.componentRef} onChange={(event) => updateManualBoard('componentRef', event.target.value)} /></label>
+                <label>SCL GPIO<input value={manualBoard.scl} onChange={(event) => updateManualBoard('scl', event.target.value)} /></label>
+                <label>SDA GPIO<input value={manualBoard.sda} onChange={(event) => updateManualBoard('sda', event.target.value)} /></label>
+              </>}
               <button className="primary" type="submit">MANUEL PROFİL OLUŞTUR</button>
             </form>
           </Section>
         </> : <>
-          <div className="workbench-tabs" role="tablist" aria-label="Kart çalışma alanı">{[['overview', 'Genel bakış'], ['pins', 'Pinler'], ['test', 'Sensör testi'], ['review', 'AI inceleme']].map(([view, title]) => <button key={view} role="tab" aria-selected={workbenchView === view} className={workbenchView === view ? 'active' : ''} onClick={() => setWorkbenchView(view)}>{title}</button>)}</div>
+          <div className="workbench-tabs" role="tablist" aria-label="Kart çalışma alanı">{[['overview', 'Genel bakış'], ['pins', 'Pinler'], ['test', 'Donanım testi'], ['review', 'AI inceleme']].map(([view, title]) => <button key={view} role="tab" aria-selected={workbenchView === view} className={workbenchView === view ? 'active' : ''} onClick={() => setWorkbenchView(view)}>{title}</button>)}</div>
           <div className="summary-row"><Section title="KART PROFİLİ"><strong className="profile-name">{profile.name}</strong><p>{profile.mcu.part} · {components.length} cihaz adayı</p></Section><Section title={sources.netlist ? 'PARSER GÜVENİ' : 'MANUEL PROFİL'}><div className="confidence"><strong>{sources.netlist ? `${overallConfidence(profile)}%` : '—'}</strong><span>{!profileValidation.valid ? 'DÜZELTME GEREKİYOR' : profile.connections.some((item) => !item.approved) ? 'PIN ONAYI BEKLİYOR' : 'PROFİL DOĞRULANDI'}</span></div></Section><Section title="PROJE"><div className="summary-actions"><button className="secondary" onClick={exportProject}><Save />.STARDROP EXPORT</button><label className="secondary"><FileUp />{sources.schematic ? 'PDF EKLİ' : 'ŞEMA PDF EKLE'}<input type="file" accept="application/pdf,.pdf" onChange={(event) => setSources((current) => ({ ...current, schematic: event.target.files?.[0] || null }))} /></label></div></Section></div>
           {workbenchView === 'overview' && <Section title="KART GÖRÜNÜMÜ" action={<div className="board-map-actions"><Badge tone={target?.connected ? 'good' : 'warn'}>{target?.connected ? 'SWD BAĞLI' : 'HEDEF BEKLENİYOR'}</Badge>{target?.connected && <button className="secondary" onClick={() => setProfile((current) => addAuditEvent({ ...current, targetUid: target.uid }, 'TARGET_UID_BOUND', { uid: target.uid }))}>{profile.targetUid === target.uid ? 'UID EŞLEŞTİ' : 'BU STM32’YE EŞLEŞTİR'}</button>}</div>}><BoardMap profile={profile} components={components} target={target} image={sources.boardImage} selectedRef={activeComponent} onSelect={(ref) => { setActiveComponent(ref); setWorkbenchView('test'); }} onImageChange={(file) => { if (file && (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024)) { setNotice('Kart fotoğrafı PNG, JPEG veya WebP ve en fazla 8 MB olmalı.'); return; } setSources((current) => ({ ...current, boardImage: file })); }} /><p className="map-disclaimer">Düğümler okunabilirlik için yerleştirilir; fiziksel PCB koordinatı veya bağlantı doğrulaması anlamına gelmez. Bağlı hedef UID: {target?.uid || '—'} · Profil UID: {profile.targetUid || 'atanmadı'}</p></Section>}
           {workbenchView === 'pins' && <div className="work-grid"><Section title="BİLEŞENLER" action={<Badge>{components.length}</Badge>}><div className="component-list">{components.map((component) => <button key={component.ref} onClick={() => setActiveComponent(component.ref)} className={activeComponent === component.ref ? 'selected' : ''}><span><strong>{component.ref}</strong><small>{component.part}</small></span><Badge tone={profile.connections.filter((entry) => entry.componentRef === component.ref).every((entry) => entry.approved) ? 'good' : 'warn'}>{component.protocol || '?'}</Badge></button>)}</div></Section>
             <Section title={activeComponent ? `${activeComponent} PIN MATRİSİ` : 'PIN MATRİSİ'} action={activeComponent && <button className="secondary" onClick={() => approveComponent(activeComponent)}><ShieldCheck />ONAYLA</button>}>
               <div className="pin-table">{componentConnections.map((connection) => { const index = profile.connections.indexOf(connection); return <div className="pin-row" key={`${connection.componentRef}-${connection.role}-${index}`}><div><strong>{connection.role}</strong><small>{connection.sensorPin || '?'}</small></div><input value={connection.mcuPin || ''} onChange={(event) => editConnection(index, 'mcuPin', event.target.value.toUpperCase())}/><input value={connection.peripheral || ''} onChange={(event) => editConnection(index, 'peripheral', event.target.value.toUpperCase())}/><Badge tone={connection.approved ? 'good' : connection.confidence >= 60 ? 'warn' : 'bad'}>{connection.approved ? 'ONAYLI' : `${connection.confidence}%`}</Badge></div>; })}</div>
+              {isLedTest && <p className="catalog-note">LED GPIO’yu bu ekrandan veya test ekranından değiştirebilirsin. Pin değiştiğinde yeniden onay gerekir.</p>}
               {activeSensor?.protocol === 'I2C' && <p className="catalog-note">Donanımsal I²C pinleri dışındaki bağlantılar için SCL ve SDA satırlarının bus alanına aynı <code>SOFT_I2C_1</code> değerini yaz. Test yazılımı bu pinleri yazılımsal I²C ile sürer; SWD veya pakette bulunmayan pinler kullanılamaz.</p>}
               {!!profileValidation.errors.length && <div className="validation bad"><strong>Derleme engelleri</strong>{profileValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>}
               {!!profileValidation.warnings.length && <div className="validation warn"><strong>İnceleme notları</strong>{profileValidation.warnings.slice(0, 5).map((warning) => <span key={warning}>{warning}</span>)}</div>}
@@ -477,15 +534,29 @@ export default function App() {
             <button className="primary ai-run" disabled={aiBusy || !aiKey} onClick={runAiReview}><ShieldCheck />{aiBusy ? 'AI İNCELİYOR…' : 'AI İNCELEMESİNİ BAŞLAT'}</button>
             {aiReview && <div className="ai-result"><strong>{aiReview.summary}</strong>{aiReview.suggestions.length === 0 ? <p>AI düzeltme önermedi.</p> : aiReview.suggestions.map((suggestion) => <label key={suggestion.id} className="ai-suggestion"><input type="checkbox" checked={acceptedSuggestions.includes(suggestion.id)} onChange={(event) => setAcceptedSuggestions((items) => event.target.checked ? [...items, suggestion.id] : items.filter((id) => id !== suggestion.id))}/><span><b>{suggestion.confidence}% · bağlantı #{suggestion.connectionIndex + 1}</b><small>{suggestion.reason} — {suggestion.evidence}</small></span></label>)}{aiReview.suggestions.length > 0 && <button className="secondary" disabled={!acceptedSuggestions.length} onClick={applySelectedAiSuggestions}>SEÇİLİ ÖNERİLERİ UYGULA</button>}</div>}
           </Section>}
-          {workbenchView === 'test' && <Section title="SENSÖR TESTİ" action={activeSensor && <Badge>{activeSensor.ref}</Badge>}>
-            {!activeSensor ? <p>Ortadaki kart haritasından test etmek istediğin sensörü seç.</p> : <div className="sensor-test-detail"><div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {activeSensor.protocol || 'Protokol bilinmiyor'}</span></div><p>{sensorTest ? `${sensorTest.name} testi katalogda eşleşti.` : 'Bu sensör için katalogda eşleşen test yok; yönetici eşlemesi gerekiyor.'}</p>{sensorTest && <p>Durum: {sensorTest.status === 'ready' ? 'Derlenebilir şablon hazır' : 'Test firmware şablonu henüz üretilmedi'} · Kaynak: {sensorTest.sourcePath || 'Atanmadı'}</p>}{activeSensor && !validateTestTarget(profile, activeSensor.ref).valid && <div className="validation warn">{validateTestTarget(profile, activeSensor.ref).errors.map((error) => <span key={error}>{error}</span>)}</div>}<p className="destructive-note">Test, STM32’nin mevcut firmware’ini silip tanı firmware’ini yükler. Sonrasında üretim yazılımını yeniden yüklemen gerekir.</p><button className="primary" disabled={testBusy || Boolean(testBlocker)} onClick={runDiagnosticTest}><Send />{testBusy ? 'TEST ÇALIŞIYOR…' : 'TEST FIRMWARE’İNİ YÜKLE VE BAŞLAT'}</button><small>{testStage || 'Onaylı pinler ve GitHub bağlantısı hazır olduğunda derlenir, flashlanır ve sonuç okunur.'}</small></div>}
-            {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>SRAM RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? `Hata: ${diagnosticReport.error} · ${diagnosticReport.elapsedMs ?? 0} ms` : diagnosticReport.reason || 'Test firmware’i rapor yazıyor veya henüz başlamadı.'}</small></div>{diagnosticReport.valid && <div className="measurements"><span>ID {diagnosticReport.observedDeviceId}</span><span>{sensorTest?.id === 'generic-i2c' ? `YANIT VEREN ADRES SAYISI ${diagnosticReport.detailCode}` : `HAM ÖRNEK ${diagnosticReport.detailCode}`}</span></div>}</div>}
-            {activeSensor && testBlocker && <div className="validation warn">{testBlocker}</div>}
-            {activeSensor && sensorTest?.id === 'generic-i2c' && <p className="catalog-note">Genel I²C testi yalnız bus üzerinde ACK alındığını gösterir; seçilen sensörün kimliğini veya ölçümünü doğrulamaz.</p>}
+          {workbenchView === 'test' && <Section title={isLedTest ? 'LED TESTİ' : 'DONANIM TESTİ'} action={activeSensor && <Badge>{activeSensor.ref}</Badge>}>
+            {!activeSensor ? <p>Kart görünümünden test edilecek bileşeni seç.</p> : isLedTest ? <div className="sensor-test-detail">
+              <div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {componentConnections[0]?.mcuPin || 'GPIO seçilmedi'} · {activeSensor.blinkMs} ms · {activeSensor.activeLow ? 'aktif düşük' : 'aktif yüksek'}</span></div>
+              <div className="led-config">
+                <label>LED GPIO<select value={componentConnections[0]?.mcuPin || ''} onChange={(event) => editConnection(profile.connections.indexOf(componentConnections[0]), 'mcuPin', event.target.value)}>{['A', 'B', 'C'].flatMap((port) => Array.from({ length: 16 }, (_, number) => `P${port}${number}`)).filter((pin) => supportedPeripheral(profile.mcu.part, 'GPIO', 'LED', pin).supported).map((pin) => <option key={pin}>{pin}</option>)}</select></label>
+                <label>Polarite<select value={activeSensor.activeLow ? 'low' : 'high'} onChange={(event) => updateLedSetting('activeLow', event.target.value === 'low')}><option value="low">Aktif düşük</option><option value="high">Aktif yüksek</option></select></label>
+                <label>Blink aralığı (ms)<input type="number" min="50" max="5000" step="50" value={activeSensor.blinkMs} onChange={(event) => updateLedSetting('blinkMs', Number(event.target.value))} /></label>
+              </div>
+              <div className="source-line"><span>TEST KAYNAĞI · {sourceStatus?.activeSha ? sourceStatus.activeSha.slice(0, 10) : 'İNDİRİLMEDİ'}{sourceStatus?.offline ? ' · ÇEVRİMDIŞI ÖNBELLEK' : ''}</span><button className="secondary" disabled={sourceBusy} onClick={refreshSource}><RefreshCw />SÜRÜMÜ KONTROL ET</button></div>
+              {sourceStatus?.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha && <div className="source-update"><span>Yeni kaynak sürümü: {sourceStatus.latestSha.slice(0, 10)}. Etkin sürüm sen onaylayana kadar değişmez.</span><button className="secondary" disabled={sourceBusy} onClick={activateSource}>İNDİR VE ETKİNLEŞTİR</button></div>}
+              {sourceError && <div className="validation warn">{sourceError}</div>}
+              <p className="destructive-note">Bu test STM32’deki mevcut yazılımı siler. LED’nin gerçekten çalıştığını yalnız sen gözle doğrulayabilirsin.</p>
+              <button className="primary" disabled={testBusy || Boolean(testBlocker)} onClick={() => setConfirmLedFlash(true)}><Send />{testBusy ? 'TEST ÇALIŞIYOR…' : 'YERELDE DERLE VE YÜKLE'}</button>
+              {testBlocker && <div className="validation warn">{testBlocker}</div>}
+              <small>{testStage || 'Pini onayladıktan sonra yerel derleme ve SWD yüklemesi hazır.'}</small>
+              {visualPending && <div className="visual-confirm"><span>LED seçilen aralıkla yanıp sönüyor mu?</span><button onClick={() => finishVisualTest(true)}>EVET, ÇALIŞIYOR</button><button onClick={() => finishVisualTest(false)}>HAYIR, ÇALIŞMIYOR</button></div>}
+            </div> : <p className="catalog-note">{activeSensor.part} için yerel derleme henüz hazır değil. Eski bulut derleme akışı kaldırıldı; hızlı yükleme bölümünden mevcut bir .bin dosyasını yine yükleyebilirsin.</p>}
+            {diagnosticReport && <div className={`diagnostic ${diagnosticReport.state?.toLowerCase() || 'waiting'}`}><div><strong>STM32 RAPORU · {diagnosticReport.state || 'BEKLENİYOR'}</strong><small>{diagnosticReport.valid ? 'Firmware çalıştı; fiziksel LED sonucu kullanıcı onayı bekliyor.' : diagnosticReport.reason || 'Firmware raporu bekleniyor.'}</small></div></div>}
             {testHistory.length > 0 && <p className="catalog-note">Son test: {testHistory.at(-1).componentRef} · {testHistory.at(-1).status} · {new Date(testHistory.at(-1).at).toLocaleString('tr-TR')}</p>}
           </Section>}
         </>}
       </div>}
     </main>
+    {confirmLedFlash && <div className="confirm-overlay" role="presentation"><div className="confirm-card" role="dialog" aria-modal="true" aria-labelledby="led-confirm-title"><h2 id="led-confirm-title">STM32 yazılımı değişecek</h2><p>LED testi için mevcut firmware silinip yerel derlenen kod yüklenecek. Hedef: {target?.model || 'bilinmiyor'} · {target?.uid || 'UID yok'}</p><div><button className="secondary" onClick={() => setConfirmLedFlash(false)}>VAZGEÇ</button><button className="primary" onClick={runLedTest}>DERLE VE YÜKLE</button></div></div></div>}
   </div>;
 }
