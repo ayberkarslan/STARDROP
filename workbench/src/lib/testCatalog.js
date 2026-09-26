@@ -18,8 +18,9 @@ export function validateTestCatalog(catalog) {
     seen.add(item.id);
     if (!item.name || !Array.isArray(item.supportedMcu)) errors.push(`${item.id}: ad veya MCU listesi eksik.`);
     if (!['planned', 'ready'].includes(item.status)) errors.push(`${item.id}: durum planned veya ready olmalı.`);
-    if (item.sourcePath && !/^templates\/[a-z0-9_-]+\.c$/.test(item.sourcePath)) errors.push(`${item.id}: kaynak yolu templates/ altında tek bir .c dosyası olmalı.`);
+    if (item.sourcePath && !/^(?:[a-z0-9_-]+\/)*stardrop-project\.json$|^templates\/[a-z0-9_-]+\.c$/.test(item.sourcePath)) errors.push(`${item.id}: güvenli proje manifesti veya şablon yolu gerekli.`);
     if (item.status === 'ready' && !item.sourcePath) errors.push(`${item.id}: hazır testin kaynak yolu olmalı.`);
+    if (item.status === 'ready' && item.sourcePath?.endsWith('stardrop-project.json') && item.build !== 'stm32-hal-v1') errors.push(`${item.id}: desteklenen derleme türü eksik.`);
   }
   return { valid: errors.length === 0, errors };
 }

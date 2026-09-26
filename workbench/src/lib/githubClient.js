@@ -44,7 +44,7 @@ export async function fetchCatalogDocument({ token, repository, ref = 'main' }) 
 export async function catalogWritePermission({ token, repository }) {
   const { owner, repo } = parseRepository(repository);
   const details = await api(`/repos/${owner}/${repo}`, { token });
-  return Boolean(details.permissions?.admin);
+  return Boolean(details.permissions?.push || details.permissions?.admin);
 }
 
 export async function saveCatalogDocument({ token, repository, ref = 'main', catalog, sha }) {

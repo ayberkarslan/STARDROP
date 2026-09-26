@@ -5,7 +5,7 @@ import { addAuditEvent, confidenceForConnection, createManualI2cProfile, createM
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
-import { loadSecret, saveSecret } from './lib/secretStore.js';
+import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, saveCatalogDocument } from './lib/githubClient.js';
 import { hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
@@ -68,8 +68,14 @@ export default function App() {
   const [aiReview, setAiReview] = useState(null);
   const [acceptedSuggestions, setAcceptedSuggestions] = useState([]);
   const [aiBusy, setAiBusy] = useState(false);
-  const [githubConfig, setGithubConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.github.config') || '{"repository":"","ref":"main"}'));
-  const [blackpillProject, setBlackpillProject] = useState(() => localStorage.getItem('stardrop.blackpill.project') || (import.meta.env.DEV ? '/home/ayberk/YRT_Projects/blackpill' : ''));
+  const [githubConfig, setGithubConfig] = useState(() => {
+    const saved = JSON.parse(localStorage.getItem('stardrop.github.config') || '{}');
+    return { repository: saved.repository || 'ayberkarslan/stardrop-code-repo', ref: saved.ref || 'main' };
+  });
+  const [repoToken, setRepoToken] = useState('');
+  const [repoTokenSaved, setRepoTokenSaved] = useState(false);
+  const [repoCredentialRevision, setRepoCredentialRevision] = useState(0);
+  const [selectedTestId, setSelectedTestId] = useState('led-blink');
   const [githubUser, setGithubUser] = useState(null);
   const [catalog, setCatalog] = useState(DEFAULT_TEST_CATALOG);
   const [catalogSha, setCatalogSha] = useState(null);
@@ -93,14 +99,19 @@ export default function App() {
   const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
   const isLedTest = activeSensor?.protocol === 'GPIO' && activeSensor?.part === 'LED';
   const sensorTest = testForComponent(catalog, activeSensor, profile?.mcu?.part);
+  const compatibleTests = catalog.tests.filter((item) => item.status === 'ready' && activeSensor
+    && item.supportedMcu?.some((family) => profile?.mcu?.part?.startsWith(family))
+    && item.matchParts?.some((part) => activeSensor.part.toUpperCase().includes(part.toUpperCase())));
+  const selectedTest = compatibleTests.find((item) => item.id === selectedTestId) || compatibleTests[0] || null;
   const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref) : null;
   const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
     : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
     : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu prototip yalnız STM32F401CC/CD/CE ve STM32F446RE firmware’i derler.'
-    : !isLedTest ? 'Sensör testleri yerel derlemeye henüz taşınmadı; LED pilotu kullanılabilir.'
-    : blackpillProject.trim() && !/^STM32F401C[CD]/.test(profile?.mcu?.part || '') ? 'Yerel BlackPill CubeMX projesi yalnız STM32F401CC/CD hedefini destekler.'
-    : !blackpillProject.trim() && !sourceStatus?.activeSha ? 'Önce LED test kaynağını GitHub’dan indir.'
+    : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
+    : selectedTest.id !== 'led-blink' || !isLedTest ? 'Bu test için yerel derleyici henüz uygulanmadı.'
+    : !/^STM32F401C[CD]/.test(profile?.mcu?.part || '') ? 'Bu HAL LED projesi yalnız STM32F401CC/CD hedefini destekler.'
+    : !sourceStatus?.activeSha ? 'Önce test kaynağını GitHub’dan indir.'
     : !Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000 ? 'Blink aralığı 50–5000 ms olmalı.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
@@ -195,13 +206,16 @@ export default function App() {
   }, [esp.status, esp.base, flashBusy]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
+  useEffect(() => { loadSecret('github_repo_token').then((value) => setRepoTokenSaved(Boolean(value))).catch(() => {}); }, []);
   useEffect(() => { validGitHubToken().then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }).catch(() => {}); }, []);
+
+  const validRepoToken = async () => (await loadSecret('github_repo_token')) || validGitHubToken();
 
   useEffect(() => {
     if (!githubUser || !githubConfig.repository) return;
     let cancelled = false;
     setCatalogLoading(true);
-    validGitHubToken().then(async (token) => {
+    validRepoToken().then(async (token) => {
       const [{ catalog: remote, sha }, canWrite] = await Promise.all([
         fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' }),
         catalogWritePermission({ token, repository: githubConfig.repository }),
@@ -211,25 +225,24 @@ export default function App() {
       if (!cancelled) { setCatalog(remote); setCatalogSha(sha); setCatalogAdmin(canWrite); }
     }).catch((error) => { if (!cancelled) setNotice(`GitHub kataloğu alınamadı: ${error.message}`); }).finally(() => { if (!cancelled) setCatalogLoading(false); });
     return () => { cancelled = true; };
-  }, [githubUser, githubConfig.repository, githubConfig.ref]);
+  }, [githubUser, githubConfig.repository, githubConfig.ref, repoCredentialRevision]);
 
   useEffect(() => {
     if (!githubUser) { setSourceStatus(null); return; }
     if (!githubConfig.repository && !import.meta.env.DEV) { setSourceStatus(null); return; }
     let cancelled = false;
     setSourceStatus(null);
-    invoke('source_status', { account: githubUser.login, repository: githubConfig.repository || '', reference: githubConfig.ref || 'main' })
+    invoke('code_repo_status', { repository: githubConfig.repository, reference: githubConfig.ref || 'main' })
       .then((status) => { if (!cancelled) { setSourceStatus(status); setSourceError(status.warning || ''); } })
       .catch((error) => { if (!cancelled) setSourceError(String(error)); });
     return () => { cancelled = true; };
-  }, [githubUser, githubConfig.repository, githubConfig.ref]);
+  }, [githubUser, githubConfig.repository, githubConfig.ref, repoCredentialRevision]);
 
   const refreshSource = async () => {
     if (!githubUser) return;
     setSourceBusy(true);
     try {
-      await validGitHubToken();
-      const status = await invoke('source_status', { account: githubUser.login, repository: githubConfig.repository || '', reference: githubConfig.ref || 'main' });
+      const status = await invoke('code_repo_status', { repository: githubConfig.repository, reference: githubConfig.ref || 'main' });
       setSourceStatus(status); setSourceError(status.warning || '');
     } catch (error) { setSourceError(String(error)); }
     finally { setSourceBusy(false); }
@@ -239,8 +252,7 @@ export default function App() {
     if (!githubUser || !sourceStatus?.latestSha) return;
     setSourceBusy(true);
     try {
-      await validGitHubToken();
-      const status = await invoke('activate_source', { account: githubUser.login, repository: githubConfig.repository, sha: sourceStatus.latestSha });
+      const status = await invoke('activate_code_repo', { repository: githubConfig.repository, sha: sourceStatus.latestSha });
       setSourceStatus(status); setSourceError('');
     } catch (error) { setSourceError(String(error)); }
     finally { setSourceBusy(false); }
@@ -369,6 +381,20 @@ export default function App() {
     return next;
   });
 
+  const saveRepoAccess = async () => {
+    try {
+      if (!repoToken.trim()) throw new Error('Depo anahtarı boş.');
+      await saveSecret('github_repo_token', repoToken.trim());
+      setRepoToken(''); setRepoTokenSaved(true); setRepoCredentialRevision((value) => value + 1);
+      setNotice('Depo anahtarı işletim sisteminin güvenli deposuna kaydedildi. Test listesini yenile.');
+      await refreshSource();
+    } catch (error) { setNotice(`Depo anahtarı kaydedilemedi: ${error.message}`); }
+  };
+  const removeRepoAccess = async () => {
+    try { await deleteSecret('github_repo_token'); setRepoTokenSaved(false); setRepoCredentialRevision((value) => value + 1); setNotice('Depo erişim anahtarı silindi.'); }
+    catch (error) { setNotice(`Anahtar silinemedi: ${error.message}`); }
+  };
+
   const startGithubLogin = async () => {
     if (githubLoginBusy) return;
     setGithubLoginBusy(true);
@@ -391,6 +417,8 @@ export default function App() {
     try {
       if (githubUser?.login) await invoke('clear_source_cache', { account: githubUser.login });
       await clearGitHubSession();
+      await deleteSecret('github_repo_token');
+      setRepoTokenSaved(false);
       setGithubUser(null);
       setSourceStatus(null);
       setCatalog(DEFAULT_TEST_CATALOG);
@@ -409,7 +437,7 @@ export default function App() {
       if (!catalogAdmin || !catalogSha) throw new Error('Bu depoda katalog yazma yetkisi yok.');
       const validation = validateTestCatalog(catalog);
       if (!validation.valid) throw new Error(validation.errors.join(' '));
-      const token = await validGitHubToken();
+      const token = await validRepoToken();
       await saveCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', catalog, sha: catalogSha });
       const saved = await fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' });
       setCatalog(saved.catalog); setCatalogSha(saved.sha); setNotice('Sensör-test eşlemesi GitHub kataloğuna kaydedildi.');
@@ -422,11 +450,9 @@ export default function App() {
     setConfirmLedFlash(false); setVisualPending(null); setTestBusy(true); setDiagnosticReport(null);
     try {
       const profileJson = JSON.stringify(profile);
-      setTestStage('LED yazılımı bilgisayarda derleniyor…');
-      const useBlackpillProject = Boolean(blackpillProject.trim());
-      const built = await invoke(useBlackpillProject ? 'compile_blackpill_led' : 'compile_led', { request: { repository: githubConfig.repository || '', account: githubUser.login,
-        profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid,
-        projectPath: useBlackpillProject ? blackpillProject.trim() : null } });
+      setTestStage(`${selectedTest.name} GitHub kaynağından bilgisayarda derleniyor…`);
+      const built = await invoke('compile_code_test', { request: { repository: githubConfig.repository, testId: selectedTest.id,
+        profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid } });
       const firmwareBytes = Uint8Array.from(built.bytes);
       if (await sha256Hex(new Blob([firmwareBytes])) !== built.sha256) throw new Error('Derlenen BIN özeti uyuşmuyor.');
       if (firmwareBytes.length > target.flashSizeKb * 1024) throw new Error('BIN hedef flash kapasitesini aşıyor.');
@@ -443,27 +469,12 @@ export default function App() {
       setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
       const file = new File([firmwareBytes], 'stardrop-led.bin', { type: 'application/octet-stream' });
       if (!await flashFirmware(file)) throw new Error('ESP32 flash işlemi başarısız.');
-      if (useBlackpillProject) {
-        setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
-          testId: 'led-blink', targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
-          firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin,
-          blinkMs: activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
-        setVisualPending(requestId);
-        setTestStage('BlackPill HAL firmware yüklendi. LED’yi gözle kontrol et.');
-        return;
-      }
-      setTestStage('STM32’nin başlangıç raporu bekleniyor…');
-      const report = await waitForDiagnosticReport({
-        test: hash32FromSha256(await sha256Hex('led-blink')),
-        profile: hash32FromSha256(await sha256Hex(profileJson)),
-        run: hash32FromSha256(await sha256Hex(requestId)),
-      }, true);
-      if (report.state !== 'RUNNING') throw new Error(`LED yazılımı başlayamadı: ${report.error}`);
       setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
         testId: 'led-blink', targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
-        firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin, report }]);
+        firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin,
+        blinkMs: activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
       setVisualPending(requestId);
-      setTestStage('Firmware çalışıyor. LED’yi gözle kontrol et.');
+      setTestStage('GitHub test firmware’i yüklendi. LED’yi gözle kontrol et.');
     } catch (error) {
       setTestStage(`LED testi durdu: ${error.message}`);
       setNotice(`LED testi başarısız: ${error.message}`);
@@ -517,7 +528,7 @@ export default function App() {
     </aside>
     <main>
       <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
-      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Kaynak eşlemeleri özel GitHub kataloğunda tutulur. Yerel derleme desteği henüz yalnız LED pilotunda aktiftir.</p><div className="admin-grid"><select value={adminTestId} onChange={(event) => setAdminTestId(event.target.value)}>{catalog.tests.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input value={adminTest?.sourcePath || ''} placeholder="templates/bmp180.c" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Katalog kaynak kodu ve parça eşleşmesini tanımlar; pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB WORKBENCH GİRİŞİ" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. GitHub hesabı özel test kaynaklarını ve kataloğu okumak için kullanılır; derleme bilgisayarında yapılır.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/stardrop-diagnostics" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button></Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
+      {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depo için GitHub girişinin erişimi yoksa yalnız bu repoya “Contents: Read” veren fine-grained token kullanabilirsin. Tokeni sohbet yerine buraya gir; işletim sisteminin güvenli deposunda tutulur.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
         {!profile ? <>
           <Section title="KART DOSYASI"><div className="import-grid"><label className="dropzone"><FileUp /><strong>ALTIUM .NET İÇE AKTAR</strong><small>Elektriksel bağlantı analizi yerelde yapılır.</small><input ref={fileRef} type="file" accept=".net,.NET,.txt" onChange={(event) => loadNetlist(event.target.files?.[0])} /></label><label className="dropzone"><Download /><strong>.STARDROP AÇ</strong><small>Kaynaklar, profil ve test geçmişi tek dosyada.</small><input ref={projectRef} type="file" accept=".stardrop" onChange={(event) => importProject(event.target.files?.[0])} /></label></div></Section>
           <Section title="MANUEL KART / BREADBOARD"><p>.NET dosyan yoksa bağlantıları elle gir. Pinler testten önce ayrıca onaylanır.</p>
@@ -558,18 +569,16 @@ export default function App() {
           </Section>}
           {workbenchView === 'test' && <Section title={isLedTest ? 'LED TESTİ' : 'DONANIM TESTİ'} action={activeSensor && <Badge>{activeSensor.ref}</Badge>}>
             {!activeSensor ? <p>Kart görünümünden test edilecek bileşeni seç.</p> : isLedTest ? <div className="sensor-test-detail">
+              <div className="test-library"><div className="source-line"><span>GITHUB TESTLERİ · {githubConfig.repository}</span><button className="secondary" disabled={sourceBusy} onClick={refreshSource}><RefreshCw />YENİLE</button></div>{compatibleTests.length ? compatibleTests.map((item) => <button key={item.id} className={`test-library-item ${selectedTest?.id === item.id ? 'selected' : ''}`} onClick={() => setSelectedTestId(item.id)}><strong>{item.name}</strong><small>{item.description || item.id}</small></button>) : <small>Bu bileşen için hazır test yok.</small>}</div>
               <div><Activity size={20} /><strong>{activeSensor.part}</strong><span>{activeSensor.ref} · {componentConnections[0]?.mcuPin || 'GPIO seçilmedi'} · {activeSensor.blinkMs} ms · {activeSensor.activeLow ? 'aktif düşük' : 'aktif yüksek'}</span></div>
               <div className="led-config">
                 <label>LED GPIO<SelectMenu ariaLabel="LED GPIO" value={componentConnections[0]?.mcuPin || ''} options={['A', 'B', 'C'].flatMap((port) => Array.from({ length: 16 }, (_, number) => `P${port}${number}`)).filter((pin) => supportedPeripheral(profile.mcu.part, 'GPIO', 'LED', pin).supported).map((pin) => ({ value: pin, label: pin }))} onChange={(pin) => editConnection(profile.connections.indexOf(componentConnections[0]), 'mcuPin', pin)} /></label>
                 <label>Polarite<SelectMenu ariaLabel="LED polaritesi" value={activeSensor.activeLow ? 'low' : 'high'} options={ledTypeOptions} onChange={(value) => updateLedSetting('activeLow', value === 'low')} /></label>
                 <label>Blink aralığı (ms)<input type="number" min="50" max="5000" step="50" value={activeSensor.blinkMs} onChange={(event) => updateLedSetting('blinkMs', Number(event.target.value))} /></label>
               </div>
-              <label className="local-project-label">YEREL BLACKPILL PROJESİ<input value={blackpillProject} placeholder="/home/.../blackpill · boş bırak: tanı şablonu" onChange={(event) => { setBlackpillProject(event.target.value); localStorage.setItem('stardrop.blackpill.project', event.target.value); }} /><small>Projedeki stardrop-project.json kaynak listesini kullanır; Makefile çalıştırılmaz. Boş bırakırsan mevcut tanı şablonu kullanılır.</small></label>
-              {blackpillProject.trim() ? <div className="source-line"><span>KAYNAK · YEREL CUBEMX PROJESİ</span><span>Başlık her derlemede profilden üretilir.</span></div> : <>
-                <div className="source-line"><span>TEST KAYNAĞI · {sourceStatus?.activeSha ? sourceStatus.activeSha.slice(0, 10) : 'İNDİRİLMEDİ'}{sourceStatus?.offline ? ' · ÇEVRİMDIŞI ÖNBELLEK' : ''}</span><button className="secondary" disabled={sourceBusy} onClick={refreshSource}><RefreshCw />SÜRÜMÜ KONTROL ET</button></div>
-                {sourceStatus?.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha && <div className="source-update"><span>Yeni kaynak sürümü: {sourceStatus.latestSha.slice(0, 10)}. Etkin sürüm sen onaylayana kadar değişmez.</span><button className="secondary" disabled={sourceBusy} onClick={activateSource}>İNDİR VE ETKİNLEŞTİR</button></div>}
-              </>}
-              {!blackpillProject.trim() && sourceError && <div className="validation warn">{sourceError}</div>}
+              <div className="source-line"><span>ETKİN KAYNAK · {sourceStatus?.activeSha ? sourceStatus.activeSha.slice(0, 10) : 'İNDİRİLMEDİ'}{sourceStatus?.offline ? ' · ÇEVRİMDIŞI ÖNBELLEK' : ''}</span></div>
+              {sourceStatus?.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha && <div className="source-update"><span>Yeni kaynak sürümü: {sourceStatus.latestSha.slice(0, 10)}. Etkin sürüm onaylayana kadar değişmez.</span><button className="secondary" disabled={sourceBusy} onClick={activateSource}>İNDİR VE ETKİNLEŞTİR</button></div>}
+              {sourceError && <div className="validation warn">{sourceError}</div>}
               <p className="destructive-note">Bu test STM32’deki mevcut yazılımı siler. LED’nin gerçekten çalıştığını yalnız sen gözle doğrulayabilirsin.</p>
               <button className="primary" disabled={testBusy || Boolean(testBlocker)} onClick={() => setConfirmLedFlash(true)}><Send />{testBusy ? 'TEST ÇALIŞIYOR…' : 'YERELDE DERLE VE YÜKLE'}</button>
               {testBlocker && <div className="validation warn">{testBlocker}</div>}
