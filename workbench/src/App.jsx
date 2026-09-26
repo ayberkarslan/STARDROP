@@ -15,7 +15,7 @@ import SelectMenu from './SelectMenu.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { espJson, espStream, espUpload } from './lib/espTransport.js';
-import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, validateTestCatalog } from './lib/testCatalog.js';
+import { buildableTargetPart, validateTestCatalog } from './lib/testCatalog.js';
 import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type: 'json' };
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
@@ -78,11 +78,11 @@ export default function App() {
   const [repoCredentialRevision, setRepoCredentialRevision] = useState(0);
   const [selectedTestId, setSelectedTestId] = useState('led-blink');
   const [githubUser, setGithubUser] = useState(null);
-  const [catalog, setCatalog] = useState(DEFAULT_TEST_CATALOG);
+  const [catalog, setCatalog] = useState(CODE_REPO_CATALOG);
   const [catalogSha, setCatalogSha] = useState(null);
   const [catalogAdmin, setCatalogAdmin] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [adminTestId, setAdminTestId] = useState(DEFAULT_TEST_CATALOG.tests[0]?.id || '');
+  const [adminTestId, setAdminTestId] = useState(CODE_REPO_CATALOG.tests[0]?.id || '');
   const [githubLoginBusy, setGithubLoginBusy] = useState(false);
   const [githubLogoutBusy, setGithubLogoutBusy] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -99,7 +99,6 @@ export default function App() {
   const profileValidation = useMemo(() => profile ? validateBoardProfile(profile) : null, [profile]);
   const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
   const isLedTest = activeSensor?.protocol === 'GPIO' && activeSensor?.part === 'LED';
-  const sensorTest = testForComponent(catalog, activeSensor, profile?.mcu?.part);
   const compatibleTests = catalog.tests.filter((item) => item.status === 'ready' && activeSensor
     && item.supportedMcu?.some((family) => profile?.mcu?.part?.startsWith(family))
     && item.matchParts?.some((part) => activeSensor.part.toUpperCase().includes(part.toUpperCase())));
@@ -432,7 +431,7 @@ export default function App() {
       setRepoTokenSaved(false);
       setGithubUser(null);
       setSourceStatus(null);
-      setCatalog(DEFAULT_TEST_CATALOG);
+      setCatalog(CODE_REPO_CATALOG);
       setCatalogSha(null);
       setCatalogAdmin(false);
       setSession('welcome');
@@ -464,7 +463,6 @@ export default function App() {
         setNotice('GitHub test kataloğu zaten mevcut; yeniden oluşturulmadı.');
         return;
       } catch (error) { if (!String(error.message).includes('HTTP 404')) throw error; }
-      if (!await catalogWritePermission({ token, repository: githubConfig.repository })) throw new Error('Bu deponun Contents: Read and write izni gerekli.');
       await saveCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main',
         catalog: CODE_REPO_CATALOG, sha: null });
       const saved = await fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' });
