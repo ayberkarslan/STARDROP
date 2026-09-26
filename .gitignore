@@ -12,4 +12,5 @@ workbench/.env.*
 
 # Local application data and downloaded diagnostic artifacts.
 .stardrop-cache/
+.stardrop-code-repo-staging/
 *.stardrop.tmp
