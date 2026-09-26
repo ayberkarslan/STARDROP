@@ -13,7 +13,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-keyring = "3.6"
+keyring = { version = "3.6", features = ["linux-native", "apple-native", "windows-native"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "form", "multipart"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
