@@ -22,4 +22,6 @@ main { min-width:0; } header{height:96px;border-bottom:1px solid #222724;padding
 .test-library-item:hover,.test-library-item.selected{border-color:#5b8981;background:#101b19}
 .test-library-item small{color:#91a7a2;line-height:1.4}
 .catalog-setup{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:18px 40px 0;padding:14px 16px;border:1px solid #3d3530;border-radius:10px;background:#110f0d;color:#c8beb4;font-size:12px;line-height:1.5}
+.repo-diagnostic{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:18px 40px 0;color:#aab6b8;font:12px/1.5 monospace}
+.repo-diagnostic .secondary{flex:none}
 .catalog-setup b{color:#eee8e1}

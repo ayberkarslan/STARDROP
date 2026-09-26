@@ -76,6 +76,8 @@ export default function App() {
   const [repoToken, setRepoToken] = useState('');
   const [repoTokenSaved, setRepoTokenSaved] = useState(false);
   const [repoCredentialRevision, setRepoCredentialRevision] = useState(0);
+  const [repoDiagnostic, setRepoDiagnostic] = useState(null);
+  const [repoDiagnosticBusy, setRepoDiagnosticBusy] = useState(false);
   const [selectedTestId, setSelectedTestId] = useState('led-blink');
   const [githubUser, setGithubUser] = useState(null);
   const [catalog, setCatalog] = useState(CODE_REPO_CATALOG);
@@ -396,13 +398,25 @@ export default function App() {
       if (!repoToken.trim()) throw new Error('Depo anahtarı boş.');
       await saveSecret('github_repo_token', repoToken.trim());
       setRepoToken(''); setRepoTokenSaved(true); setRepoCredentialRevision((value) => value + 1);
-      setNotice('Depo anahtarı işletim sisteminin güvenli deposuna kaydedildi. Test listesini yenile.');
-      await refreshSource();
+      const result = await invoke('github_repo_diagnostic', { repository: githubConfig.repository });
+      setRepoDiagnostic(result);
+      if (result.userStatus !== 200) setNotice(`Anahtar kaydedildi ama GitHub hesabı reddetti (HTTP ${result.userStatus}). Erişim tanısına bak.`);
+      else if (result.repositoryStatus !== 200) setNotice(`GitHub hesabı tanındı fakat depoya erişemiyor (HTTP ${result.repositoryStatus}). Erişim tanısına bak.`);
+      else { setNotice('Depo anahtarı doğrulandı. Test kaynağı yenileniyor.'); await refreshSource(); }
     } catch (error) { setNotice(`Depo anahtarı kaydedilemedi: ${error.message}`); }
   };
   const removeRepoAccess = async () => {
-    try { await deleteSecret('github_repo_token'); setRepoTokenSaved(false); setRepoCredentialRevision((value) => value + 1); setNotice('Depo erişim anahtarı silindi.'); }
+    try { await deleteSecret('github_repo_token'); setRepoTokenSaved(false); setRepoDiagnostic(null); setRepoCredentialRevision((value) => value + 1); setNotice('Depo erişim anahtarı silindi.'); }
     catch (error) { setNotice(`Anahtar silinemedi: ${error.message}`); }
+  };
+
+  const runRepoDiagnostic = async () => {
+    setRepoDiagnosticBusy(true);
+    try {
+      const result = await invoke('github_repo_diagnostic', { repository: githubConfig.repository });
+      setRepoDiagnostic(result);
+    } catch (error) { setRepoDiagnostic({ error: String(error) }); }
+    finally { setRepoDiagnosticBusy(false); }
   };
 
   const startGithubLogin = async () => {
@@ -569,6 +583,7 @@ export default function App() {
     </aside>
     <main>
       <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'ENTEGRASYONLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : 'KART WORKBENCH'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
+      {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
       {mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depo için GitHub girişinin erişimi yoksa yalnız bu repoya “Contents: Read” veren fine-grained token kullanabilirsin. Tokeni sohbet yerine buraya gir; işletim sisteminin güvenli deposunda tutulur.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: OS credential store</span><span><ShieldCheck />GitHub token: OS credential store</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /> : <div className="workspace workbench">
         {!profile ? <>

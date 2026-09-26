@@ -176,6 +176,52 @@ fn delete_secret(key: String) -> Result<(), String> {
     }
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitHubRepoDiagnostic {
+    credential_source: String,
+    token_format: String,
+    token_length: usize,
+    user_status: u16,
+    repository_status: u16,
+    catalog_status: u16,
+}
+
+#[tauri::command]
+async fn github_repo_diagnostic(repository: String) -> Result<GitHubRepoDiagnostic, String> {
+    let parts: Vec<_> = repository.split('/').collect();
+    if parts.len() != 2 || !parts.iter().all(|part| !part.is_empty() && part.len() <= 100
+        && part.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))) {
+        return Err("Geçersiz GitHub deposu".into());
+    }
+    let repo_token = match entry_for("github_repo_token")?.get_password() {
+        Ok(value) if !value.is_empty() => Some(value),
+        Ok(_) | Err(keyring::Error::NoEntry) => None,
+        Err(error) => return Err(format!("Depo anahtarı okunamadı: {error}")),
+    };
+    let (source, credential) = if let Some(value) = repo_token {
+        ("depo anahtarı", value)
+    } else {
+        ("GitHub giriş tokeni", entry_for("github_access_token")?.get_password()
+            .map_err(|_| "Kaydedilmiş GitHub kimlik bilgisi bulunamadı".to_string())?)
+    };
+    let format = if credential.starts_with("github_pat_") { "fine-grained PAT biçimi" }
+        else if credential.starts_with("ghu_") { "GitHub App kullanıcı tokeni biçimi" }
+        else if credential.starts_with("ghp_") { "classic PAT biçimi" }
+        else { "beklenmeyen biçim" };
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(12)).build().map_err(|error| error.to_string())?;
+    let user_status = client.get("https://api.github.com/user").header("User-Agent", "stardrop-workbench")
+        .bearer_auth(&credential).send().await.map_err(|error| error.to_string())?.status().as_u16();
+    let repository_status = client.get(format!("https://api.github.com/repos/{repository}"))
+        .header("User-Agent", "stardrop-workbench").bearer_auth(&credential)
+        .send().await.map_err(|error| error.to_string())?.status().as_u16();
+    let catalog_status = client.get(format!("https://api.github.com/repos/{repository}/contents/catalog/catalog.json"))
+        .header("User-Agent", "stardrop-workbench").bearer_auth(&credential)
+        .send().await.map_err(|error| error.to_string())?.status().as_u16();
+    Ok(GitHubRepoDiagnostic { credential_source: source.into(), token_format: format.into(),
+        token_length: credential.len(), user_status, repository_status, catalog_status })
+}
+
 fn open_auth_browser(url: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     let mut command = std::process::Command::new("xdg-open");
@@ -282,7 +328,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }
