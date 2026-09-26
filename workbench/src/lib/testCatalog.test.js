@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, validateTestCatalog } from './testCatalog.js';
+import CODE_REPO_CATALOG from '../../../code-repo/catalog/catalog.json' with { type: 'json' };
 
 test('sensor testing requires a matching device-specific test', () => {
   assert.equal(testForComponent(DEFAULT_TEST_CATALOG, { part: 'BMP180', protocol: 'I2C' }, 'STM32F401CCU6').id, 'bmp180');
@@ -14,4 +15,10 @@ test('catalog and prototype MCU restrictions are explicit', () => {
   assert.equal(buildableTargetPart('STM32F401CDU6'), true);
   assert.equal(buildableTargetPart('STM32F401RE'), false);
   assert.equal(buildableTargetPart('STM32F446RET6'), true);
+});
+
+test('GitHub code catalog resolves LED test without hardcoded board reference', () => {
+  assert.equal(validateTestCatalog(CODE_REPO_CATALOG).valid, true);
+  assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'LED', protocol: 'GPIO' }, 'STM32F401CDU6')?.id, 'led-blink');
+  assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'LED', protocol: 'GPIO' }, 'STM32F446RET6'), null);
 });

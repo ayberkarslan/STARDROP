@@ -181,7 +181,12 @@ struct CodeCatalog { schema_version: u8, tests: Vec<CodeTest> }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CodeTest { id: String, status: String, #[serde(default)] source_path: String, build: Option<String> }
+struct CodeTest {
+    id: String, status: String, #[serde(default)] source_path: String, build: Option<String>,
+    #[serde(default)] protocol: String, #[serde(default)] match_parts: Vec<String>,
+    #[serde(default)] supported_mcu: Vec<String>, #[serde(default)] required_roles: Vec<String>,
+    #[serde(default)] result: String,
+}
 
 impl CodeCatalog {
     fn validate(&self) -> Result<(), String> {
@@ -189,7 +194,8 @@ impl CodeCatalog {
         let mut ids = std::collections::HashSet::new();
         for test in &self.tests {
             if !safe_segment(&test.id) || !ids.insert(&test.id) || !matches!(test.status.as_str(), "ready" | "planned")
-                || test.status == "ready" && (!safe_relative(&test.source_path) || test.build.as_deref() != Some("stm32-hal-v1")) {
+                || test.status == "ready" && (!safe_relative(&test.source_path) || test.build.as_deref() != Some("stm32-hal-v1")
+                    || !matches!(test.result.as_str(), "visual" | "sram") || test.required_roles.is_empty()) {
                 return Err("Test kataloğunda geçersiz veya desteklenmeyen kayıt".into());
             }
         }
@@ -393,22 +399,54 @@ pub async fn compile_code_test(app: tauri::AppHandle, request: CodeBuildRequest)
         let sha = active_code_sha(&root).ok_or("Önce test deposunu indir ve etkinleştir")?;
         let source = root.join(&sha);
         if !code_source_valid(&source) { return Err("Test kaynağı doğrulanamadı".into()); }
+        compile_code_test_at(&source, &compiler(&app, "arm-none-eabi-gcc")?,
+            &compiler(&app, "arm-none-eabi-objcopy")?, request, sha)
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn compile_code_test_at(source: &Path, gcc: &Path, objcopy: &Path, request: CodeBuildRequest, sha: String) -> Result<LedBuildResult, String> {
         let catalog: CodeCatalog = serde_json::from_slice(&fs::read(source.join("catalog/catalog.json")).map_err(|error| error.to_string())?)
             .map_err(|_| "Test kataloğu geçersiz")?;
         catalog.validate()?;
         let test = catalog.tests.iter().find(|test| test.id == request.test_id && test.status == "ready")
             .ok_or("Seçilen test bu kaynak sürümünde hazır değil")?;
-        if test.id != "led-blink" { return Err("Bu testin yerel derleyicisi henüz uygulanmadı".into()); }
+        let profile: serde_json::Value = serde_json::from_str(&request.profile_json).map_err(|_| "Kart profili geçersiz")?;
+        let component = profile["components"].as_array().and_then(|items| items.iter().find(|item| item["ref"] == request.component_ref))
+            .ok_or("Test bileşeni kart profilinde yok")?;
+        let part = component["part"].as_str().unwrap_or("").to_ascii_uppercase();
+        let protocol = component["protocol"].as_str().unwrap_or("");
+        if profile["mcu"]["part"] != request.mcu_part || profile["targetUid"] != request.target_uid
+            || request.target_uid.len() != 24 || !request.target_uid.chars().all(|ch| ch.is_ascii_hexdigit())
+            || !test.supported_mcu.iter().any(|mcu| request.mcu_part.starts_with(mcu))
+            || test.protocol != protocol || !test.match_parts.iter().any(|name| part.contains(&name.to_ascii_uppercase())) {
+            return Err("Test kart profili veya STM32 hedefiyle uyuşmuyor".into());
+        }
+        let connections = profile["connections"].as_array().ok_or("Pin listesi yok")?;
+        if test.required_roles.iter().any(|role| !connections.iter().any(|pin| pin["componentRef"] == request.component_ref
+            && pin["role"] == *role && pin["approved"] == true)) { return Err("Test için onaylı pin rolleri eksik".into()); }
+        if request.request_id.len() > 100 || !request.request_id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-') {
+            return Err("Çalıştırma kimliği geçersiz".into());
+        }
+        let mut header = role_pin_header(&request.profile_json, &request.component_ref)?;
+        header.push_str(&format!("#define STARDROP_TEST_ID_HASH {}\n#define STARDROP_PROFILE_HASH {}\n#define STARDROP_RUN_HASH {}\n",
+            hash32(test.id.as_bytes()), hash32(request.profile_json.as_bytes()), hash32(request.request_id.as_bytes())));
+        if test.id == "led-blink" {
+            let led_request = LedBuildRequest { repository: request.repository.clone(), account: String::new(),
+                profile_json: request.profile_json.clone(), component_ref: request.component_ref.clone(),
+                request_id: request.request_id.clone(), mcu_part: request.mcu_part.clone(), target_uid: request.target_uid.clone(),
+                project_path: None };
+            let (_, _, interval, active_low, _) = validate_led_request(&led_request)?;
+            header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n", active_low as u8));
+        }
+        header.push_str("#endif\n");
         let project = source.join(Path::new(&test.source_path).parent().unwrap_or(Path::new("")));
         let led_request = LedBuildRequest { repository: request.repository, account: String::new(),
             profile_json: request.profile_json, component_ref: request.component_ref,
             request_id: request.request_id, mcu_part: request.mcu_part, target_uid: request.target_uid,
             project_path: None };
-        let mut result = compile_blackpill_at(&project, &source, &compiler(&app, "arm-none-eabi-gcc")?,
-            &compiler(&app, "arm-none-eabi-objcopy")?, led_request)?;
+        let mut result = compile_hal_at(&project, source, gcc, objcopy, led_request, header)?;
         result.source_sha = sha;
         Ok(result)
-    }).await.map_err(|error| error.to_string())?
 }
 
 #[derive(Deserialize)]
@@ -475,10 +513,15 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
 }
 
 fn compile_blackpill_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest) -> Result<LedBuildResult, String> {
-    let (_port, _number, interval, active_low, target) = validate_led_request(&request)?;
-    if target != "stm32f401cc" { return Err("Bu CubeMX projesi yalnız STM32F401xC için üretildi".into()); }
+    let (_port, _number, interval, active_low, _) = validate_led_request(&request)?;
+    let mut header = role_pin_header(&request.profile_json, &request.component_ref)?;
+    header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8));
+    compile_hal_at(project, repo_root, gcc, objcopy, request, header)
+}
+
+fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest, header: String) -> Result<LedBuildResult, String> {
     if !request.mcu_part.starts_with("STM32F401CC") && !request.mcu_part.starts_with("STM32F401CD") {
-        return Err("Bu CubeMX projesi F401CC/CD için hazırlandı".into());
+        return Err("Bu HAL proje derleyicisi F401CC/CD için hazırlandı".into());
     }
     let project = project.canonicalize().map_err(|_| "BlackPill proje klasörü bulunamadı")?;
     let repo_root = repo_root.canonicalize().map_err(|_| "Test deposu bulunamadı")?;
@@ -496,8 +539,6 @@ fn compile_blackpill_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &
         || manifest.defines.iter().any(|item| item.len() > 50 || !item.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
         return Err("Proje manifestinde geçersiz dosya veya derleme tanımı var".into());
     }
-    let mut header = role_pin_header(&request.profile_json, &request.component_ref)?;
-    header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8));
     let work = tempfile::tempdir().map_err(|error| error.to_string())?;
     fs::write(work.path().join("pin_configurations.h"), &header).map_err(|error| error.to_string())?;
     let mut objects = Vec::new();
@@ -658,5 +699,24 @@ mod tests {
         let result = compile_blackpill_at(&destination, &destination, Path::new("arm-none-eabi-gcc"),
             Path::new("arm-none-eabi-objcopy"), fixture(100)).unwrap();
         assert!(result.bytes.len() > 64);
+        let profile = fixture(100);
+        let build = CodeBuildRequest { repository: "ayberkarslan/stardrop-code-repo".into(), test_id: "led-blink".into(),
+            profile_json: profile.profile_json.clone(), component_ref: profile.component_ref,
+            request_id: profile.request_id, mcu_part: profile.mcu_part, target_uid: profile.target_uid };
+        let remote = compile_code_test_at(&destination, Path::new("arm-none-eabi-gcc"),
+            Path::new("arm-none-eabi-objcopy"), build, "remote-commit".into()).unwrap();
+        assert!(remote.header.contains("STARDROP_LED_GPIO_PORT GPIOC"));
+        assert_eq!(remote.source_sha, "remote-commit");
+    }
+
+    #[test]
+    fn code_catalog_requires_supported_build_and_safe_manifest_path() {
+        let raw = include_str!("../../../code-repo/catalog/catalog.json");
+        let catalog: CodeCatalog = serde_json::from_str(raw).unwrap();
+        catalog.validate().unwrap();
+        let mut bad: serde_json::Value = serde_json::from_str(raw).unwrap();
+        bad["tests"][0]["sourcePath"] = serde_json::json!("../../outside/stardrop-project.json");
+        let bad: CodeCatalog = serde_json::from_value(bad).unwrap();
+        assert!(bad.validate().is_err());
     }
 }
