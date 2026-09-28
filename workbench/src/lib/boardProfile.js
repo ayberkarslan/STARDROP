@@ -103,6 +103,28 @@ export function createManualLedProfile({ name, mcuPart, pin, activeLow = true, b
   return profile;
 }
 
+export function addManualPeripheral(profile, { part, protocol, ref, pins, activeLow = true, blinkMs = 100 }) {
+  if (!profile || !['GPIO', 'I2C', 'SPI'].includes(protocol)) throw new Error('Önce kartı ve bağlantı türünü seç.');
+  const componentPart = String(part || '').trim().toUpperCase();
+  const componentRef = String(ref || '').trim().toUpperCase();
+  if (!componentPart || !/^[A-Z]+\d+$/.test(componentRef) || profile.components.some((item) => item.ref === componentRef)) {
+    throw new Error('Bileşen adı veya U2 gibi benzersiz referans geçersiz.');
+  }
+  if (protocol === 'GPIO' && componentPart !== 'LED') throw new Error('GPIO akışında şu an yalnız LED destekleniyor.');
+  const roles = protocol === 'GPIO' ? ['LED'] : protocol === 'I2C' ? ['SCL', 'SDA'] : ['SCK', 'MISO', 'MOSI', 'CS'];
+  const peripheral = protocol === 'GPIO' ? 'GPIO' : protocol === 'I2C' ? 'SOFT_I2C_1' : 'SPI1';
+  const connections = roles.map((role) => ({
+    componentRef, componentPart, role, sensorPin: role, mcuPin: normalizePin(pins?.[role]),
+    peripheral, approved: false, source: 'USER', path: [], evidence: {}, confidence: 0,
+  }));
+  const component = { ref: componentRef, part: componentPart, category: protocol === 'GPIO' ? 'OUTPUT' : 'SENSOR', protocol, peripheral,
+    ...(protocol === 'GPIO' ? { activeLow: Boolean(activeLow), blinkMs: Number(blinkMs) } : {}) };
+  const next = { ...profile, components: [...profile.components, component], connections: [...profile.connections, ...connections] };
+  const validation = validateBoardProfile(next);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  return addAuditEvent(next, 'MANUAL_COMPONENT_ADDED', { componentRef, protocol });
+}
+
 export function confidenceForConnection(connection) {
   const evidence = connection.evidence || {};
   let score = 0;
@@ -124,14 +146,14 @@ export function confidenceLevel(score) {
 export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   const family = canonicalMcu(mcuPart);
   const normalized = normalizePin(pin);
-  if (peripheral === 'GPIO' && role === 'LED') {
+  if ((peripheral === 'GPIO' && role === 'LED') || (/^SPI[1-3]$/.test(peripheral || '') && ['CS', 'INT', 'RESET'].includes(role))) {
     const match = normalized?.match(/^P([ABC])(\d{1,2})$/);
     const port = match?.[1];
     const index = match ? Number(match[2]) : -1;
     const supported = Boolean(['STM32F401', 'STM32F446'].includes(family) && index <= 15
       && !(port === 'A' && (index === 13 || index === 14))
       && (port !== 'C' || family === 'STM32F446' || index >= 13));
-    return { supported, reason: supported ? null : `${normalized || pin || 'Boş pin'} ${mcuPart} LED testi için uygun değil.` };
+    return { supported, reason: supported ? null : `${normalized || pin || 'Boş pin'} ${mcuPart} üzerinde ${role} için uygun değil.` };
   }
   if (/^SOFT_I2C(?:_[1-9]\d*)?$/.test(peripheral || '') && ['SCL', 'SDA'].includes(role)) {
     const match = normalized?.match(/^P([A-C])(\d{1,2})$/);

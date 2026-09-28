@@ -4,6 +4,7 @@ import {
   newBoardProfile,
   createManualI2cProfile,
   createManualLedProfile,
+  addManualPeripheral,
   overallConfidence,
   supportedPeripheral,
   validateTestTarget,
@@ -86,4 +87,20 @@ test('LED profile validates BlackPill PC13 and rejects SWD pins', () => {
   assert.throws(() => createManualLedProfile({ name: 'Bad', mcuPart: 'STM32F401CCU6', pin: 'PA13' }), /uygun değil/);
   assert.throws(() => createManualLedProfile({ name: 'Bad', mcuPart: 'STM32F401CCU6', pin: 'PC9' }), /uygun değil/);
   assert.equal(createManualLedProfile({ name: 'Nucleo', mcuPart: 'STM32F446RET6', pin: 'PC9' }).connections[0].mcuPin, 'PC9');
+});
+
+test('missing LED can be added to a parsed board without replacing its sensors', () => {
+  const parsed = createManualI2cProfile({ name: 'Aviyonik', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'MPU6050', scl: 'PB6', sda: 'PB7' });
+  const next = addManualPeripheral(parsed, { part: 'LED', protocol: 'GPIO', ref: 'D1', pins: { LED: 'PC13' } });
+  assert.deepEqual(next.components.map((item) => item.ref), ['U2', 'D1']);
+  assert.equal(next.connections.at(-1).mcuPin, 'PC13');
+  assert.throws(() => addManualPeripheral(next, { part: 'LED', protocol: 'GPIO', ref: 'D1', pins: { LED: 'PA5' } }), /benzersiz/);
+});
+
+test('manual SPI sensor accepts valid data pins and a separate chip-select GPIO', () => {
+  const board = newBoardProfile({ name: 'Bench', mcuPart: 'STM32F401CDU6' });
+  const next = addManualPeripheral(board, { part: 'MS5611', protocol: 'SPI', ref: 'U2', pins: { SCK: 'PA5', MISO: 'PA6', MOSI: 'PA7', CS: 'PB0' } });
+  assert.equal(validateBoardProfile(next).valid, true);
+  next.connections.forEach((item) => { item.approved = true; });
+  assert.equal(validateTestTarget(next, 'U2').valid, true);
 });
