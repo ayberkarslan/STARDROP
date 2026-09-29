@@ -488,6 +488,15 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
     let namespace = match protocol { "GPIO" if component["part"] == "LED" => "LED", "GPIO" => "GPIO", "I2C" => "I2C", "SPI" => "SPI", _ => return Err("Pin başlığı için protokol desteklenmiyor".into()) };
     let f401 = profile["mcu"]["part"].as_str().unwrap_or("").starts_with("STM32F401C");
     let mut header = String::from("#ifndef STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_SCHEMA_VERSION 1\n");
+    let bus = profile["connections"].as_array().and_then(|connections| connections.iter()
+        .find(|connection| connection["componentRef"] == component_ref))
+        .and_then(|connection| connection["peripheral"].as_str()).unwrap_or("");
+    match (protocol, bus) {
+        ("I2C", value) if value.starts_with("SOFT_I2C_") => header.push_str("#define STARDROP_I2C_BUS_SOFTWARE 1\n"),
+        ("I2C", "I2C1" | "I2C2" | "I2C3") => header.push_str(&format!("#define STARDROP_I2C_BUS_NUMBER {}\n", &bus[3..])),
+        ("SPI", "SPI1" | "SPI2" | "SPI3") => header.push_str(&format!("#define STARDROP_SPI_BUS_NUMBER {}\n", &bus[3..])),
+        _ => {}
+    }
     let mut roles = std::collections::HashSet::new();
     let mut pins = std::collections::HashSet::new();
     let mut count = 0;
@@ -658,13 +667,14 @@ mod tests {
             "mcu": {"part": "STM32F401CDU6"},
             "components": [{"ref": "U23", "part": "BMP180", "protocol": "I2C"}],
             "connections": [
-                {"componentRef": "U23", "role": "SCL", "mcuPin": "PB6", "approved": true},
-                {"componentRef": "U23", "role": "SDA", "mcuPin": "PB7", "approved": true}
+                {"componentRef": "U23", "role": "SCL", "mcuPin": "PB6", "peripheral": "SOFT_I2C_1", "approved": true},
+                {"componentRef": "U23", "role": "SDA", "mcuPin": "PB7", "peripheral": "SOFT_I2C_1", "approved": true}
             ]
         });
         let header = role_pin_header(&profile.to_string(), "U23").unwrap();
         assert!(header.contains("STARDROP_I2C_SCL_GPIO_PIN GPIO_PIN_6"));
         assert!(header.contains("STARDROP_I2C_SDA_GPIO_PORT GPIOB"));
+        assert!(header.contains("STARDROP_I2C_BUS_SOFTWARE 1"));
         assert!(!header.contains("U23"));
         let bad = profile.to_string().replace("PB7", "PA13");
         assert!(role_pin_header(&bad, "U23").is_err());

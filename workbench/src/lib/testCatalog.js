@@ -25,12 +25,17 @@ export function validateTestCatalog(catalog) {
   return { valid: errors.length === 0, errors };
 }
 
-export function testForComponent(catalog, component, mcuPart) {
-  if (!component) return null;
+export function testsForComponent(catalog, component, mcuPart, { readyOnly = false } = {}) {
+  if (!component) return [];
   const part = String(component.part || '').toUpperCase();
   const family = canonicalMcu(mcuPart);
-  return catalog?.tests?.find((item) => !['generic-i2c', 'generic-spi', 'mcu-selftest'].includes(item.id)
-    && item.supportedMcu?.includes(family)
+  return (catalog?.tests || []).filter((item) => !['generic-i2c', 'generic-spi', 'mcu-selftest'].includes(item.id)
+    && (!readyOnly || item.status === 'ready')
+    && (item.supportedMcu?.includes(family) || item.supportedMcu?.some((name) => mcuPart?.startsWith(name)))
     && item.matchParts?.some((pattern) => part.includes(pattern.toUpperCase()))
-    && (!item.protocol || item.protocol === component.protocol || item.protocol.includes(component.protocol))) || null;
+    && (!item.protocol || item.protocol === component.protocol || item.protocol.includes(component.protocol)));
+}
+
+export function testForComponent(catalog, component, mcuPart) {
+  return testsForComponent(catalog, component, mcuPart, { readyOnly: true })[0] || null;
 }
