@@ -6,14 +6,17 @@ export function makeLibraryEntry({ name, note = '', profile, componentRef, test,
   const title = String(name || '').trim();
   if (title.length < 3 || title.length > 100) throw new Error('Kayıt adı 3–100 karakter olmalı.');
   if (String(note).length > 2000) throw new Error('Not en fazla 2000 karakter olabilir.');
-  if (!profile || !validateBoardProfile(profile).valid) throw new Error('Kart profilindeki pinleri önce düzelt.');
+  if (!profile) throw new Error('Önce kart profili oluştur.');
   const component = profile.components.find((item) => item.ref === componentRef);
   if (!component) throw new Error('Paylaşılacak bileşeni seç.');
   const connections = profile.connections.filter((item) => item.componentRef === componentRef);
   if (!connections.length || connections.some((item) => !item.approved)) throw new Error('Bileşen pinlerini önce onayla.');
+  if (!validateBoardProfile({ ...profile, components: [component], connections }).valid) throw new Error('Bu bileşenin pinlerini önce düzelt.');
   const lastRun = test?.status === 'ready' ? [...history].reverse().find((run) => run.componentRef === componentRef && run.testId === test.id && ['PASS', 'FAIL'].includes(run.status)) : null;
   const publishedProfile = JSON.parse(JSON.stringify(profile));
   publishedProfile.targetUid = null;
+  publishedProfile.components = [component];
+  publishedProfile.connections = connections;
   publishedProfile.audit = [];
   publishedProfile.reviews = [];
   return {

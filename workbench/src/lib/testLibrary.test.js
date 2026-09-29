@@ -11,6 +11,7 @@ test('library entry generates detailed searchable information without target UID
   const entry = makeLibraryEntry({ name: 'Kart LED kontrolü', profile, componentRef: 'D1', test: selectedTest, author: 'ayberk', sourceSha: 'abc' });
   assert.equal(validateLibraryEntry(entry), true);
   assert.equal(entry.profile.targetUid, null);
+  assert.equal(entry.profile.components.length, 1);
   assert.equal(entry.result.status, 'NOT_RUN');
   assert.deepEqual(entry.pins[0], { role: 'LED', mcuPin: 'PC13', peripheral: 'GPIO' });
   assert.deepEqual(searchLibrary([entry], 'f401 pc13'), [entry]);
