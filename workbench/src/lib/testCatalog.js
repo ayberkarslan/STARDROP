@@ -1,5 +1,6 @@
 import seedCatalog from '../../../diagnostics/catalog/catalog.json' with { type: 'json' };
 import { canonicalMcu } from './boardProfile.js';
+import { targetPackage } from './targetPins.js';
 
 export const DEFAULT_TEST_CATALOG = seedCatalog;
 const ROLES = new Set(['LED', 'SCL', 'SDA', 'SCK', 'MISO', 'MOSI', 'CS', 'INT', 'RESET']);
@@ -16,8 +17,7 @@ export function deviceForComponent(catalog, component) {
 }
 
 export function buildableTargetPart(part) {
-  const normalized = String(part || '').toUpperCase();
-  return /^STM32F401C[CDE]/.test(normalized) || normalized.startsWith('STM32F446RE');
+  return targetPackage(part)?.build === 'stm32-hal-v1';
 }
 
 export function validateTestCatalog(catalog) {

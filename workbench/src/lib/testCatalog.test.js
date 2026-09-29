@@ -14,7 +14,7 @@ test('catalog and prototype MCU restrictions are explicit', () => {
   assert.equal(buildableTargetPart('STM32F401CCU6'), true);
   assert.equal(buildableTargetPart('STM32F401CDU6'), true);
   assert.equal(buildableTargetPart('STM32F401RE'), false);
-  assert.equal(buildableTargetPart('STM32F446RET6'), true);
+  assert.equal(buildableTargetPart('STM32F446RET6'), false);
 });
 
 test('GitHub code catalog resolves LED test without hardcoded board reference', () => {
@@ -23,6 +23,8 @@ test('GitHub code catalog resolves LED test without hardcoded board reference', 
   assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'LED', protocol: 'GPIO' }, 'STM32F446RET6'), null);
   const bhi = { part: 'BHI360-IMU', protocol: 'I2C' };
   assert.equal(deviceForComponent(CODE_REPO_CATALOG, bhi)?.id, 'bhi360');
+  assert.deepEqual(deviceForComponent(CODE_REPO_CATALOG, { ...bhi, protocol: 'SPI' })
+    ?.interfaces.find((item) => item.protocol === 'SPI').requiredRoles, ['SCK', 'MISO', 'MOSI', 'CS']);
   assert.equal(testForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6'), null);
   assert.deepEqual(testsForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6').map((item) => item.id), ['bhi360-identity']);
 });

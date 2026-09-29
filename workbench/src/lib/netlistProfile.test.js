@@ -4,6 +4,7 @@ import { profileFromNetlist } from './netlistProfile.js';
 import { validateTestTarget } from './boardProfile.js';
 import { DEFAULT_TEST_CATALOG, testForComponent } from './testCatalog.js';
 import { readFileSync } from 'node:fs';
+import { pinNumberFor } from './targetPins.js';
 
 const miniNetlist = `Wire List
 <<< Component List >>>
@@ -46,11 +47,14 @@ test('custom I2C netlist automatically receives a software bus, pending approval
 
 test('BHI360 fixture is detected but not claimed as a runnable hardware test', () => {
   const netlist = readFileSync(new URL('../../../parse_algorithm/test.net', import.meta.url), 'utf8');
-  const { profile } = profileFromNetlist(netlist);
+  const { profile, analysis } = profileFromNetlist(netlist);
   const bhi = profile.components.find((item) => item.part.startsWith('BHI360'));
   assert.equal(profile.mcu.part, 'STM32F446RET6');
   assert.equal(bhi?.protocol, 'I2C');
   assert.deepEqual(Object.fromEntries(profile.connections.filter((item) => item.componentRef === bhi.ref)
     .map((item) => [item.role, item.mcuPin])), { INT: 'PC5', RESET: 'PC4', SDA: 'PB3', SCL: 'PB10' });
+  for (const pin of analysis.detected_sensors.find((item) => item.ref_designator === bhi.ref).pins) {
+    assert.equal(pinNumberFor(profile.mcu.part, pin.mcu_pin_name), Number(pin.mcu_pin_num));
+  }
   assert.equal(validateTestTarget(profile, bhi.ref).valid, false);
 });

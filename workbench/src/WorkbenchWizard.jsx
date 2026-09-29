@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowLeft, ArrowRight, Cpu, Download, FileUp, RefreshCw, Send, ShieldCheck } from 'lucide-react';
-import { addManualPeripheral, newBoardProfile, supportedPeripheral, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
-import { testsForComponent } from './lib/testCatalog.js';
+import { addManualPeripheral, newBoardProfile, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
+import { buildableTargetPart, testsForComponent } from './lib/testCatalog.js';
 import SelectMenu from './SelectMenu.jsx';
 import PackagePinout from './PackagePinout.jsx';
 import { deviceForComponent } from './lib/testCatalog.js';
@@ -48,7 +48,7 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
   const requiredRoles = selectedTest?.requiredRoles
     || device?.interfaces?.find((item) => item.protocol === activeSensor?.protocol)?.requiredRoles || null;
   const testValidation = activeSensor && profile ? validateTestTarget(profile, activeComponent, requiredRoles) : null;
-  const compilerReady = /^STM32F401C[CD]/.test(profile?.mcu?.part || '');
+  const compilerReady = buildableTargetPart(profile?.mcu?.part);
   const matchingTests = testsForComponent(catalog, activeSensor, profile?.mcu?.part);
 
   useEffect(() => { if (step === 'test') refreshSource(); }, [step]);

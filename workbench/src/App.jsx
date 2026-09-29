@@ -109,10 +109,9 @@ export default function App() {
   const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
     : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
     : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
-    : !buildableTargetPart(profile?.mcu?.part) ? 'Bu prototip yalnız STM32F401CC/CD/CE ve STM32F446RE firmware’i derler.'
+    : !buildableTargetPart(profile?.mcu?.part) ? 'Bu GitHub HAL derleyicisi yalnız STM32F401CC/CD hedefinde doğrulandı.'
     : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
     : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
-    : !/^STM32F401C[CD]/.test(profile?.mcu?.part || '') ? 'Bu HAL derleyici şu an yalnız STM32F401CC/CD hedefini destekler.'
     : !sourceStatus?.activeSha ? 'Önce test kaynağını GitHub’dan indir.'
     : isLedTest && (!Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000) ? 'Blink aralığı 50–5000 ms olmalı.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
