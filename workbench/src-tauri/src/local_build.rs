@@ -215,11 +215,15 @@ impl CodeCatalog {
         }
         let mut ids = std::collections::HashSet::new();
         for test in &self.tests {
+            let device = test.device_id.as_ref().and_then(|id| self.devices.iter().find(|device| &device.id == id));
             if !safe_segment(&test.id) || !ids.insert(&test.id) || !matches!(test.status.as_str(), "ready" | "planned")
                 || self.schema_version == 2 && test.device_id.as_ref().is_none_or(|id| !device_ids.contains(id))
                 || self.schema_version == 2 && (test.required_roles.is_empty() || test.required_roles.iter().any(|role| !valid_pin_role(role)))
+                || self.schema_version == 2 && device.is_none_or(|device| !device.protocols.contains(&test.protocol)
+                    || test.required_roles.iter().any(|role| !device.required_roles.contains(role) && !device.optional_roles.contains(role)))
                 || test.status == "ready" && (!safe_relative(&test.source_path) || test.build.as_deref() != Some("stm32-hal-v1")
-                    || !matches!(test.result.as_str(), "visual" | "sram") || test.required_roles.is_empty()) {
+                    || !matches!(test.result.as_str(), "visual" | "sram") || test.required_roles.is_empty()
+                    || test.supported_mcu.is_empty() || self.schema_version == 2 && !test.source_path.ends_with("stardrop-project.json")) {
                 return Err("Test kataloğunda geçersiz veya desteklenmeyen kayıt".into());
             }
         }

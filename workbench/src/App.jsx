@@ -105,7 +105,7 @@ export default function App() {
   const isLedTest = activeSensor?.protocol === 'GPIO' && activeSensor?.part === 'LED';
   const compatibleTests = testsForComponent(catalog, activeSensor, profile?.mcu?.part, { readyOnly: true });
   const selectedTest = compatibleTests.find((item) => item.id === selectedTestId) || compatibleTests[0] || null;
-  const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref) : null;
+  const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref, selectedTest?.requiredRoles) : null;
   const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
     : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
     : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'

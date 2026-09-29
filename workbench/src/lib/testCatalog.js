@@ -23,11 +23,11 @@ export function buildableTargetPart(part) {
 export function validateTestCatalog(catalog) {
   const errors = [];
   if (![1, 2].includes(catalog?.schemaVersion) || !Array.isArray(catalog.tests)) errors.push('Katalog sürümü veya test listesi geçersiz.');
-  const devices = new Set();
+  const devices = new Map();
   if (catalog?.schemaVersion === 2 && !Array.isArray(catalog.devices)) errors.push('Cihaz tanımları eksik.');
   for (const device of catalog?.devices || []) {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(device.id || '') || devices.has(device.id)) errors.push('Cihaz ID geçersiz veya tekrarlı.');
-    devices.add(device.id);
+    devices.set(device.id, device);
     if (!device.name || !Array.isArray(device.matchParts) || !device.matchParts.length
       || !Array.isArray(device.protocols) || !device.protocols.length
       || device.protocols.some((value) => !PROTOCOLS.has(value))) errors.push(`${device.id}: cihaz eşlemesi geçersiz.`);
@@ -47,6 +47,16 @@ export function validateTestCatalog(catalog) {
     if (catalog?.schemaVersion === 2 && !devices.has(item.deviceId)) errors.push(`${item.id}: tanımlı cihaz gerekli.`);
     if (catalog?.schemaVersion === 2 && (!Array.isArray(item.requiredRoles) || !item.requiredRoles.length
       || item.requiredRoles.some((role) => !ROLES.has(role)))) errors.push(`${item.id}: zorunlu pin rolleri geçersiz.`);
+    if (catalog?.schemaVersion === 2) {
+      const device = devices.get(item.deviceId);
+      const allowedRoles = new Set([...(device?.requiredRoles || []), ...(device?.optionalRoles || [])]);
+      if (!PROTOCOLS.has(item.protocol) || !device?.protocols?.includes(item.protocol)
+        || item.requiredRoles?.some((role) => !allowedRoles.has(role))) errors.push(`${item.id}: cihaz arayüzü veya pin rolleri uyuşmuyor.`);
+      if (item.status === 'ready' && (!item.supportedMcu?.length || item.build !== 'stm32-hal-v1'
+        || !['visual', 'sram'].includes(item.result) || !item.sourcePath?.endsWith('stardrop-project.json'))) {
+        errors.push(`${item.id}: hazır test için derleme, hedef, sonuç ve proje manifesti gerekli.`);
+      }
+    }
   }
   return { valid: errors.length === 0, errors };
 }

@@ -35,7 +35,7 @@ export default function PackagePinout({ profile, connections, selectedIndex, onS
     <div className="pinout-roles" aria-label="Sensör bağlantıları">
       {connections.map((connection, index) => <button key={`${connection.role}-${index}`} type="button"
         className={index === selectedIndex ? 'selected' : ''} onClick={() => onSelectIndex(index)}>
-        <span><strong>{connection.role}</strong><small>{connection.sensorPin || 'Sensör pini'}</small></span>
+        <span><strong>{connection.role}</strong><small>{connection.sensorPin || 'Sensör pini'}{connection.approved ? ' · onaylı' : ' · onay bekliyor'}</small></span>
         <span className="pinout-role-value">{connection.mcuPin || 'Pin seç'}<small>{connection.mcuPin ? `#${pins.find((item) => item.name === connection.mcuPin)?.number || '?'}` : ''}</small></span>
       </button>)}
       <p>Önce soldan bir hat seç, sonra STM32 üzerindeki uygun bacağa tıkla. Dolu ve ayrılmış bacaklar seçilemez.</p>

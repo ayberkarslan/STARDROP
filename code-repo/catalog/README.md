@@ -1,45 +1,51 @@
-# STARDROP test kataloğu
+# STARDROP test kataloğu · v2
 
-`catalog.json` uygulamada görünen test listesinin kaynağıdır. Her `ready` testin
-`sourcePath` alanı bu depodaki bir `stardrop-project.json` dosyasını göstermelidir.
-Bu dosya derleme kaynaklarını, include dizinlerini ve linker dosyasını listeler.
-GPIO pinleri kaynakta sabitlenmez: STARDROP kart profilinden
-`pin_configurations.h` üretir, ardından kaynakları kullanıcının bilgisayarında
-derleyip ESP32 üzerinden STM32'ye yükler.
+`catalog.json` iki katmandır: `devices[]` bir fiziksel parçayı ve desteklediği
+arayüz/pin rollerini tanımlar; `tests[]` aynı parça için birden çok tanı varyantı
+tanımlar. Örneğin BHI360 kimlik ve tam ölçüm testleri ayrı kayıtlar olabilir.
+`deviceId` geçerli bir cihazı göstermeli; testin `protocol` ve `requiredRoles`
+alanları cihazın izin verdiği arayüz ve rollerle uyuşmalıdır. Parça eşleştirmesi
+cihazın `matchParts` adları üzerinden yapılır; netlistte görünmek testin hazır
+olduğu anlamına gelmez.
 
-Yeni test eklerken ayrı bir `tests/<test-id>/` dizini kullanın ve kataloğa kayıt
-ekleyin. İlk LED testi geçmişte köke yüklenmiş CubeMX projesini doğrudan
-`stardrop-project.json` ile kullanır; sırf dizin düzeni için çalışan kodu
-taşımaya gerek yoktur. Yeni bir alt klasör manifestinde ortak HAL/CMSIS dosyaları
-`@repo/Drivers/...` yolu ile paylaşılabilir; diğer yollar test klasörüne göredir.
-Yeni testler derleme ve hedef doğrulaması eklenene
-kadar `planned` kalmalıdır; katalog kaydı tek başına firmware desteği değildir.
+`planned` kayıt yalnız keşif ve pin inceleme içindir. `ready` kaydı ancak kaynak
+manifesti, desteklenen MCU, derleme türü (`stm32-hal-v1`), sonuç türü (`visual`
+veya `sram`) ve gerekli pin rolleri doğrulanınca kullanılabilir. `sram` sonucu
+test kodunun STARDROP tanı raporu ABI'sine göre PASS/FAIL/FATAL ve gerçek ölçüm
+ayrıntısı yazmasını gerektirir; flash yazma doğrulaması sensör PASS sayılmaz.
+Yalnız `visual` testte kullanıcı fiziksel sonucu onaylar.
 
-Workbench akışı `matchParts` + `protocol` + `supportedMcu` ile **bir bileşene
-birden fazla test** gösterebilir. Örneğin MPU6050 için `mpu6050-accel` ve
-`mpu6050-full` ayrı kayıtlar olabilir. `ready` yapılmadan önce her kayıt için:
+Önerilen düzen:
 
-1. Benzersiz `id`, okunabilir `name`, kısa `description`, `protocol` (`GPIO`,
-   `I2C` veya `SPI`), `matchParts`, `supportedMcu`, `requiredRoles`, `build`,
-   `result` ve `sourcePath` tanımlanır.
-2. `sourcePath`, testin `stardrop-project.json` manifestine gider. Manifest,
-   test kaynaklarını, `Inc/`, HAL/CMSIS include dizinlerini ve linker dosyasını
-   listeler. Bir sensör testi ayrı `tests/<id>/` dizininde tutulabilir; ortak
-   kaynaklar `@repo/` önekiyle paylaşılır.
-3. Test kaynak kodu pin numarası veya kart referansı sabitlemez. Workbench
-   onaylanan roller için geçici `pin_configurations.h` üretir: örneğin
-   `STARDROP_I2C_SCL_GPIO_PORT`, `_PIN`, `_CLK_ENABLE()` ve SDA eşleri;
-   SPI için SCK/MISO/MOSI/CS eşleri. Seçilen bus için
-   `STARDROP_I2C_BUS_SOFTWARE`, `STARDROP_I2C_BUS_NUMBER` veya
-   `STARDROP_SPI_BUS_NUMBER` tanımlanır. Sensör sürücüsü bu makroları kullanır.
-4. `result` şu anda `visual` veya `sram` olabilir. `sram` testleri doğru çalışma
-   kimliğiyle tanı raporu üretmelidir; `visual` testlerin sonucu kullanıcı
-   tarafından onaylanır. Her iki türde de SWD yazma doğrulaması sensörün
-   çalıştığını tek başına kanıtlamaz.
+```text
+catalog/catalog.json
+tests/<test-id>/stardrop-project.json
+tests/<test-id>/Src/...
+tests/<test-id>/Inc/...
+shared/                  # ortak bus, zamanlama, rapor ve sürücü kodu
+```
 
-Bugünkü yerel HAL proje derleyicisi yalnız **STM32F401CC/CD** projelerini
-derler. Katalogda başka MCU testleri listelenebilir, ancak o hedefin ayrı
-startup/linker/HAL desteği eklenmeden Workbench bunları yüklemeye izin vermez.
+Her testin `stardrop-project.json` manifesti kaynakları, include dizinlerini ve
+linker dosyasını listeler. Ortak dosyalar `@repo/` ile referans edilir. Test
+kodu MCU pinlerini veya kart referansını sabitlemez: Workbench onaylı kart
+profilinden `pin_configurations.h` üretir. `STARDROP_I2C_SCL_*`,
+`STARDROP_I2C_SDA_*`, `STARDROP_I2C_INT_*`, `STARDROP_I2C_RESET_*` ve
+SPI/GPIO karşılıkları aynı adlandırma düzenini izler. Bus için
+`STARDROP_I2C_BUS_SOFTWARE` / `STARDROP_I2C_BUS_NUMBER` veya
+`STARDROP_SPI_BUS_NUMBER` tanımlanır. Test yalnız manifestindeki rollere
+bağlanmalı; isteğe bağlı roller bulunmadığında kod bunu açıkça ele almalıdır.
 
-Yalnız güvenilir repo bakımcılarına yazma izni verin. İndirilen kaynak sabit
-commit SHA'sına göre önbelleğe alınır; her dosya derlemeden önce doğrulanır.
+Yeni sensör ekleme sırası: cihaz tanımı → `planned` test varyantı → ortak bus
+adaptörü ve sensör sürücüsü → gerçek sonuç ölçütü → desteklenen hedefte derleme
+ve fiziksel doğrulama → `ready`. BHI360 şu an `planned`dır; resmi Bosch
+SensorAPI/firmware'i entegre edilip F446 derlemesi doğrulanmadan çalıştırılamaz.
+Pasiflerin sağlamlığı bu test sözleşmesinin kapsamında değildir.
+
+Katalog v1 eski LED projeleri için okunmaya devam eder; yeni kayıtlar v2 cihaz
+tanımı kullanmalıdır. Hedef paket pinout'u Workbench içinde sürümlüdür ve
+GitHub kataloğundan gelen bilgiyle geçersiz bir fiziksel pin açılamaz.
+
+İlk LED testi geçmişte köke yüklenen CubeMX projesini `stardrop-project.json`
+ile kullanmaya devam eder. Bugünkü yerel derleyici yalnız STM32F401CC/CD
+projelerini derler. Kaynaklar sabit GitHub commit SHA'sıyla önbelleğe alınır ve
+derlemeden önce dosya karmaları doğrulanır.

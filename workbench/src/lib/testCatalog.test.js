@@ -34,6 +34,13 @@ test('catalog v2 refuses undefined device references and pin roles', () => {
   assert.equal(validateTestCatalog(bad).valid, false);
 });
 
+test('catalog v2 refuses a ready test with a foreign role or no result contract', () => {
+  const bad = structuredClone(CODE_REPO_CATALOG);
+  bad.tests[0].requiredRoles = ['SDA'];
+  bad.tests[0].result = '';
+  assert.equal(validateTestCatalog(bad).valid, false);
+});
+
 test('multiple sensor test variants are filtered by part, protocol, MCU and readiness', () => {
   const catalog = { tests: [
     { id: 'mpu-accel', status: 'ready', protocol: 'I2C', matchParts: ['MPU6050'], supportedMcu: ['STM32F401'] },
