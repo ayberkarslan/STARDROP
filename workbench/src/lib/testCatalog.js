@@ -8,8 +8,8 @@ const PROTOCOLS = new Set(['GPIO', 'I2C', 'SPI']);
 export function deviceForComponent(catalog, component) {
   const part = String(component?.part || '').toUpperCase();
   const protocol = component?.protocol;
-  return (catalog?.devices || []).find((device) => device.protocols?.includes(protocol)
-    && device.matchParts?.some((alias) => {
+  return (catalog?.devices || []).find((device) => Array.isArray(device.interfaces) && device.interfaces.some((item) => item.protocol === protocol)
+    && Array.isArray(device.matchParts) && device.matchParts.some((alias) => {
       const name = String(alias).toUpperCase();
       return part === name || part.startsWith(`${name}-`) || part.startsWith(`${name}_`);
     })) || null;
@@ -29,10 +29,17 @@ export function validateTestCatalog(catalog) {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(device.id || '') || devices.has(device.id)) errors.push('Cihaz ID geçersiz veya tekrarlı.');
     devices.set(device.id, device);
     if (!device.name || !Array.isArray(device.matchParts) || !device.matchParts.length
-      || !Array.isArray(device.protocols) || !device.protocols.length
-      || device.protocols.some((value) => !PROTOCOLS.has(value))) errors.push(`${device.id}: cihaz eşlemesi geçersiz.`);
-    if (!Array.isArray(device.requiredRoles) || device.requiredRoles.some((role) => !ROLES.has(role))
-      || !Array.isArray(device.optionalRoles) || device.optionalRoles.some((role) => !ROLES.has(role))) errors.push(`${device.id}: pin rolleri geçersiz.`);
+      || !Array.isArray(device.interfaces) || !device.interfaces.length) errors.push(`${device.id}: cihaz eşlemesi geçersiz.`);
+    const protocols = new Set();
+    for (const iface of Array.isArray(device.interfaces) ? device.interfaces : []) {
+      if (!PROTOCOLS.has(iface.protocol) || protocols.has(iface.protocol)
+        || !Array.isArray(iface.requiredRoles) || !iface.requiredRoles.length
+        || iface.requiredRoles.some((role) => !ROLES.has(role))
+        || !Array.isArray(iface.optionalRoles) || iface.optionalRoles.some((role) => !ROLES.has(role))) {
+        errors.push(`${device.id}: arayüz pin rolleri geçersiz.`);
+      }
+      protocols.add(iface.protocol);
+    }
   }
   const seen = new Set();
   for (const item of catalog?.tests || []) {
@@ -49,9 +56,10 @@ export function validateTestCatalog(catalog) {
       || item.requiredRoles.some((role) => !ROLES.has(role)))) errors.push(`${item.id}: zorunlu pin rolleri geçersiz.`);
     if (catalog?.schemaVersion === 2) {
       const device = devices.get(item.deviceId);
-      const allowedRoles = new Set([...(device?.requiredRoles || []), ...(device?.optionalRoles || [])]);
-      if (!PROTOCOLS.has(item.protocol) || !device?.protocols?.includes(item.protocol)
-        || item.requiredRoles?.some((role) => !allowedRoles.has(role))) errors.push(`${item.id}: cihaz arayüzü veya pin rolleri uyuşmuyor.`);
+      const iface = device?.interfaces?.find((entry) => entry.protocol === item.protocol);
+      const allowedRoles = new Set([...(iface?.requiredRoles || []), ...(iface?.optionalRoles || [])]);
+      if (!PROTOCOLS.has(item.protocol) || !iface
+        || (Array.isArray(item.requiredRoles) && item.requiredRoles.some((role) => !allowedRoles.has(role)))) errors.push(`${item.id}: cihaz arayüzü veya pin rolleri uyuşmuyor.`);
       if (item.status === 'ready' && (!item.supportedMcu?.length || item.build !== 'stm32-hal-v1'
         || !['visual', 'sram'].includes(item.result) || !item.sourcePath?.endsWith('stardrop-project.json'))) {
         errors.push(`${item.id}: hazır test için derleme, hedef, sonuç ve proje manifesti gerekli.`);

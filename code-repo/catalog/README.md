@@ -1,7 +1,8 @@
 # STARDROP test kataloğu · v2
 
-`catalog.json` iki katmandır: `devices[]` bir fiziksel parçayı ve desteklediği
-arayüz/pin rollerini tanımlar; `tests[]` aynı parça için birden çok tanı varyantı
+`catalog.json` iki katmandır: `devices[]` bir fiziksel parçayı ve her
+`interfaces[]` kaydında bağlantı türüne özgü zorunlu/isteğe bağlı pinleri tanımlar;
+`tests[]` aynı parça için birden çok tanı varyantı
 tanımlar. Örneğin BHI360 kimlik ve tam ölçüm testleri ayrı kayıtlar olabilir.
 `deviceId` geçerli bir cihazı göstermeli; testin `protocol` ve `requiredRoles`
 alanları cihazın izin verdiği arayüz ve rollerle uyuşmalıdır. Parça eşleştirmesi

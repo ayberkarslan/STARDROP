@@ -45,7 +45,8 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
     return { ...own, valid: own.valid && conflicts.length === 0, errors: [...own.errors, ...conflicts] };
   }, [profile, activeSensor, activeComponent]);
   const device = deviceForComponent(catalog, activeSensor);
-  const requiredRoles = selectedTest?.requiredRoles || device?.requiredRoles || null;
+  const requiredRoles = selectedTest?.requiredRoles
+    || device?.interfaces?.find((item) => item.protocol === activeSensor?.protocol)?.requiredRoles || null;
   const testValidation = activeSensor && profile ? validateTestTarget(profile, activeComponent, requiredRoles) : null;
   const compilerReady = /^STM32F401C[CD]/.test(profile?.mcu?.part || '');
   const matchingTests = testsForComponent(catalog, activeSensor, profile?.mcu?.part);

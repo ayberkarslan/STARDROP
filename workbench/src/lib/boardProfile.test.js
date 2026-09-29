@@ -112,3 +112,12 @@ test('manual SPI sensor accepts valid data pins and a separate chip-select GPIO'
   next.connections.forEach((item) => { item.approved = true; });
   assert.equal(validateTestTarget(next, 'U2').valid, true);
 });
+
+test('test-specific I2C roles keep SCL and SDA on one bus even with IRQ present', () => {
+  const profile = createManualI2cProfile({ name: 'IMU', mcuPart: 'STM32F446RET6', componentRef: 'U2', componentPart: 'BHI360-IMU', scl: 'PB10', sda: 'PB3' });
+  profile.connections.push({ componentRef: 'U2', role: 'INT', sensorPin: 'HIRQ', mcuPin: 'PC5', peripheral: 'SOFT_I2C_1', approved: true });
+  profile.connections.forEach((item) => { item.approved = true; });
+  assert.equal(validateTestTarget(profile, 'U2', ['SCL', 'SDA', 'INT']).valid, true);
+  profile.connections[1].peripheral = 'I2C1';
+  assert.match(validateTestTarget(profile, 'U2', ['SCL', 'SDA', 'INT']).errors.join(' '), /aynı I2C bus/);
+});

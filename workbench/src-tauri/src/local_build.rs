@@ -186,8 +186,13 @@ struct CodeCatalog { schema_version: u8, #[serde(default)] devices: Vec<CodeDevi
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CodeDevice {
-    id: String, name: String, match_parts: Vec<String>, protocols: Vec<String>,
-    required_roles: Vec<String>, optional_roles: Vec<String>,
+    id: String, name: String, match_parts: Vec<String>, interfaces: Vec<CodeInterface>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodeInterface {
+    protocol: String, required_roles: Vec<String>, optional_roles: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -206,10 +211,12 @@ impl CodeCatalog {
         let mut device_ids = std::collections::HashSet::new();
         if self.schema_version == 2 && self.devices.is_empty() { return Err("Katalog cihaz tanımı eksik".into()); }
         for device in &self.devices {
+            let mut protocols = std::collections::HashSet::new();
             if !safe_segment(&device.id) || !device_ids.insert(&device.id) || device.name.is_empty()
-                || device.match_parts.is_empty() || device.protocols.is_empty()
-                || device.protocols.iter().any(|protocol| !matches!(protocol.as_str(), "GPIO" | "I2C" | "SPI"))
-                || device.required_roles.iter().chain(&device.optional_roles).any(|role| !valid_pin_role(role)) {
+                || device.match_parts.is_empty() || device.interfaces.is_empty()
+                || device.interfaces.iter().any(|interface| !matches!(interface.protocol.as_str(), "GPIO" | "I2C" | "SPI")
+                    || !protocols.insert(&interface.protocol) || interface.required_roles.is_empty()
+                    || interface.required_roles.iter().chain(&interface.optional_roles).any(|role| !valid_pin_role(role))) {
                 return Err("Katalog cihaz tanımı geçersiz".into());
             }
         }
@@ -219,8 +226,9 @@ impl CodeCatalog {
             if !safe_segment(&test.id) || !ids.insert(&test.id) || !matches!(test.status.as_str(), "ready" | "planned")
                 || self.schema_version == 2 && test.device_id.as_ref().is_none_or(|id| !device_ids.contains(id))
                 || self.schema_version == 2 && (test.required_roles.is_empty() || test.required_roles.iter().any(|role| !valid_pin_role(role)))
-                || self.schema_version == 2 && device.is_none_or(|device| !device.protocols.contains(&test.protocol)
-                    || test.required_roles.iter().any(|role| !device.required_roles.contains(role) && !device.optional_roles.contains(role)))
+                || self.schema_version == 2 && device.is_none_or(|device| device.interfaces.iter()
+                    .find(|interface| interface.protocol == test.protocol).is_none_or(|interface|
+                        test.required_roles.iter().any(|role| !interface.required_roles.contains(role) && !interface.optional_roles.contains(role))))
                 || test.status == "ready" && (!safe_relative(&test.source_path) || test.build.as_deref() != Some("stm32-hal-v1")
                     || !matches!(test.result.as_str(), "visual" | "sram") || test.required_roles.is_empty()
                     || test.supported_mcu.is_empty() || self.schema_version == 2 && !test.source_path.ends_with("stardrop-project.json")) {
@@ -233,7 +241,7 @@ impl CodeCatalog {
     fn matches_component(&self, test: &CodeTest, part: &str, protocol: &str) -> bool {
         if let Some(device_id) = &test.device_id {
             return self.devices.iter().find(|device| &device.id == device_id).is_some_and(|device|
-                device.protocols.iter().any(|value| value == protocol)
+                device.interfaces.iter().any(|interface| interface.protocol == protocol)
                     && device.match_parts.iter().any(|alias| {
                         let alias = alias.to_ascii_uppercase();
                         part == alias || part.starts_with(&format!("{alias}-")) || part.starts_with(&format!("{alias}_"))

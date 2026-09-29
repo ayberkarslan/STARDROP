@@ -5,17 +5,18 @@
       "id": "led",
       "name": "LED",
       "matchParts": ["LED"],
-      "protocols": ["GPIO"],
-      "requiredRoles": ["LED"],
-      "optionalRoles": []
+      "interfaces": [
+        { "protocol": "GPIO", "requiredRoles": ["LED"], "optionalRoles": [] }
+      ]
     },
     {
       "id": "bhi360",
       "name": "Bosch BHI360",
       "matchParts": ["BHI360", "BHI360-IMU"],
-      "protocols": ["I2C", "SPI"],
-      "requiredRoles": ["SCL", "SDA"],
-      "optionalRoles": ["INT", "RESET"],
+      "interfaces": [
+        { "protocol": "I2C", "requiredRoles": ["SCL", "SDA"], "optionalRoles": ["INT", "RESET"] },
+        { "protocol": "SPI", "requiredRoles": ["SCK", "MISO", "MOSI", "CS"], "optionalRoles": ["INT", "RESET"] }
+      ],
       "electricalNotes": ["VDD/VDDIO ve I2C pull-up gerilimlerini kart şemasıyla doğrula; .NET dosyası elektriksel uyumluluğu kanıtlamaz."]
     }
   ],

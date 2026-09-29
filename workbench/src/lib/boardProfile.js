@@ -231,7 +231,9 @@ export function validateTestTarget(profile, componentRef, testRoles = null) {
     const count = connections.filter((item) => item.role === role).length;
     if (count !== 1) errors.push(`${componentRef} için tam bir ${role} bağlantısı gerekli (${count} bulundu).`);
   }
-  if (component?.protocol === 'I2C' && connections.length === 2 && connections[0].peripheral !== connections[1].peripheral) errors.push('SCL ve SDA aynı I2C bus üzerinde olmalı.');
+  const scl = connections.find((item) => item.role === 'SCL');
+  const sda = connections.find((item) => item.role === 'SDA');
+  if (component?.protocol === 'I2C' && scl && sda && scl.peripheral !== sda.peripheral) errors.push('SCL ve SDA aynı I2C bus üzerinde olmalı.');
   for (const connection of connections) {
     if (!connection.approved) errors.push(`${componentRef}:${connection.role} bağlantısı henüz onaylanmadı.`);
     const capability = supportedPeripheral(profile.mcu.part, connection.peripheral, connection.role, connection.mcuPin);
