@@ -520,13 +520,21 @@ fn manifest_path(project: &Path, repo_root: &Path, value: &str) -> Result<PathBu
     else { Err("Güvensiz proje kaynak yolu".into()) }
 }
 
+fn package_pin_present(part: &str, pin: &str) -> bool {
+    let Ok(data) = serde_json::from_str::<serde_json::Value>(include_str!("../../targets/packages.json")) else { return false; };
+    let Some(target) = data["targets"].as_array().and_then(|targets| targets.iter()
+        .find(|target| target["prefix"].as_str().is_some_and(|prefix| part.starts_with(prefix)))) else { return false; };
+    let Some(map) = target["pinMap"].as_str() else { return false; };
+    data["packages"][map].as_array().is_some_and(|pins| pins.iter().any(|name| name == pin))
+}
+
 fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, String> {
     let profile: serde_json::Value = serde_json::from_str(profile_json).map_err(|_| "Kart profili geçersiz")?;
     let component = profile["components"].as_array().and_then(|items| items.iter().find(|item| item["ref"] == component_ref))
         .ok_or("Başlık için bileşen bulunamadı")?;
     let protocol = component["protocol"].as_str().ok_or("Bileşen protokolü eksik")?;
     let namespace = match protocol { "GPIO" if component["part"] == "LED" => "LED", "GPIO" => "GPIO", "I2C" => "I2C", "SPI" => "SPI", _ => return Err("Pin başlığı için protokol desteklenmiyor".into()) };
-    let f401 = profile["mcu"]["part"].as_str().unwrap_or("").starts_with("STM32F401C");
+    let mcu_part = profile["mcu"]["part"].as_str().unwrap_or("");
     let mut header = String::from("#ifndef STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_SCHEMA_VERSION 1\n");
     let bus = profile["connections"].as_array().and_then(|connections| connections.iter()
         .find(|connection| connection["componentRef"] == component_ref))
@@ -552,7 +560,8 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
         let bytes = pin.as_bytes();
         if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C') { return Err("MCU pini geçersiz".into()); }
         let number: u8 = pin[2..].parse().map_err(|_| "MCU pini geçersiz")?;
-        if number > 15 || bytes[1] == b'A' && (number == 13 || number == 14) || f401 && bytes[1] == b'C' && number < 13 {
+        if number > 15 || bytes[1] == b'A' && (number == 13 || number == 14)
+            || !package_pin_present(mcu_part, pin) {
             return Err("SWD veya MCU paketinde bulunmayan pin".into());
         }
         let letter = bytes[1] as char;
@@ -644,6 +653,22 @@ pub fn clear_source_cache(app: tauri::AppHandle, account: String) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn package_data_rejects_absent_pins_in_native_builds() {
+        assert!(package_pin_present("STM32F401CDU6", "PC13"));
+        assert!(!package_pin_present("STM32F401CDU6", "PB11"));
+        assert!(package_pin_present("STM32F446RET6", "PC5"));
+        assert!(!package_pin_present("STM32F446RET6", "PB11"));
+    }
+
+    #[test]
+    fn local_v2_device_catalog_is_native_compatible() {
+        let catalog: CodeCatalog = serde_json::from_str(include_str!("../../../code-repo/catalog/catalog.json")).unwrap();
+        catalog.validate().unwrap();
+        assert!(catalog.matches_component(&catalog.tests[1], "BHI360-IMU", "I2C"));
+        assert!(!catalog.matches_component(&catalog.tests[1], "MPU6050", "SPI"));
+    }
 
     fn fixture(interval: u64) -> LedBuildRequest {
         let profile = serde_json::json!({

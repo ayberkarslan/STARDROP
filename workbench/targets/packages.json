@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "sources": {
+    "f401-ufn48": "ST DS9716 Rev 11 figure 11; DS10086 Rev 5 figure 11",
+    "f446-lqfp64": "ST DS10693 Rev 11 figure 10"
+  },
+  "packages": {
+    "f401-ufn48": [
+      "VBAT", "PC13", "PC14", "PC15", "PH0", "PH1", "NRST", "VSSA", "VDDA",
+      "PA0", "PA1", "PA2", "PA3", "PA4", "PA5", "PA6", "PA7", "PB0", "PB1", "PB2",
+      "VSS", "VDD", "PB10", "VCAP_1", "PB12", "PB13", "PB14", "PB15", "PA8",
+      "PA9", "PA10", "PA11", "PA12", "PA13", "VSS", "VDD", "PA14", "PA15",
+      "PB3", "PB4", "PB5", "PB6", "PB7", "BOOT0", "PB8", "PB9", "VSS", "VDD"
+    ],
+    "f446-lqfp64": [
+      "VBAT", "PC13", "PC14", "PC15", "PH0", "PH1", "NRST", "PC0", "PC1",
+      "PC2", "PC3", "VSSA", "VDDA", "PA0", "PA1", "PA2", "PA3", "VSS", "VDD",
+      "PA4", "PA5", "PA6", "PA7", "PC4", "PC5", "PB0", "PB1", "PB2", "PB10",
+      "VCAP_1", "VSS", "VDD", "PB12", "PB13", "PB14", "PB15", "PC6", "PC7",
+      "PC8", "PC9", "PA8", "PA9", "PA10", "PA11", "PA12", "PA13", "VSS", "VDD",
+      "PA14", "PA15", "PC10", "PC11", "PC12", "PD2", "PB3", "PB4", "PB5",
+      "PB6", "PB7", "BOOT0", "PB8", "PB9", "VSS", "VDD"
+    ]
+  },
+  "targets": [
+    { "prefix": "STM32F401CCU6", "package": "UFQFPN48", "pinMap": "f401-ufn48", "build": "stm32-hal-v1" },
+    { "prefix": "STM32F401CDU6", "package": "UFQFPN48", "pinMap": "f401-ufn48", "build": "stm32-hal-v1" },
+    { "prefix": "STM32F401CEU6", "package": "UFQFPN48", "pinMap": "f401-ufn48", "build": null },
+    { "prefix": "STM32F446RET6", "package": "LQFP64", "pinMap": "f446-lqfp64", "build": null },
+    { "prefix": "STM32F446RE", "package": "LQFP64", "pinMap": "f446-lqfp64", "build": null }
+  ]
+}
