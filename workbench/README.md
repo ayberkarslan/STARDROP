@@ -26,6 +26,18 @@ F446 derleme desteği olmadığı için BHI360 testi henüz çalıştırılamaz.
 yazma doğrulaması sensör testi PASS anlamına gelmez. ESP firmware'i ve mevcut
 iki sinyalli SWD bağlantısı bu aşamada değiştirilmedi.
 
+**Test Kütüphanesi:** GitHub oturumuyla kart profilini ve bileşen pinlerini
+onayladıktan sonra kütüphanede bir ad (isteğe bağlı atölye notu) girip
+GitHub'a kaydedebilirsin. Uygulama `library/<UUID>.json` bilgi dosyasını
+kendisi oluşturur: MCU, modül, pinler, test kimliği/kaynak commit'i ve varsa
+son doğrulanmış test sonucu. UID ve ham `.NET` dosyası paylaşılmaz. Test kodu
+henüz yoksa bağlantı düzeni `planned` olarak kaydedilebilir; PASS gösterilmez.
+Arama kart, sensör, pin ve test adına bakar. Kaydı açmak yalnız profili yükler;
+canlı hedef ve pinler yeniden onaylanır. Paylaşım için test deposunda
+`Contents: Read and write` izni gerekir; okuma için `Contents: Read` yeterlidir.
+Kayıtlar ayrı dosyalardır, böylece üyeler birbirinin kataloğunu değiştirmeden
+ekleme yapabilir. Bu prototipte dizin 1000 kayıtla sınırlıdır.
+
 Kontroller: `npm run test:core`, `npm run test:firmware`, `npm run build`,
 `cd src-tauri && cargo test --locked`.
 
