@@ -48,6 +48,7 @@ test('invalid alternate function and pin collision are rejected', () => {
 test('capability database recognizes documented F446 SPI2 pins', () => {
   assert.equal(supportedPeripheral('STM32F446RE', 'SPI2', 'MOSI', 'PB15').supported, true);
   assert.equal(supportedPeripheral('STM32F446RE', 'SPI2', 'MOSI', 'PA7').supported, false);
+  assert.equal(supportedPeripheral('STM32F401CDU6', 'SPI3', 'SCK', 'PC10').supported, false);
 });
 
 test('software I2C accepts custom GPIO while excluding SWD and unavailable package pins', () => {
@@ -95,6 +96,13 @@ test('missing LED can be added to a parsed board without replacing its sensors',
   assert.deepEqual(next.components.map((item) => item.ref), ['U2', 'D1']);
   assert.equal(next.connections.at(-1).mcuPin, 'PC13');
   assert.throws(() => addManualPeripheral(next, { part: 'LED', protocol: 'GPIO', ref: 'D1', pins: { LED: 'PA5' } }), /benzersiz/);
+});
+
+test('manual component can be staged before conflicting default pins are corrected', () => {
+  const board = createManualLedProfile({ name: 'Bench', mcuPart: 'STM32F401CDU6', pin: 'PC13' });
+  const staged = addManualPeripheral(board, { part: 'LED', protocol: 'GPIO', ref: 'D2', pins: { LED: 'PC13' } });
+  assert.equal(staged.components.length, 2);
+  assert.equal(validateBoardProfile(staged).valid, false);
 });
 
 test('manual SPI sensor accepts valid data pins and a separate chip-select GPIO', () => {

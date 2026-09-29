@@ -120,8 +120,6 @@ export function addManualPeripheral(profile, { part, protocol, ref, pins, active
   const component = { ref: componentRef, part: componentPart, category: protocol === 'GPIO' ? 'OUTPUT' : 'SENSOR', protocol, peripheral,
     ...(protocol === 'GPIO' ? { activeLow: Boolean(activeLow), blinkMs: Number(blinkMs) } : {}) };
   const next = { ...profile, components: [...profile.components, component], connections: [...profile.connections, ...connections] };
-  const validation = validateBoardProfile(next);
-  if (!validation.valid) throw new Error(validation.errors.join(' '));
   return addAuditEvent(next, 'MANUAL_COMPONENT_ADDED', { componentRef, protocol });
 }
 
@@ -165,6 +163,9 @@ export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   }
   const permitted = CAPABILITIES[family]?.[peripheral]?.[role];
   if (!permitted) return { supported: null, reason: 'Bu peripheral/rol için yerel yetenek verisi yok.' };
+  if (family === 'STM32F401' && /^PC(?:[0-9]|1[0-2])$/.test(normalized || '')) {
+    return { supported: false, reason: `${normalized} ${mcuPart} paketinde bulunmuyor.` };
+  }
   return {
     supported: Boolean(normalized && permitted.includes(normalized)),
     reason: normalized && permitted.includes(normalized)
