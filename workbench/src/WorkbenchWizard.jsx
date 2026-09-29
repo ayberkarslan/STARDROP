@@ -3,6 +3,8 @@ import { Activity, ArrowLeft, ArrowRight, Cpu, Download, FileUp, RefreshCw, Send
 import { addManualPeripheral, newBoardProfile, supportedPeripheral, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { testsForComponent } from './lib/testCatalog.js';
 import SelectMenu from './SelectMenu.jsx';
+import PackagePinout from './PackagePinout.jsx';
+import { deviceForComponent } from './lib/testCatalog.js';
 
 const models = ['STM32F401CCU6', 'STM32F401CDU6', 'STM32F401CEU6', 'STM32F446RET6'].map((value) => ({ value, label: value }));
 const protocols = [{ value: 'GPIO', label: 'LED · tek GPIO' }, { value: 'I2C', label: 'I²C sensör · SCL + SDA' }, { value: 'SPI', label: 'SPI sensör · SCK + MISO + MOSI + CS' }];
@@ -28,11 +30,12 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
   const [working, setWorking] = useState(false);
   const [showAdd, setShowAdd] = useState(flow === 'manual');
   const [localError, setLocalError] = useState('');
+  const [selectedPinIndex, setSelectedPinIndex] = useState(0);
 
-  const steps = flow === 'manual' ? ['Kart', 'Bileşen', 'Pinler', 'Test', 'Yükleme']
-    : flow === 'net' ? ['Dosya', 'Bileşen', 'Pinler', 'Test', 'Yükleme'] : [];
-  const stepNames = flow === 'manual' ? ['board', 'component', 'pins', 'test', 'flash']
-    : ['file', 'component', 'pins', 'test', 'flash'];
+  const steps = flow === 'manual' ? ['Kart', 'Bileşen', 'Test', 'Pinler', 'Yükleme']
+    : flow === 'net' ? ['Dosya', 'Bileşen', 'Test', 'Pinler', 'Yükleme'] : [];
+  const stepNames = flow === 'manual' ? ['board', 'component', 'test', 'pins', 'flash']
+    : ['file', 'component', 'test', 'pins', 'flash'];
   const stepIndex = stepNames.indexOf(step);
   const currentConnections = profile?.connections?.filter((item) => item.componentRef === activeComponent) || [];
   const selectedValidation = useMemo(() => {
@@ -41,7 +44,9 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
     const conflicts = validateBoardProfile(profile).errors.filter((error) => error.includes(`${activeComponent}:`) && !own.errors.includes(error));
     return { ...own, valid: own.valid && conflicts.length === 0, errors: [...own.errors, ...conflicts] };
   }, [profile, activeSensor, activeComponent]);
-  const testValidation = activeSensor && profile ? validateTestTarget(profile, activeComponent) : null;
+  const device = deviceForComponent(catalog, activeSensor);
+  const requiredRoles = selectedTest?.requiredRoles || device?.requiredRoles || null;
+  const testValidation = activeSensor && profile ? validateTestTarget(profile, activeComponent, requiredRoles) : null;
   const compilerReady = /^STM32F401C[CD]/.test(profile?.mcu?.part || '');
   const matchingTests = testsForComponent(catalog, activeSensor, profile?.mcu?.part);
 
@@ -66,10 +71,10 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
   const addComponent = () => {
     try {
       const created = addManualPeripheral(profile, { part, protocol, ref, pins });
-      setProfile(created); setActiveComponent(ref.trim().toUpperCase()); setShowAdd(false); setStep('pins'); setLocalError('');
+      setProfile(created); setActiveComponent(ref.trim().toUpperCase()); setShowAdd(false); setStep('test'); setLocalError('');
     } catch (error) { setLocalError(error.message); }
   };
-  const chooseComponent = (componentRef) => { setActiveComponent(componentRef); setStep('pins'); setLocalError(''); };
+  const chooseComponent = (componentRef) => { setActiveComponent(componentRef); setStep('test'); setLocalError(''); };
   const readNetlist = async (file) => {
     if (!file) return;
     setWorking(true); setLocalError('');
@@ -82,9 +87,10 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
     try { if (await importProject(file)) setStep('component'); else setLocalError('Proje açılamadı; alt soldaki durum mesajına bak.'); }
     finally { setWorking(false); }
   };
-  const confirmPins = () => {
+  const confirmPins = async () => {
     if (!selectedValidation?.valid) { setLocalError(selectedValidation?.errors.join(' ') || 'Pinleri kontrol et.'); return; }
-    approveComponent(activeComponent); setStep('test'); setLocalError('');
+    approveComponent(activeComponent); setLocalError('');
+    if (selectedTest) await continueWithTest();
   };
   const continueWithTest = async () => {
     if (!selectedTest) { setLocalError('Önce hazır bir test seç.'); return; }
@@ -100,9 +106,13 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
   };
   const startMissingComponent = () => { setPart('LED'); setProtocol('GPIO'); setRef('D1'); setShowAdd(true);
     setPins(defaultsFor('GPIO', profile.mcu.part)); setStep('component'); setLocalError(''); };
-  const pinOptions = (role, peripheral) => ['A', 'B', 'C'].flatMap((port) => Array.from({ length: 16 }, (_, index) => `P${port}${index}`))
-    .filter((pin) => supportedPeripheral(profile.mcu.part, peripheral, role, pin).supported === true)
-    .map((pin) => ({ value: pin, label: pin }));
+  const assignSelectedPin = (pin) => {
+    const connection = currentConnections[selectedPinIndex];
+    if (!connection) return;
+    editConnection(profile.connections.indexOf(connection), 'mcuPin', pin);
+    setLocalError('');
+    if (selectedPinIndex + 1 < currentConnections.length) setSelectedPinIndex(selectedPinIndex + 1);
+  };
 
   return <div className="workspace wizard-workspace">
     <div className="wizard-top"><span>KART WORKBENCH</span><div>{profile && <button className="wizard-text-button" onClick={exportProject}>.STARDROP KAYDET</button>}<button className="wizard-text-button" onClick={onAdvanced}>GELİŞMİŞ ARAÇLAR</button></div></div>
@@ -114,26 +124,17 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
       {step === 'file' && <><span className="eyebrow">1 / KART DOSYASI</span><h2>Altium .NET dosyanı yükle</h2><p>Algılanan sensörler ve bağlantı adayları sonraki ekranda görünecek. Pinleri flash öncesinde sen onaylayacaksın.</p><div className="wizard-file-options"><label className="wizard-file"><FileUp/><strong>.NET DOSYASI SEÇ</strong><small>Altium netlist · .NET veya .txt</small><input type="file" accept=".NET,.net,.txt" onChange={(event) => readNetlist(event.target.files?.[0])}/></label><label className="wizard-file"><Download/><strong>KAYITLI .STARDROP AÇ</strong><small>Daha önce bıraktığın yerden devam et</small><input type="file" accept=".stardrop" onChange={(event) => readProject(event.target.files?.[0])}/></label></div>{working && <p>Dosya okunuyor…</p>}</>}
       {step === 'component' && profile && <><span className="eyebrow">2 / BİLEŞEN</span><h2>{flow === 'net' ? 'Kartta neyi test edeceğiz?' : 'Neyi bağladın?'}</h2><p>{profile.mcu.part} · {profile.name}. {flow === 'net' ? 'Algılanan bileşenlerden birini seç; listede olmayanı elle ekleyebilirsin.' : 'Sensörün adını ve bağlantı türünü yaz; testler bu bilgiye göre filtrelenecek.'}</p>{profile.components.length > 0 && <div className="wizard-components">{profile.components.map((component) => <button key={component.ref} onClick={() => chooseComponent(component.ref)}><Activity size={18}/><span><strong>{component.part}</strong><small>{component.ref} · {component.protocol}</small></span><ArrowRight size={16}/></button>)}</div>}{(flow === 'net' || profile.components.length > 0) && <button className="wizard-text-button" onClick={startMissingComponent}>{flow === 'net' ? 'LED veya başka bileşen görünmüyor mu? Elle ekle' : 'Başka bileşen ekle'}</button>}{showAdd && <div className="wizard-add"><h3>{profile.components.length ? 'Yeni bileşen ekle' : 'Bileşeni tanımla'}</h3><div className="wizard-fields"><label>Parça adı<input value={part} placeholder="LED, MPU6050, MS5611..." onChange={(event) => setPart(event.target.value.toUpperCase())}/></label><label>Bağlantı türü<SelectMenu ariaLabel="Bağlantı türü" value={protocol} options={protocols} onChange={(value) => { setProtocol(value); setPins(defaultsFor(value, profile.mcu.part)); setRef(value === 'GPIO' ? 'D1' : 'U2'); if (value === 'GPIO') setPart('LED'); }}/></label><label>Şemadaki adı<input value={ref} placeholder="U2 veya D1" onChange={(event) => setRef(event.target.value.toUpperCase())}/></label></div><button className="primary wizard-next" onClick={addComponent}>PİNLERİ SEÇ <ArrowRight size={16}/></button></div>}</>}
       {step === 'pins' && activeSensor && <>
-        <span className="eyebrow">3 / PİNLER</span>
+        <span className="eyebrow">4 / PİNLER</span>
         <h2>{activeSensor.part} bağlantıları</h2>
-        <p>{activeSensor.ref} için bulunan veya senin seçtiğin MCU pinlerini kontrol et. SWD pinleri ve desteklenmeyen eşleşmeler reddedilir.</p>
+        <p>{activeSensor.ref} için bulunan bağlantıları kontrol et. Sensör hattını ve ardından STM32 paketindeki bacağı seç. SWD ve pakette olmayan pinler reddedilir.</p>
         {['I2C', 'SPI'].includes(activeSensor.protocol) && <div className="wizard-fields">
           <label>Bağlantı bus’ı<SelectMenu ariaLabel="Bağlantı bus’ı" value={currentConnections[0]?.peripheral || ''}
             options={(activeSensor.protocol === 'I2C' ? ['SOFT_I2C_1', 'I2C1', 'I2C2', 'I2C3'] : ['SPI1', 'SPI2', 'SPI3']).map((value) => ({ value, label: value === 'SOFT_I2C_1' ? 'Yazılımsal I²C · esnek GPIO' : value }))}
             onChange={(value) => currentConnections.forEach((connection) => editConnection(profile.connections.indexOf(connection), 'peripheral', value))}/></label>
         </div>}
-        <div className="wizard-pin-list">{currentConnections.map((connection) => {
-          const index = profile.connections.indexOf(connection);
-          const options = pinOptions(connection.role, connection.peripheral);
-          const choices = options.some((item) => item.value === connection.mcuPin) ? options
-            : [{ value: connection.mcuPin || '', label: connection.mcuPin || 'PIN SEÇ' }, ...options];
-          return <label key={`${connection.role}-${index}`}>
-            <span><strong>{connection.role}</strong><small>{connection.sensorPin || 'Sensör pini'}</small></span>
-            <SelectMenu ariaLabel={`${connection.role} MCU pini`} value={connection.mcuPin || ''} options={choices}
-              onChange={(value) => editConnection(index, 'mcuPin', value)}/>
-            <small>{connection.approved ? 'Onaylı' : 'Onay bekliyor'}</small>
-          </label>;
-        })}</div>
+        <PackagePinout profile={profile} connections={currentConnections} selectedIndex={selectedPinIndex}
+          onSelectIndex={setSelectedPinIndex} onAssign={assignSelectedPin}/>
+        {device?.electricalNotes?.map((note) => <div className="validation warn" key={note}>{note}</div>)}
         {activeSensor.protocol === 'GPIO' && <div className="wizard-fields">
           <label>LED yönü<SelectMenu ariaLabel="LED yönü" value={activeSensor.activeLow ? 'low' : 'high'}
             options={[{ value: 'low', label: 'Aktif düşük' }, { value: 'high', label: 'Aktif yüksek' }]}
@@ -142,12 +143,12 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
             value={activeSensor.blinkMs || 100} onChange={(event) => updateLedSetting('blinkMs', Number(event.target.value))}/></label>
         </div>}
         {selectedValidation?.errors.length > 0 && <div className="validation bad">{selectedValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>}
-        <button className="primary wizard-next" disabled={!selectedValidation?.valid} onClick={confirmPins}><ShieldCheck size={16}/> PİNLERİ ONAYLA</button>
+        <button className="primary wizard-next" disabled={!selectedValidation?.valid || working} onClick={confirmPins}><ShieldCheck size={16}/>{selectedTest ? 'ONAYLA VE TESTİ HAZIRLA' : 'PİNLERİ ONAYLA'}</button>
+        {!selectedTest && <p className="wizard-hint">Bu bileşenin kodu henüz hazır değil. Pinleri kaydedebilirsin; yükleme test hazır olunca açılır.</p>}
       </>}
-      {step === 'test' && activeSensor && <><span className="eyebrow">4 / GITHUB TESTİ</span><h2>{activeSensor.part} için test seç</h2><p>{githubConfig.repository} kataloğundan bu sensöre ve {profile.mcu.part} modeline uyan testler gösteriliyor.</p><div className="wizard-catalog-head"><span>{matchingTests.length} eşleşme · {compatibleTests.length} hazır</span><button className="wizard-text-button" disabled={sourceBusy} onClick={refreshSource}><RefreshCw size={14}/>YENİLE</button></div><div className="wizard-tests">{matchingTests.map((item) => <button key={item.id} disabled={item.status !== 'ready'} className={selectedTest?.id === item.id ? 'selected' : ''} onClick={() => setSelectedTestId(item.id)}><span><strong>{item.name}</strong><small>{item.description || item.id}</small></span><em>{item.status === 'ready' ? 'HAZIR' : 'KOD BEKLENİYOR'}</em></button>)}{matchingTests.length === 0 && <p>Bu bileşen için katalogda henüz test yok. GitHub’a uygun test eklendiğinde burada otomatik görünecek.</p>}</div>{sourceError && <div className="validation warn">{sourceError}</div>}{testValidation && !testValidation.valid && <div className="validation bad">{testValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>}<button className="primary wizard-next" disabled={!selectedTest || !testValidation?.valid || sourceBusy || working || !(sourceStatus?.latestSha || sourceStatus?.activeSha)} onClick={continueWithTest}>{working ? 'KAYNAK İNDİRİLİYOR…' : 'TESTİ HAZIRLA'} <ArrowRight size={16}/></button></>}
+      {step === 'test' && activeSensor && <><span className="eyebrow">3 / TEST</span><h2>{activeSensor.part} için neyi deneyeceğiz?</h2><p>{githubConfig.repository} kataloğunda {profile.mcu.part} ile eşleşen testler gösteriliyor. Kod bekleyen testlerin pinlerini yine de inceleyebilirsin.</p><div className="wizard-catalog-head"><span>{matchingTests.length} eşleşme · {compatibleTests.length} hazır</span><button className="wizard-text-button" disabled={sourceBusy} onClick={refreshSource}><RefreshCw size={14}/>YENİLE</button></div><div className="wizard-tests">{matchingTests.map((item) => <button key={item.id} disabled={item.status !== 'ready'} className={selectedTest?.id === item.id ? 'selected' : ''} onClick={() => setSelectedTestId(item.id)}><span><strong>{item.name}</strong><small>{item.description || item.id}</small></span><em>{item.status === 'ready' ? 'HAZIR' : 'KOD BEKLENİYOR'}</em></button>)}{matchingTests.length === 0 && <p>Bu bileşen için henüz test yok. Uygun kod eklendiğinde burada görünecek.</p>}</div>{sourceError && <div className="validation warn">{sourceError}</div>}{!compilerReady && <div className="validation warn">Bu MCU için pinout hazır; yerel derleme desteği henüz yok.</div>}<button className="primary wizard-next" onClick={() => { setSelectedPinIndex(0); setStep('pins'); setLocalError(''); }}>BAĞLANTILARI GÖR <ArrowRight size={16}/></button></>}
       {step === 'flash' && activeSensor && <><span className="eyebrow">5 / UZAKTAN YÜKLEME</span><h2>{selectedTest?.name || 'Test'} hazır</h2><p>Seçilen test GitHub kaynağından bilgisayarında derlenecek, ardından ESP32 üzerinden STM32’ye yüklenecek. .bin veya .elf seçmen gerekmiyor.</p><div className="wizard-flash-facts"><div><small>HEDEF</small><strong>{target?.connected ? `${target.model} · ${target.uid}` : 'STM32 bekleniyor'}</strong></div><div><small>TEST</small><strong>{activeSensor.part} · {selectedTest?.name || 'Seçilmedi'}</strong></div><div><small>KAYNAK</small><strong>{sourceStatus?.activeSha?.slice(0, 12) || 'İndirilmedi'}</strong></div></div>{target?.connected && profile.targetUid !== target.uid && <button className="secondary" onClick={bindTarget}>BAĞLI STM32’Yİ BU KARTLA EŞLEŞTİR</button>}{!target?.connected && <button className="secondary" onClick={refreshTarget}>STM32’Yİ YENİDEN ARA</button>}<p className="destructive-note">Yükleme, STM32’deki mevcut yazılımı siler. Sensörün çalışıp çalışmadığını test sonucundan veya fiziksel gözlemle kontrol edeceksin.</p><button className="primary wizard-next" disabled={testBusy || flashBusy || Boolean(testBlocker) || esp.status !== 'online'} onClick={() => setConfirmLedFlash(true)}><Send size={16}/>{testBusy || flashBusy ? 'YÜKLENİYOR…' : 'DERLE VE STM32’YE YÜKLE'}</button>{testBlocker && <div className="validation warn">{testBlocker}</div>}{testStage && <p className="wizard-hint">{testStage}</p>}{(flashBusy || flashLog.length > 0) && <><div className="flash-feedback"><div className="flash-feedback-top"><span>{flashBusy ? 'İŞLEM SÜRÜYOR' : flashProgress === 100 ? 'DOĞRULANDI' : 'SON İŞLEM'}</span><strong>{flashProgress}%</strong></div><div className="progress"><i style={{ width: `${flashProgress}%` }}/></div></div><div className="flash-terminal" role="log" aria-label="SWD işlem terminali">{flashLog.map((entry, index) => <p key={index} className={`log-${['info', 'success', 'warn', 'error', 'chunk'].includes(entry.type) ? entry.type : 'info'}`}>[{entry.time}] {entry.msg}</p>)}</div></>}{visualPending && <div className="visual-confirm"><span>Fiziksel test başarılı mı?</span><button onClick={() => finishVisualTest(true)}>EVET</button><button onClick={() => finishVisualTest(false)}>HAYIR</button></div>}</>}
       {localError && <div className="validation bad">{localError}</div>}
-      {step === 'test' && !compilerReady && <div className="validation warn">{profile.mcu.part} tanındı ancak yerel HAL derleyicisi şu an yalnız STM32F401CC/CD hedefini destekliyor.</div>}
     </div>
   </div>;
 }
