@@ -4,6 +4,8 @@
  * This module deliberately has no React or Tauri dependency so that parser,
  * project package and cloud-build clients all use identical validation rules.
  */
+import { targetPackage } from './targetPins.js';
+
 export const PROFILE_SCHEMA_VERSION = 1;
 
 const CAPABILITIES = {
@@ -144,6 +146,11 @@ export function confidenceLevel(score) {
 export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   const family = canonicalMcu(mcuPart);
   const normalized = normalizePin(pin);
+  const target = targetPackage(mcuPart);
+  if (!target) return { supported: null, reason: `${mcuPart} için doğrulanmış paket pin verisi yok.` };
+  if (!target.pins.some((item) => item.name === normalized)) {
+    return { supported: false, reason: `${normalized || pin || 'Boş pin'} ${mcuPart} paketinde bulunmuyor.` };
+  }
   if ((peripheral === 'GPIO' && role === 'LED') || (/^SPI[1-3]$/.test(peripheral || '') && ['CS', 'INT', 'RESET'].includes(role))) {
     const match = normalized?.match(/^P([ABC])(\d{1,2})$/);
     const port = match?.[1];
