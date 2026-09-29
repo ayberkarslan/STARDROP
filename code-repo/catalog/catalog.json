@@ -1,8 +1,28 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "devices": [
+    {
+      "id": "led",
+      "name": "LED",
+      "matchParts": ["LED"],
+      "protocols": ["GPIO"],
+      "requiredRoles": ["LED"],
+      "optionalRoles": []
+    },
+    {
+      "id": "bhi360",
+      "name": "Bosch BHI360",
+      "matchParts": ["BHI360", "BHI360-IMU"],
+      "protocols": ["I2C", "SPI"],
+      "requiredRoles": ["SCL", "SDA"],
+      "optionalRoles": ["INT", "RESET"],
+      "electricalNotes": ["VDD/VDDIO ve I2C pull-up gerilimlerini kart şemasıyla doğrula; .NET dosyası elektriksel uyumluluğu kanıtlamaz."]
+    }
+  ],
   "tests": [
     {
       "id": "led-blink",
+      "deviceId": "led",
       "name": "LED Blink",
       "description": "Seçilen GPIO'daki LED'i ayarlanan aralıkla yakıp söndürür. Sonuç gözle doğrulanır.",
       "status": "ready",
@@ -13,6 +33,18 @@
       "build": "stm32-hal-v1",
       "result": "visual",
       "requiredRoles": ["LED"]
+    },
+    {
+      "id": "bhi360-identity",
+      "deviceId": "bhi360",
+      "name": "BHI360 · kimlik ve başlatma",
+      "description": "Planlandı: kimlik, firmware yükleme/başlatma ve örnek ölçüm raporu.",
+      "status": "planned",
+      "protocol": "I2C",
+      "supportedMcu": ["STM32F446"],
+      "build": "stm32-hal-v1",
+      "result": "sram",
+      "requiredRoles": ["SCL", "SDA"]
     }
   ]
 }

@@ -151,7 +151,9 @@ export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   if (!target.pins.some((item) => item.name === normalized)) {
     return { supported: false, reason: `${normalized || pin || 'Boş pin'} ${mcuPart} paketinde bulunmuyor.` };
   }
-  if ((peripheral === 'GPIO' && role === 'LED') || (/^SPI[1-3]$/.test(peripheral || '') && ['CS', 'INT', 'RESET'].includes(role))) {
+  if ((peripheral === 'GPIO' && ['LED', 'INT', 'RESET'].includes(role))
+    || (/^(?:SPI[1-3]|I2C[1-3]|SOFT_I2C_[1-9]\d*)$/.test(peripheral || '')
+      && ['CS', 'INT', 'RESET'].includes(role))) {
     const match = normalized?.match(/^P([ABC])(\d{1,2})$/);
     const port = match?.[1];
     const index = match ? Number(match[2]) : -1;
@@ -215,9 +217,10 @@ export function validateBoardProfile(profile) {
   return { valid: errors.length === 0, errors, warnings };
 }
 
-export function validateTestTarget(profile, componentRef) {
+export function validateTestTarget(profile, componentRef, testRoles = null) {
   const component = profile?.components?.find((item) => item.ref === componentRef);
-  const requiredRoles = component?.protocol === 'I2C' ? ['SCL', 'SDA'] : component?.protocol === 'SPI' ? ['SCK', 'MISO', 'MOSI', 'CS'] : [];
+  const requiredRoles = testRoles || (component?.protocol === 'I2C' ? ['SCL', 'SDA']
+    : component?.protocol === 'SPI' ? ['SCK', 'MISO', 'MOSI', 'CS'] : component?.protocol === 'GPIO' ? ['LED'] : []);
   const connections = profile?.connections?.filter((item) => item.componentRef === componentRef && (!requiredRoles.length || requiredRoles.includes(item.role))) || [];
   const selected = profile ? { ...profile, components: component ? [component] : [], connections } : null;
   const base = validateBoardProfile(selected);

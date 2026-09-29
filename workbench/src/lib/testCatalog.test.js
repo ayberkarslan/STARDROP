@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DEFAULT_TEST_CATALOG, buildableTargetPart, testForComponent, testsForComponent, validateTestCatalog } from './testCatalog.js';
+import { DEFAULT_TEST_CATALOG, buildableTargetPart, deviceForComponent, testForComponent, testsForComponent, validateTestCatalog } from './testCatalog.js';
 import CODE_REPO_CATALOG from '../../../code-repo/catalog/catalog.json' with { type: 'json' };
 
 test('sensor testing requires a matching device-specific test', () => {
@@ -21,6 +21,17 @@ test('GitHub code catalog resolves LED test without hardcoded board reference', 
   assert.equal(validateTestCatalog(CODE_REPO_CATALOG).valid, true);
   assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'LED', protocol: 'GPIO' }, 'STM32F401CDU6')?.id, 'led-blink');
   assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'LED', protocol: 'GPIO' }, 'STM32F446RET6'), null);
+  const bhi = { part: 'BHI360-IMU', protocol: 'I2C' };
+  assert.equal(deviceForComponent(CODE_REPO_CATALOG, bhi)?.id, 'bhi360');
+  assert.equal(testForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6'), null);
+  assert.deepEqual(testsForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6').map((item) => item.id), ['bhi360-identity']);
+});
+
+test('catalog v2 refuses undefined device references and pin roles', () => {
+  const bad = structuredClone(CODE_REPO_CATALOG);
+  bad.tests[0].deviceId = 'missing';
+  bad.tests[1].requiredRoles = ['MAGIC'];
+  assert.equal(validateTestCatalog(bad).valid, false);
 });
 
 test('multiple sensor test variants are filtered by part, protocol, MCU and readiness', () => {

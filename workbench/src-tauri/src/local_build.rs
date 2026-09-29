@@ -181,12 +181,20 @@ pub async fn activate_code_repo(app: tauri::AppHandle, repository: String, sha: 
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CodeCatalog { schema_version: u8, tests: Vec<CodeTest> }
+struct CodeCatalog { schema_version: u8, #[serde(default)] devices: Vec<CodeDevice>, tests: Vec<CodeTest> }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodeDevice {
+    id: String, name: String, match_parts: Vec<String>, protocols: Vec<String>,
+    required_roles: Vec<String>, optional_roles: Vec<String>,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CodeTest {
     id: String, status: String, #[serde(default)] source_path: String, build: Option<String>,
+    device_id: Option<String>,
     #[serde(default)] protocol: String, #[serde(default)] match_parts: Vec<String>,
     #[serde(default)] supported_mcu: Vec<String>, #[serde(default)] required_roles: Vec<String>,
     #[serde(default)] result: String,
@@ -194,10 +202,22 @@ struct CodeTest {
 
 impl CodeCatalog {
     fn validate(&self) -> Result<(), String> {
-        if self.schema_version != 1 || self.tests.is_empty() || self.tests.len() > 100 { return Err("Test kataloğu sürümü veya boyutu geçersiz".into()); }
+        if !matches!(self.schema_version, 1 | 2) || self.tests.is_empty() || self.tests.len() > 100 { return Err("Test kataloğu sürümü veya boyutu geçersiz".into()); }
+        let mut device_ids = std::collections::HashSet::new();
+        if self.schema_version == 2 && self.devices.is_empty() { return Err("Katalog cihaz tanımı eksik".into()); }
+        for device in &self.devices {
+            if !safe_segment(&device.id) || !device_ids.insert(&device.id) || device.name.is_empty()
+                || device.match_parts.is_empty() || device.protocols.is_empty()
+                || device.protocols.iter().any(|protocol| !matches!(protocol.as_str(), "GPIO" | "I2C" | "SPI"))
+                || device.required_roles.iter().chain(&device.optional_roles).any(|role| !valid_pin_role(role)) {
+                return Err("Katalog cihaz tanımı geçersiz".into());
+            }
+        }
         let mut ids = std::collections::HashSet::new();
         for test in &self.tests {
             if !safe_segment(&test.id) || !ids.insert(&test.id) || !matches!(test.status.as_str(), "ready" | "planned")
+                || self.schema_version == 2 && test.device_id.as_ref().is_none_or(|id| !device_ids.contains(id))
+                || self.schema_version == 2 && (test.required_roles.is_empty() || test.required_roles.iter().any(|role| !valid_pin_role(role)))
                 || test.status == "ready" && (!safe_relative(&test.source_path) || test.build.as_deref() != Some("stm32-hal-v1")
                     || !matches!(test.result.as_str(), "visual" | "sram") || test.required_roles.is_empty()) {
                 return Err("Test kataloğunda geçersiz veya desteklenmeyen kayıt".into());
@@ -205,6 +225,22 @@ impl CodeCatalog {
         }
         Ok(())
     }
+
+    fn matches_component(&self, test: &CodeTest, part: &str, protocol: &str) -> bool {
+        if let Some(device_id) = &test.device_id {
+            return self.devices.iter().find(|device| &device.id == device_id).is_some_and(|device|
+                device.protocols.iter().any(|value| value == protocol)
+                    && device.match_parts.iter().any(|alias| {
+                        let alias = alias.to_ascii_uppercase();
+                        part == alias || part.starts_with(&format!("{alias}-")) || part.starts_with(&format!("{alias}_"))
+                    }));
+        }
+        test.match_parts.iter().any(|name| part.contains(&name.to_ascii_uppercase()))
+    }
+}
+
+fn valid_pin_role(role: &str) -> bool {
+    matches!(role, "LED" | "SCL" | "SDA" | "SCK" | "MISO" | "MOSI" | "CS" | "INT" | "RESET")
 }
 
 #[derive(Serialize)]
@@ -422,7 +458,7 @@ fn compile_code_test_at(source: &Path, gcc: &Path, objcopy: &Path, request: Code
         if profile["mcu"]["part"] != request.mcu_part || profile["targetUid"] != request.target_uid
             || request.target_uid.len() != 24 || !request.target_uid.chars().all(|ch| ch.is_ascii_hexdigit())
             || !test.supported_mcu.iter().any(|mcu| request.mcu_part.starts_with(mcu))
-            || test.protocol != protocol || !test.match_parts.iter().any(|name| part.contains(&name.to_ascii_uppercase())) {
+            || test.protocol != protocol || !catalog.matches_component(test, &part, protocol) {
             return Err("Test kart profili veya STM32 hedefiyle uyuşmuyor".into());
         }
         let connections = profile["connections"].as_array().ok_or("Pin listesi yok")?;
