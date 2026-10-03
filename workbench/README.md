@@ -4,6 +4,12 @@
 yalnız web önizlemesidir; ESP32 UDP keşfi, GitHub oturumu ve yerel derleme için
 Tauri gerekir.
 
+GitHub giriş Worker'ına normal HTTPS/TCP bağlantısı ağda sıfırlanırsa masaüstü
+uygulaması HTTP/3 yedek yolunu dener. Bunun için sistemde HTTP/3 destekli
+`curl` bulunmalıdır (`curl -V` çıktısında `HTTP3` veya `ngtcp2`/`nghttp3`).
+GitHub kodu ve yenileme token'ı komut satırı argümanına değil, yalnızca `curl`
+standart girişine verilir. Normal HTTPS çalışan sistemlerde `curl` kullanılmaz.
+
 **Misafir** yalnız Hızlı Yükleme'de hazır `.bin`/`.elf` seçip ESP32 üzerinden
 STM32'ye gönderebilir. **GitHub ile giriş** Kart Workbench'i açar. Workbench'te
 iki yol vardır: Altium `.NET` dosyasını yüklemek veya STM32/bileşeni elle

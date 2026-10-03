@@ -2,6 +2,7 @@ use keyring::Entry;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpListener, UdpSocket};
+use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -22,6 +23,53 @@ fn auth_worker_base(value: &str) -> Result<String, String> {
 fn auth_worker() -> Result<String, String> {
     let configured = std::env::var("STARDROP_AUTH_WORKER_URL").unwrap_or_else(|_| AUTH_WORKER.into());
     auth_worker_base(&configured)
+}
+
+fn parse_curl_auth_response(output: std::process::Output) -> Result<(u16, String), String> {
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("HTTP/3 yedek bağlantısı başarısız: {}", detail.trim().chars().take(250).collect::<String>()));
+    }
+    if output.stdout.len() > 16 * 1024 { return Err("GitHub giriş servisi yanıtı fazla büyük".into()); }
+    let text = String::from_utf8(output.stdout).map_err(|_| "GitHub giriş servisi UTF-8 yanıtı vermedi")?;
+    let (body, status) = text.rsplit_once("\n__STARDROP_HTTP_STATUS__")
+        .ok_or("HTTP/3 yanıt durumu okunamadı")?;
+    let status = status.trim().parse::<u16>().map_err(|_| "Geçersiz HTTP/3 yanıt durumu")?;
+    Ok((status, body.to_string()))
+}
+
+fn auth_worker_post_http3(url: &str, body: &str) -> Result<(u16, String), String> {
+    let mut child = Command::new("curl")
+        .args(["--http3-only", "--silent", "--show-error", "--max-time", "15", "--connect-timeout", "5",
+            "--request", "POST", "--header", "Content-Type: application/json",
+            "--header", "User-Agent: stardrop-workbench", "--data-binary", "@-",
+            "--write-out", "\n__STARDROP_HTTP_STATUS__%{http_code}", url])
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|error| format!("HTTP/3 için curl başlatılamadı: {error}"))?;
+    child.stdin.take().ok_or("HTTP/3 giriş kanalı açılamadı")?
+        .write_all(body.as_bytes()).map_err(|error| error.to_string())?;
+    parse_curl_auth_response(child.wait_with_output().map_err(|error| error.to_string())?)
+}
+
+async fn auth_worker_post(url: String, body: String) -> Result<(u16, String), String> {
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?;
+    let send = client.post(&url)
+        .header("Content-Type", "application/json")
+        .header("User-Agent", "stardrop-workbench")
+        .body(body.clone());
+    match send.send().await {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            let body = response.text().await.map_err(|error| error.to_string())?;
+            Ok((status, body))
+        }
+        Err(tcp_error) if tcp_error.is_connect() => {
+            tauri::async_runtime::spawn_blocking(move || auth_worker_post_http3(&url, &body))
+                .await.map_err(|error| error.to_string())?
+                .map_err(|http3_error| format!("GitHub giriş servisine HTTPS/TCP ve HTTP/3 ile ulaşılamadı: TCP: {tcp_error}; HTTP/3: {http3_error}"))
+        }
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 const ESP_GET_PATHS: &[&str] = &[
@@ -334,15 +382,8 @@ async fn github_browser_login() -> Result<String, String> {
     let callback = tauri::async_runtime::spawn_blocking(move || wait_for_github_callback(listener, &expected));
     open_auth_browser(&start)?;
     let code = callback.await.map_err(|error| error.to_string())??;
-    let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?
-        .post(format!("{auth_worker}/exchange"))
-        .header("Content-Type", "application/json")
-        .header("User-Agent", "stardrop-workbench")
-        .body(serde_json::json!({ "code": code }).to_string())
-        .send().await.map_err(|error| error.to_string())?;
-    let status = response.status();
-    let body = response.text().await.map_err(|error| error.to_string())?;
-    if !status.is_success() {
+    let (status, body) = auth_worker_post(format!("{auth_worker}/exchange"), serde_json::json!({ "code": code }).to_string()).await?;
+    if !(200..300).contains(&status) {
         let detail = body.chars().take(300).collect::<String>();
         return Err(format!("GitHub token değişimi HTTP {status}: {detail}"));
     }
@@ -360,14 +401,8 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
         return Err("Geçersiz GitHub yenileme token'ı".into());
     }
     let auth_worker = auth_worker()?;
-    let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?
-        .post(format!("{auth_worker}/refresh"))
-        .header("Content-Type", "application/json")
-        .header("User-Agent", "stardrop-workbench")
-        .body(serde_json::json!({ "refresh_token": refresh_token }).to_string())
-        .send().await.map_err(|error| error.to_string())?;
-    if !response.status().is_success() { return Err(format!("GitHub oturum yenileme HTTP {}", response.status())); }
-    let body = response.text().await.map_err(|error| error.to_string())?;
+    let (status, body) = auth_worker_post(format!("{auth_worker}/refresh"), serde_json::json!({ "refresh_token": refresh_token }).to_string()).await?;
+    if !(200..300).contains(&status) { return Err(format!("GitHub oturum yenileme HTTP {status}: {}", body.chars().take(300).collect::<String>())); }
     let value: serde_json::Value = serde_json::from_str(&body).map_err(|error| error.to_string())?;
     if value.get("access_token").and_then(|token| token.as_str()).is_none() {
         return Err(value.get("error_description").and_then(|error| error.as_str()).unwrap_or("GitHub oturumu yenilenemedi").into());
@@ -393,6 +428,15 @@ mod tests {
         for value in ["http://auth.example.com", "https://auth.example.com/path", "https://auth.example.com?x=1", "https://user:pass@auth.example.com", "https://auth.example.com:8443"] {
             assert!(auth_worker_base(value).is_err(), "{value}");
         }
+    }
+
+    #[test]
+    fn auth_worker_http3_when_configured() {
+        if std::env::var("STARDROP_TEST_AUTH_WORKER").is_err() { return; }
+        let (status, body) = tauri::async_runtime::block_on(auth_worker_post(
+            format!("{AUTH_WORKER}/exchange"), r#"{"code":"invalid"}"#.into())).unwrap();
+        assert_eq!(status, 200);
+        assert!(body.contains("bad_verification_code"));
     }
 
     #[test]
