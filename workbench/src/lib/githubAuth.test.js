@@ -4,7 +4,9 @@ import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './githu
 import { loadSecret } from './secretStore.js';
 
 test('logout removes both access and refresh credentials', async () => {
-  await saveGitHubSession({ access_token: 'access-test', refresh_token: 'refresh-test', expires_in: 3600 });
+  const session = { access_token: 'access-test', refresh_token: 'refresh-test', expires_in: 3600 };
+  await saveGitHubSession(session);
+  assert.equal(session.storage_mode, 'memory');
   assert.equal(await validGitHubToken(), 'access-test');
   await clearGitHubSession();
   assert.equal(await validGitHubToken(), null);

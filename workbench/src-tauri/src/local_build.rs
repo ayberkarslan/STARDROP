@@ -45,12 +45,10 @@ fn github_client() -> Result<reqwest::Client, String> {
 }
 
 fn token() -> Result<String, String> {
-    match super::entry_for("github_repo_token")?.get_password() {
-        Ok(token) if !token.is_empty() => Ok(token),
-        Ok(_) | Err(keyring::Error::NoEntry) => super::entry_for("github_access_token")?.get_password()
-            .map_err(|_| "GitHub oturumu veya depo erişim anahtarı gerekli".into()),
-        Err(error) => Err(format!("Depo anahtarı okunamadı: {error}")),
-    }
+    super::read_secret("github_repo_token")?
+        .filter(|value| !value.is_empty())
+        .or(super::read_secret("github_access_token")?)
+        .ok_or_else(|| "GitHub oturumu veya depo erişim anahtarı gerekli".into())
 }
 
 fn code_root(app: &tauri::AppHandle, repository: &str) -> Result<PathBuf, String> {

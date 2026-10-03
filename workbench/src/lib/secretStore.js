@@ -9,7 +9,8 @@ async function tauriInvoke(command, args) {
 /** Credentials never enter project archives or localStorage. */
 export async function saveSecret(key, value) {
   const saved = await tauriInvoke('save_secret', { key, value });
-  if (saved === undefined) volatileSecrets.set(key, value);
+  if (saved === undefined) { volatileSecrets.set(key, value); return 'memory'; }
+  return saved;
 }
 
 export async function loadSecret(key) {

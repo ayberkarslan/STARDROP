@@ -4,9 +4,10 @@ let refreshInFlight = null;
 
 export async function saveGitHubSession(result) {
   if (!result?.access_token) throw new Error('GitHub erişim token’ı alınamadı.');
-  await saveSecret('github_access_token', result.access_token);
-  if (result.refresh_token) await saveSecret('github_refresh_token', result.refresh_token);
-  if (result.expires_in) await saveSecret('github_access_expires_at', String(Date.now() + result.expires_in * 1000));
+  const modes = [await saveSecret('github_access_token', result.access_token)];
+  if (result.refresh_token) modes.push(await saveSecret('github_refresh_token', result.refresh_token));
+  if (result.expires_in) modes.push(await saveSecret('github_access_expires_at', String(Date.now() + result.expires_in * 1000)));
+  result.storage_mode = modes.includes('memory') ? 'memory' : 'os';
   return result.access_token;
 }
 
