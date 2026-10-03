@@ -15,6 +15,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .welcome-actions button{display:flex;align-items:center;gap:17px;width:100%;min-height:79px;border:0;border-bottom:1px solid #252525;background:transparent;color:#f4f4f4;text-align:left;padding:13px 7px}
 .welcome-actions button:last-child{border-bottom:0}.welcome-actions button:hover{background:#161616}.welcome-actions svg{flex:none;color:#aaa}.welcome-actions button>span{display:grid;gap:5px}.welcome-actions strong{font-size:13px}.welcome-actions small{font-size:10px;color:#777}.welcome-actions b{margin-left:auto;font-size:17px;font-weight:400;color:#777}
 .welcome-status{margin-top:38px;min-height:18px;color:#666;font:10px var(--font-mono);line-height:1.5;overflow-wrap:anywhere}
+.welcome-auth-feedback,.welcome-auth-error{margin-top:18px;padding:14px 16px;border:1px solid #343434;border-radius:8px;background:#0d0d0d;color:#ddd;font:11px/1.55 var(--font-mono)}
+.welcome-auth-error{display:grid;gap:7px;border-color:#683131;background:#170b0b;color:#ffcdcd;overflow-wrap:anywhere}
+.welcome-auth-error strong{color:#fff;font-size:12px}.welcome-auth-error small{color:#bea1a1;font-size:10px}
 .welcome-setup{display:grid;gap:11px;margin-top:19px;padding:17px;border:1px solid #333;border-radius:7px;background:#101010;color:#bbb;font-size:11px}.welcome-setup label{display:grid;gap:7px}.welcome-setup input{padding:10px;background:#080808;color:#fff;border:1px solid #444;border-radius:5px}.welcome-setup button{width:max-content;padding:9px 12px;background:#fff;border:1px solid #fff;color:#000;border-radius:5px;font-size:10px;font-weight:700}.welcome-setup button:disabled{opacity:.45}.welcome-setup small{color:#777}.welcome-setup a{color:#fff}.welcome-setup strong{font:20px var(--font-mono);letter-spacing:.15em}
 
 /* Guest mode has no navigation sidebar: there is only one task. */

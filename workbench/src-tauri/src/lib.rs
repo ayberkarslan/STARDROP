@@ -1,6 +1,8 @@
 use keyring::Entry;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpListener, UdpSocket};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 mod local_build;
@@ -154,24 +156,54 @@ fn entry_for(key: &str) -> Result<Entry, String> {
     Entry::new("com.yildizroket.stardrop-workbench", key).map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-fn save_secret(key: String, value: String) -> Result<(), String> {
-    entry_for(&key)?.set_password(&value).map_err(|error| error.to_string())
+static VOLATILE_SECRETS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn volatile_secrets() -> &'static Mutex<HashMap<String, String>> {
+    VOLATILE_SECRETS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-#[tauri::command]
-fn load_secret(key: String) -> Result<Option<String>, String> {
-    match entry_for(&key)?.get_password() {
+fn memory_secret(key: &str) -> Result<Option<String>, String> {
+    Ok(volatile_secrets().lock().map_err(|error| error.to_string())?.get(key).cloned())
+}
+
+fn read_secret(key: &str) -> Result<Option<String>, String> {
+    if let Some(value) = memory_secret(key)? { return Ok(Some(value)); }
+    match entry_for(key)?.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
+        // On systems without Secret Service, a previously persisted login
+        // cannot be read. New credentials are kept in process memory only.
+        Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_)) => Ok(None),
         Err(error) => Err(error.to_string()),
     }
 }
 
 #[tauri::command]
+fn save_secret(key: String, value: String) -> Result<&'static str, String> {
+    match entry_for(&key)?.set_password(&value) {
+        Ok(()) => {
+            volatile_secrets().lock().map_err(|error| error.to_string())?.remove(&key);
+            Ok("os")
+        }
+        Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_)) => {
+            volatile_secrets().lock().map_err(|error| error.to_string())?.insert(key, value);
+            Ok("memory")
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn load_secret(key: String) -> Result<Option<String>, String> {
+    read_secret(&key)
+}
+
+#[tauri::command]
 fn delete_secret(key: String) -> Result<(), String> {
+    volatile_secrets().lock().map_err(|error| error.to_string())?.remove(&key);
     match entry_for(&key)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Ok(()) | Err(keyring::Error::NoEntry)
+            | Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_)) => Ok(()),
         Err(error) => Err(error.to_string()),
     }
 }
@@ -194,16 +226,12 @@ async fn github_repo_diagnostic(repository: String) -> Result<GitHubRepoDiagnost
         && part.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))) {
         return Err("Geçersiz GitHub deposu".into());
     }
-    let repo_token = match entry_for("github_repo_token")?.get_password() {
-        Ok(value) if !value.is_empty() => Some(value),
-        Ok(_) | Err(keyring::Error::NoEntry) => None,
-        Err(error) => return Err(format!("Depo anahtarı okunamadı: {error}")),
-    };
+    let repo_token = read_secret("github_repo_token")?.filter(|value| !value.is_empty());
     let (source, credential) = if let Some(value) = repo_token {
         ("depo anahtarı", value)
     } else {
-        ("GitHub giriş tokeni", entry_for("github_access_token")?.get_password()
-            .map_err(|_| "Kaydedilmiş GitHub kimlik bilgisi bulunamadı".to_string())?)
+        ("GitHub giriş tokeni", read_secret("github_access_token")?
+            .ok_or("Kaydedilmiş GitHub kimlik bilgisi bulunamadı")?)
     };
     let format = if credential.starts_with("github_pat_") { "fine-grained PAT biçimi" }
         else if credential.starts_with("ghu_") { "GitHub App kullanıcı tokeni biçimi" }
@@ -274,7 +302,7 @@ fn wait_for_github_callback(listener: TcpListener, state: &str) -> Result<String
         }
         let code = url.query_pairs().find(|(key, _)| key == "code").map(|(_, value)| value.into_owned())
             .filter(|value| !value.is_empty()).ok_or("GitHub yetkilendirme kodu gelmedi")?;
-        reply_to_browser(&mut stream, "200 OK", "STARDROP girişi alındı. Bu sekmeyi kapatabilirsiniz.");
+        reply_to_browser(&mut stream, "200 OK", "GitHub yetkilendirme kodu alındı. STARDROP uygulamasına dönün; token doğrulaması sürüyor.");
         return Ok(code);
     }
     Err("GitHub girişi 3 dakika içinde tamamlanmadı".into())
@@ -296,11 +324,16 @@ async fn github_browser_login() -> Result<String, String> {
         .header("User-Agent", "stardrop-workbench")
         .body(serde_json::json!({ "code": code }).to_string())
         .send().await.map_err(|error| error.to_string())?;
-    if !response.status().is_success() { return Err(format!("GitHub token değişimi HTTP {}", response.status())); }
+    let status = response.status();
     let body = response.text().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        let detail = body.chars().take(300).collect::<String>();
+        return Err(format!("GitHub token değişimi HTTP {status}: {detail}"));
+    }
     let value: serde_json::Value = serde_json::from_str(&body).map_err(|error| error.to_string())?;
     if value.get("access_token").and_then(|token| token.as_str()).is_none() {
-        return Err(value.get("error_description").and_then(|error| error.as_str()).unwrap_or("GitHub erişim token'ı vermedi").into());
+        return Err(value.get("error_description").or_else(|| value.get("error")).and_then(|error| error.as_str())
+            .unwrap_or("GitHub erişim token'ı vermedi").into());
     }
     Ok(body)
 }
@@ -336,6 +369,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn volatile_secret_is_available_to_native_github_operations() {
+        let key = "stardrop_test_volatile_secret";
+        volatile_secrets().lock().unwrap().insert(key.into(), "temporary".into());
+        assert_eq!(read_secret(key).unwrap().as_deref(), Some("temporary"));
+        volatile_secrets().lock().unwrap().remove(key);
+    }
 
     #[test]
     fn esp_url_requires_plain_http_ipv4_on_port_80() {
