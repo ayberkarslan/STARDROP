@@ -9,6 +9,21 @@ mod local_build;
 
 const AUTH_WORKER: &str = "https://stardrop-auth.ayberkarslann0.workers.dev";
 
+fn auth_worker_base(value: &str) -> Result<String, String> {
+    let url = reqwest::Url::parse(value).map_err(|_| "Geçersiz GitHub giriş servisi adresi".to_string())?;
+    if url.scheme() != "https" || url.host_str().is_none() || url.port_or_known_default() != Some(443)
+        || url.path() != "/" || url.query().is_some() || url.fragment().is_some()
+        || !url.username().is_empty() || url.password().is_some() {
+        return Err("GitHub giriş servisi yalnızca https://alan-adi biçiminde olmalı".into());
+    }
+    Ok(value.trim_end_matches('/').to_string())
+}
+
+fn auth_worker() -> Result<String, String> {
+    let configured = std::env::var("STARDROP_AUTH_WORKER_URL").unwrap_or_else(|_| AUTH_WORKER.into());
+    auth_worker_base(&configured)
+}
+
 const ESP_GET_PATHS: &[&str] = &[
     "/ping", "/api/wifi/status", "/api/wifi/scan", "/api/programmer/status",
     "/api/target/status", "/api/diagnostic/report",
@@ -310,16 +325,17 @@ fn wait_for_github_callback(listener: TcpListener, state: &str) -> Result<String
 
 #[tauri::command]
 async fn github_browser_login() -> Result<String, String> {
+    let auth_worker = auth_worker()?;
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|error| error.to_string())?;
     let port = listener.local_addr().map_err(|error| error.to_string())?.port();
     let state = format!("{}.{:032x}", port, uuid::Uuid::new_v4().as_u128());
-    let start = format!("{AUTH_WORKER}/start?state={state}");
+    let start = format!("{auth_worker}/start?state={state}");
     let expected = state.clone();
     let callback = tauri::async_runtime::spawn_blocking(move || wait_for_github_callback(listener, &expected));
     open_auth_browser(&start)?;
     let code = callback.await.map_err(|error| error.to_string())??;
     let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?
-        .post(format!("{AUTH_WORKER}/exchange"))
+        .post(format!("{auth_worker}/exchange"))
         .header("Content-Type", "application/json")
         .header("User-Agent", "stardrop-workbench")
         .body(serde_json::json!({ "code": code }).to_string())
@@ -343,8 +359,9 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
     if !refresh_token.starts_with("ghr_") || refresh_token.len() > 256 {
         return Err("Geçersiz GitHub yenileme token'ı".into());
     }
+    let auth_worker = auth_worker()?;
     let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build().map_err(|error| error.to_string())?
-        .post(format!("{AUTH_WORKER}/refresh"))
+        .post(format!("{auth_worker}/refresh"))
         .header("Content-Type", "application/json")
         .header("User-Agent", "stardrop-workbench")
         .body(serde_json::json!({ "refresh_token": refresh_token }).to_string())
@@ -369,6 +386,14 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_worker_url_requires_https_origin() {
+        assert_eq!(auth_worker_base("https://auth.example.com/").unwrap(), "https://auth.example.com");
+        for value in ["http://auth.example.com", "https://auth.example.com/path", "https://auth.example.com?x=1", "https://user:pass@auth.example.com", "https://auth.example.com:8443"] {
+            assert!(auth_worker_base(value).is_err(), "{value}");
+        }
+    }
 
     #[test]
     fn volatile_secret_is_available_to_native_github_operations() {
