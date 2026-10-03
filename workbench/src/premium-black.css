@@ -1,0 +1,137 @@
+/* One neutral palette for every authenticated and guest workspace. The welcome
+   screen intentionally keeps its existing design. Colour signals are reserved
+   for connection, success, warning and failure states. */
+.app-shell,.guest-layout{
+  --surface-1:#050505;
+  --surface-2:#0b0b0b;
+  --surface-3:#151515;
+  --border-dim:#242424;
+  --border-mid:#393939;
+  --border-bright:#777;
+  --text-sub:#a0a0a0;
+  --text-dim:#686868;
+  background:#000;
+  color:#f5f5f5;
+}
+.app-shell>main,.guest-layout main{background:#000}
+.app-shell .rail,.app-shell main>header,.guest-header,.guest-layout .guest-header{background:#050505;border-color:#242424}
+.app-shell .rail nav button.active,.app-shell .rail nav button:hover{background:#171717;border-color:#4a4a4a;color:#fff}
+.app-shell .rail-status{background:transparent;border-color:#292929;color:#a0a0a0}
+.app-shell .rail-footer{border-color:#292929}
+.app-shell .brand small,.app-shell main>header p,.app-shell .eyebrow{color:#929292}
+
+/* Workspace surfaces: a pure-black canvas with very shallow tonal depth. */
+.app-shell .panel,.app-shell .library-detail,.app-shell .library-card,.app-shell .flash-workspace,
+.guest-layout .flash-workspace{background:#080808;border-color:#292929;box-shadow:none}
+.app-shell .workspace.workbench .panel,.app-shell .workspace.settings-page .panel{background:transparent;border-color:#292929}
+.app-shell .wizard-workspace,.app-shell .library-workspace{color:#f5f5f5}
+.app-shell .wizard-top,.app-shell .wizard-steps,.app-shell .wizard-add,.app-shell .wizard-catalog-head,
+.app-shell .wizard-flash-facts,.app-shell .wizard-flash-facts>div+div,.app-shell .library-preview,
+.app-shell .library-facts>div,.app-shell .library-pins,.app-shell .library-pins>div,
+.app-shell .test-library,.app-shell .source-update{border-color:#292929}
+.app-shell .wizard-top,.app-shell .wizard-steps span,.app-shell .wizard-catalog-head{color:#999}
+.app-shell .wizard-steps span.current,.app-shell .wizard-steps span.done{color:#eee}
+.app-shell .wizard-steps i{border-color:#444;background:#0b0b0b}
+.app-shell .wizard-steps .current i{border-color:#ddd;background:#171717;color:#fff}
+.app-shell .wizard-steps .done i{border-color:#777}
+.app-shell .wizard-body .eyebrow,.app-shell .wizard-text-button,.app-shell .wizard-back{color:#d6d6d6}
+.app-shell .wizard-text-button:hover,.app-shell .wizard-back:hover{color:#fff}
+.app-shell .wizard-body>p,.app-shell .wizard-hint,.app-shell .wizard-tests>p,
+.app-shell .wizard-components small,.app-shell .wizard-tests small,.app-shell .wizard-choices small,
+.app-shell .wizard-file small,.app-shell .library-heading p,.app-shell .library-detail p{color:#aaa}
+
+/* Cards, controls and menus use ink instead of tinted greens and blues. */
+.app-shell .wizard-choices button,.app-shell .wizard-file,.app-shell .wizard-components button,
+.app-shell .wizard-tests button,.app-shell .pinout-roles>button,.app-shell .test-library-item,
+.app-shell .component-list button,.app-shell .catalog button,.app-shell .diagnostic,
+.app-shell .dropzone,.app-shell .library-search,.app-shell .target-line,
+.app-shell .firmware-select,.app-shell .firmware-file-card,.app-shell .target-flash-card,
+.guest-layout .target-line,.guest-layout .firmware-select,.guest-layout .firmware-file-card,
+.guest-layout .target-flash-card{background:#0b0b0b;border-color:#303030;color:#eee}
+.app-shell .wizard-choices button:hover,.app-shell .wizard-file:hover,
+.app-shell .wizard-components button:hover,.app-shell .wizard-tests button:hover,
+.app-shell .wizard-tests button.selected,.app-shell .pinout-roles>button.selected,
+.app-shell .test-library-item:hover,.app-shell .test-library-item.selected,
+.app-shell .component-list button:hover,.app-shell .component-list button.selected,
+.app-shell .catalog button:hover,.app-shell .catalog button.catalog-selected,
+.app-shell .library-card:hover,.app-shell .library-card.selected{background:#171717;border-color:#858585}
+.app-shell .wizard-choices button>svg:first-child,.app-shell .wizard-file svg,
+.app-shell .wizard-choices .wizard-arrow,.app-shell .dropzone svg,
+.app-shell .catalog svg,.app-shell .security-list svg,.app-shell .target-card>svg{color:#ddd}
+.app-shell .wizard-tests em,.app-shell .pinout-role-value{color:#e0e0e0}
+.app-shell .library-card{background:#090909;border-color:#2b2b2b;color:#eee}
+.app-shell .library-heading p,.app-shell .library-detail p,.app-shell .library-card small,
+.app-shell .library-meta,.app-shell .library-facts span,.app-shell .library-facts small,
+.app-shell .library-pins small{color:#a0a0a0}
+.app-shell .library-publish-form label,.app-shell .library-preview,
+.app-shell .library-publish-form small{color:#aaa}
+.app-shell .library-search input{color:#fff}
+
+.app-shell .select-trigger,.app-shell .select-options,.app-shell .pin-row input,
+.app-shell .manual-grid input,.app-shell .manual-grid select,.app-shell .led-config input,
+.app-shell .led-config select,.app-shell .wizard-fields input,.app-shell .settings-grid input,
+.app-shell .ai-config input,.app-shell .local-project-label input,.app-shell .admin-grid input,
+.app-shell .admin-grid select,.app-shell .settings-group input,.app-shell .library-publish-form input,
+.app-shell .library-publish-form textarea,.app-shell .bridge,.app-shell .detail-drawer input{
+  background:#101010;border-color:#383838;color:#f4f4f4;
+}
+.app-shell .select-options{box-shadow:0 18px 44px #000d}
+.app-shell .select-trigger span,.app-shell .select-option{color:#d4d4d4}
+.app-shell .select-option:hover,.app-shell .select-option:focus-visible,
+.app-shell .select-option[aria-selected=true]{background:#222;color:#fff}
+.app-shell .select-menu.open .select-trigger,.app-shell .select-trigger:focus-visible,
+.app-shell .wizard-fields input:focus{border-color:#aaa;box-shadow:0 0 0 2px #ffffff1a}
+.app-shell .manual-kind button,.app-shell .secondary,.app-shell .speed-options button,
+.app-shell .flash-analyze{background:#111;border-color:#3c3c3c;color:#eee}
+.app-shell .manual-kind button.active,.app-shell .speed-options button.selected{background:#222;border-color:#888;color:#fff}
+.app-shell .primary,.app-shell .flash-submit{background:#f4f4f4;border-color:#f4f4f4;color:#050505}
+.app-shell .primary:hover:not(:disabled),.app-shell .flash-submit:hover:not(:disabled){background:#dcdcdc}
+.app-shell .primary:disabled,.app-shell .flash-submit:disabled{background:#191919;border-color:#333;color:#777}
+.app-shell .progress,.app-shell .usage-track{background:#242424}
+.app-shell .progress i{background:#f4f4f4}
+
+/* The physical pin view stays legible without a green flood. */
+.app-shell .package-board{background:#060606;border-color:#2f2f2f}
+.app-shell .package-core{background:linear-gradient(145deg,#151515,#080808);border-color:#555}
+.app-shell .package-core>small,.app-shell .package-core>span:last-child,
+.app-shell .package-pin-one{color:#bbb}
+.app-shell .package-pin{background:#101010;border-color:#303030;color:#d5d5d5}
+.app-shell .package-pin small{color:#888}
+.app-shell .package-pin.available{background:#161616;border-color:#666;color:#eee}
+.app-shell .package-pin.available:hover,.app-shell .package-pin.assigned{background:#e9e9e9;border-color:#fff;color:#000}
+.app-shell .package-pin.occupied{background:#252018;border-color:#76634a;color:#e5d1a4}
+.app-shell .package-pin.swd,.app-shell .package-pin.power,
+.app-shell .package-pin.control,.app-shell .package-pin.oscillator{background:#0b0b0b;border-color:#252525;color:#777}
+.app-shell .pinout-roles small,.app-shell .pinout-roles>p{color:#999}
+
+/* Overlays and logs should not reveal older tinted surfaces. */
+.app-shell .detail-drawer,.guest-layout .detail-drawer{background:#080808;border-color:#303030}
+.app-shell .confirm-card,.guest-layout .confirm-card{background:#0a0a0a;border-color:#4a4a4a}
+.app-shell .confirm-card h2,.guest-layout .confirm-card h2{color:#fff}
+.app-shell .confirm-card p,.guest-layout .confirm-card p{color:#aaa}
+.app-shell .flash-terminal,.app-shell .wizard-terminal,.app-shell .log,
+.guest-layout .flash-terminal,.guest-layout .log{background:#050505;border-color:#292929;color:#aaa}
+.app-shell .board-map{background:radial-gradient(circle at center,#171717 0,#0b0b0b 50%,#050505 80%)}
+.app-shell .board-map-center,.app-shell .sensor-node{background:#111;border-color:#454545}
+.app-shell .sensor-node:hover,.app-shell .sensor-node.selected{background:#1e1e1e;border-color:#fff}
+.app-shell .board-placeholder{background:linear-gradient(130deg,#161616,#070707)}
+.app-shell .catalog-setup{background:#100e0d;border-color:#574334}
+.app-shell .ai-suggestion,.app-shell .pin-row,
+.app-shell .network-scan,.app-shell .board-image-action{background:#0e0e0e;border-color:#333;color:#ddd}
+.app-shell .ai-result,.app-shell .settings-group,.app-shell .workbench-tabs,
+.app-shell .panel-head{border-color:#292929}
+.app-shell .ai-suggestion input{accent-color:#fff}
+.app-shell .confidence strong,.app-shell .security-list svg{color:#fff}
+.app-shell .visual-confirm{background:#101010;border-color:#555;color:#eee}
+.app-shell .visual-confirm button{background:#1d1d1d;border-color:#666;color:#fff}
+.app-shell .visual-confirm button:last-child{background:#1b1010;border-color:#654040;color:#ffc1c1}
+.app-shell .confirm-card .secondary{background:#121212}
+.app-shell .badge{background:#111;border-color:#444;color:#aaa}
+.app-shell .badge.good{background:#0b1a0e;border-color:#306c3d;color:var(--status-green)}
+.app-shell .badge.warn{background:#1c1709;border-color:#66541c;color:var(--status-yellow)}
+.app-shell .badge.bad{background:#1d0c0b;border-color:#70302c;color:var(--status-red)}
+
+/* Meaningful states retain their own colours. */
+.app-shell .library-card em.result-pass{color:var(--status-green)}
+.app-shell .library-card em.result-fail{color:var(--status-red)}
+.app-shell .status-dot,.guest-layout .status-dot{background:var(--status-green)}
