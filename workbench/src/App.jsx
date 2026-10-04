@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, BookOpen, Download, FileUp, FlaskConical, Github, RefreshCw, Save, Send, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { addAuditEvent, confidenceForConnection, createManualI2cProfile, createManualLedProfile, overallConfidence, supportedPeripheral, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
+import { BookOpen, FlaskConical, Github, RefreshCw, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
+import { addAuditEvent, confidenceForConnection, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
@@ -9,7 +9,6 @@ import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
 import { hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
-import BoardMap from './BoardMap.jsx';
 import WorkbenchWizard from './WorkbenchWizard.jsx';
 import BrandMark from './BrandMark.jsx';
 import TestLibrary from './TestLibrary.jsx';
@@ -24,8 +23,6 @@ import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type
 import { makeLibraryEntry, validateLibraryEntry } from './lib/testLibrary.js';
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
-const mcuOptions = ['STM32F401CCU6', 'STM32F401CDU6', 'STM32F401CEU6', 'STM32F446RET6'].map((value) => ({ value, label: value }));
-const ledTypeOptions = [{ value: 'low', label: 'Aktif düşük · BlackPill LED' }, { value: 'high', label: 'Aktif yüksek · harici LED' }];
 
 function Badge({ children, tone = 'muted' }) { return <span className={`badge ${tone}`}>{children}</span>; }
 
@@ -44,8 +41,6 @@ function EspStatus({ esp, onRetry, disabled = false }) {
 export default function App() {
   const [session, setSession] = useState('welcome');
   const [mode, setMode] = useState('flash');
-  const [workbenchView, setWorkbenchView] = useState('overview');
-  const [advancedWorkbench, setAdvancedWorkbench] = useState(false);
   const [bridge, setBridge] = useState(savedBridge);
   const [activeBridge, setActiveBridge] = useState(null);
   const [esp, setEsp] = useState({ status: 'searching', wifi: null, base: null });
@@ -104,14 +99,8 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null, boardImage: null });
   const [activeComponent, setActiveComponent] = useState(null);
-  const [manualBoard, setManualBoard] = useState({ name: 'Breadboard', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'BMP180', scl: 'PB6', sda: 'PB7' });
-  const [manualKind, setManualKind] = useState('led');
-  const [manualLed, setManualLed] = useState({ pin: 'PC13', activeLow: true, blinkMs: 100 });
-  const fileRef = useRef(null);
-  const projectRef = useRef(null);
   const diagnosticTimer = useRef(null);
 
-  const profileValidation = useMemo(() => profile ? validateBoardProfile(profile) : null, [profile]);
   const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
   const isLedTest = activeSensor?.protocol === 'GPIO' && activeSensor?.part === 'LED';
   const compatibleTests = testsForComponent(catalog, activeSensor, profile?.mcu?.part, { readyOnly: true });
@@ -334,23 +323,10 @@ export default function App() {
       const result = profileFromNetlist(netlist, { netlistName: file.name });
       setProfile(result.profile); setAnalysis(result.analysis);
       setSources((current) => ({ ...current, netlist })); setActiveComponent(result.profile.components[0]?.ref || null);
-      setWorkbenchView('overview'); setMode('workbench'); setNotice(`${result.profile.components.length} cihaz adayı bulundu; pinleri onayla.`);
+      setMode('workbench'); setNotice(`${result.profile.components.length} cihaz adayı bulundu; pinleri onayla.`);
       return true;
     } catch (error) { setNotice(`NET okunamadı: ${error.message}`); return false; }
   };
-
-  const createManualBoard = (event) => {
-    event.preventDefault();
-    try {
-      const created = manualKind === 'led'
-        ? createManualLedProfile({ name: manualBoard.name, mcuPart: manualBoard.mcuPart, ...manualLed })
-        : createManualI2cProfile(manualBoard);
-      setProfile(created); setAnalysis(null); setSources({ netlist: null, schematic: null, bom: null, boardImage: null });
-      setActiveComponent(created.components[0].ref);
-      setNotice('Manuel kart profili açıldı. Testten önce pinleri kontrol edip onayla.');
-    } catch (error) { setNotice(`Manuel profil oluşturulamadı: ${error.message}`); }
-  };
-  const updateManualBoard = (field, value) => setManualBoard((current) => ({ ...current, [field]: value }));
 
   const editConnection = (index, field, value) => { setVisualPending(null); setProfile((current) => {
     const connections = current.connections.map((item, itemIndex) => {
@@ -608,7 +584,7 @@ export default function App() {
     try {
       const data = await importStardropProject(file); setProfile(data.profile); setTestHistory(data.testHistory || []);
       setSources({ netlist: data.sources['sources/board.NET'] ? await data.sources['sources/board.NET'].text() : null, schematic: data.sources['sources/schematic.pdf'] || null, bom: data.sources['sources/bom.csv'] ? await data.sources['sources/bom.csv'].text() : null, boardImage: Object.entries(data.sources).find(([path]) => path.startsWith('sources/board-image.'))?.[1] || null });
-      setActiveComponent(data.profile.components[0]?.ref || null); setWorkbenchView('overview'); setMode('workbench'); setNotice('STARDROP projesi güvenle geri yüklendi.');
+      setActiveComponent(data.profile.components[0]?.ref || null); setMode('workbench'); setNotice('STARDROP projesi güvenle geri yüklendi.');
       return true;
     } catch (error) { setNotice(`Proje açılamadı: ${error.message}`); return false; }
   };
@@ -648,12 +624,10 @@ export default function App() {
     restored.connections = restored.connections.map((connection) => ({ ...connection, approved: false }));
     setProfile(restored); setActiveComponent(entry.component.ref); setSelectedTestId(entry.test.id || '');
     setTestHistory([]); setSources({ netlist: null, schematic: null, bom: null, boardImage: null }); setAnalysis(null);
-    setAdvancedWorkbench(false); setMode('workbench');
+    setMode('workbench');
     setNotice(`${entry.name} açıldı. Canlı hedefi eşleştirip pinleri yeniden onayla.`);
   };
 
-  const components = profile?.components || [];
-  const componentConnections = profile?.connections.filter((item) => item.componentRef === activeComponent) || [];
 
   if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}<div className="welcome-status">{notice}</div></main><DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} /></div>;
 
@@ -664,7 +638,7 @@ export default function App() {
       <div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div>
       <nav>
         <button className={mode === 'flash' ? 'active' : ''} onClick={() => setMode('flash')}><Upload />Hızlı Yükleme</button>
-        {session === 'github' && githubUser && <button className={mode === 'workbench' ? 'active' : ''} onClick={() => { setAdvancedWorkbench(false); setMode('workbench'); }}><FlaskConical />Yeni Test</button>}
+        {session === 'github' && githubUser && <button className={mode === 'workbench' ? 'active' : ''} onClick={() => setMode('workbench')}><FlaskConical />Yeni Test</button>}
         {session === 'github' && githubUser && <button className={mode === 'library' ? 'active' : ''} onClick={() => { setMode('library'); refreshLibrary(); }}><BookOpen />Test Kütüphanesi</button>}
         {session === 'github' && githubUser && catalogAdmin && <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}><ShieldCheck />Test Yönetimi</button>}
         {session === 'github' && githubUser && <button className={`rail-settings ${mode === 'settings' ? 'active' : ''}`} onClick={() => setMode('settings')}><Settings />Ayarlar</button>}
@@ -675,7 +649,7 @@ export default function App() {
       <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'AYARLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : mode === 'library' ? 'TEST KÜTÜPHANESİ' : 'YENİ TEST'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : mode === 'library' ? 'Ekibin paylaştığı kart ve test düzenleri' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
       {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
-      {mode === 'library' ? <TestLibrary entries={libraryEntries} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary} profile={profile} activeSensor={activeSensor} selectedTest={selectedTest} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha} /> : mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depo için GitHub girişinin erişimi yoksa yalnız bu repoya “Contents: Read” veren fine-grained token kullanabilirsin. Tokeni sohbet yerine buraya gir; işletim sisteminin güvenli deposunda tutulur.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />GitHub token: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} setTestStage={setTestStage} setFlashLog={setFlashLog} flashBusy={flashBusy} setNotice={setNotice} /> : <WorkbenchWizard profile={profile} setProfile={setProfile} sources={sources} catalog={catalog} githubConfig={githubConfig} sourceStatus={sourceStatus} sourceError={sourceError} sourceBusy={sourceBusy} refreshSource={refreshSource} activateSource={activateSource} target={target} esp={esp} activeSensor={activeSensor} activeComponent={activeComponent} setActiveComponent={setActiveComponent} editConnection={editConnection} approveComponent={approveComponent} updateLedSetting={updateLedSetting} compatibleTests={compatibleTests} selectedTest={selectedTest} setSelectedTestId={setSelectedTestId} testBlocker={testBlocker} testBusy={testBusy} testStage={testStage} flashBusy={flashBusy} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} finishVisualTest={finishVisualTest} setConfirmLedFlash={setConfirmLedFlash} loadNetlist={loadNetlist} importProject={importProject} exportProject={exportProject} setAnalysis={setAnalysis} setSources={setSources} bindTarget={() => setProfile((current) => addAuditEvent({ ...current, targetUid: target.uid }, 'TARGET_UID_BOUND', { uid: target.uid }))} refreshTarget={refreshTarget} setFlashLog={setFlashLog} setTestStage={setTestStage} setNotice={setNotice} aiConfig={aiConfig} updateAiConfig={updateAiConfig} aiKey={aiKey} setAiKey={setAiKey} aiBusy={aiBusy} runAiReview={runAiReview} aiReview={aiReview} acceptedSuggestions={acceptedSuggestions} setAcceptedSuggestions={setAcceptedSuggestions} applySelectedAiSuggestions={applySelectedAiSuggestions} diagnosticReport={diagnosticReport} testHistory={testHistory} />}
+      {mode === 'library' ? <TestLibrary entries={libraryEntries} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary} profile={profile} activeSensor={activeSensor} selectedTest={selectedTest} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha} startNewTest={() => setMode("workbench")} /> : mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depodaki testleri okumak için Contents: Read, Test Kütüphanesi’ne kayıt eklemek için Contents: Read and write gerekir. GitHub App tokeni kullanıyorsan uygulamanın da bu izinle depoya kurulmuş olması gerekir. Alternatif olarak yalnız bu depoya erişen fine-grained token gir; anahtar proje dosyasına yazılmaz.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />GitHub token: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} setTestStage={setTestStage} setFlashLog={setFlashLog} flashBusy={flashBusy} setNotice={setNotice} /> : <WorkbenchWizard profile={profile} setProfile={setProfile} sources={sources} catalog={catalog} githubConfig={githubConfig} sourceStatus={sourceStatus} sourceError={sourceError} sourceBusy={sourceBusy} refreshSource={refreshSource} activateSource={activateSource} target={target} esp={esp} activeSensor={activeSensor} activeComponent={activeComponent} setActiveComponent={setActiveComponent} editConnection={editConnection} approveComponent={approveComponent} updateLedSetting={updateLedSetting} compatibleTests={compatibleTests} selectedTest={selectedTest} setSelectedTestId={setSelectedTestId} testBlocker={testBlocker} testBusy={testBusy} testStage={testStage} flashBusy={flashBusy} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} finishVisualTest={finishVisualTest} setConfirmLedFlash={setConfirmLedFlash} loadNetlist={loadNetlist} importProject={importProject} exportProject={exportProject} setAnalysis={setAnalysis} setSources={setSources} bindTarget={() => setProfile((current) => addAuditEvent({ ...current, targetUid: target.uid }, 'TARGET_UID_BOUND', { uid: target.uid }))} refreshTarget={refreshTarget} setFlashLog={setFlashLog} setTestStage={setTestStage} setNotice={setNotice} aiConfig={aiConfig} updateAiConfig={updateAiConfig} aiKey={aiKey} setAiKey={setAiKey} aiBusy={aiBusy} runAiReview={runAiReview} aiReview={aiReview} acceptedSuggestions={acceptedSuggestions} setAcceptedSuggestions={setAcceptedSuggestions} applySelectedAiSuggestions={applySelectedAiSuggestions} diagnosticReport={diagnosticReport} testHistory={testHistory} />}
     </main>
     {confirmLedFlash && <div className="confirm-overlay" role="presentation"><div className="confirm-card" role="dialog" aria-modal="true" aria-labelledby="led-confirm-title"><h2 id="led-confirm-title">STM32 yazılımı değişecek</h2><p>{selectedTest?.name || 'Donanım testi'} için mevcut firmware silinip yerel derlenen kod yüklenecek. Hedef: {target?.model || 'bilinmiyor'} · {target?.uid || 'UID yok'}</p><div><button className="secondary" onClick={() => setConfirmLedFlash(false)}>VAZGEÇ</button><button className="primary" onClick={runHardwareTest}>DERLE VE YÜKLE</button></div></div></div>}
     <DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} />
