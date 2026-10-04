@@ -17,6 +17,14 @@ tanımlamak. Sonra bileşen → uygun test → pinout üzerinde bağlantı onay�
 yerel derleme/yükleme adımları izlenir. Test kodu henüz yoksa pinler incelenip
 `.stardrop` projesine kaydedilebilir; yükleme açılmaz.
 
+GitHub girişi artık Device Flow kullanır: uygulama kodu kendi penceresinde
+gösterir; kullanıcı kodu yalnız GitHub'ın `github.com/login/device` sayfasında
+onaylar. GitHub App → General → **Enable Device Flow** açık olmalıdır. Bu akış
+`workers.dev` adresine, callback'e veya client secret'ın masaüstüne konmasına
+ihtiyaç duymaz. Device Flow ile açılan oturumun yenilemesi de doğrudan GitHub'da
+yapılır. Eski tarayıcı/Worker akışı yalnız önceki oturumların yenilenmesi için
+kodda tutulmuştur.
+
 Pinout'un fiziksel bacak sırası `targets/packages.json` dosyasındadır. F401CC,
 F401CD ve F401CE UFQFPN48 ile F446RE LQFP64 gösterilir. Aynı sürümlü veri,
 arayüzde ve yerel derleyicinin pin doğrulamasında kullanılır. SWD pinleri,
