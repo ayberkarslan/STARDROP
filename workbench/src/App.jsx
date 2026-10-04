@@ -108,7 +108,7 @@ export default function App() {
   const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref, selectedTest?.requiredRoles) : null;
   const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
     : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
-    : !githubUser ? 'Entegrasyonlar ekranından GitHub girişi yap.'
+    : !githubUser ? 'Ayarlar ekranından GitHub girişi yap.'
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu GitHub HAL derleyicisi yalnız STM32F401CC/CD hedefinde doğrulandı.'
     : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
     : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
