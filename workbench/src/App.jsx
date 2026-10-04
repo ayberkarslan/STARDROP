@@ -14,6 +14,7 @@ import WorkbenchWizard from './WorkbenchWizard.jsx';
 import TestLibrary from './TestLibrary.jsx';
 import EspConsole from './EspConsole.jsx';
 import SelectMenu from './SelectMenu.jsx';
+import DeviceLogin from './DeviceLogin.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { espJson, espStream, espUpload } from './lib/espTransport.js';
@@ -95,6 +96,8 @@ export default function App() {
   const [adminTestId, setAdminTestId] = useState(CODE_REPO_CATALOG.tests[0]?.id || '');
   const [githubLoginBusy, setGithubLoginBusy] = useState(false);
   const [githubLoginError, setGithubLoginError] = useState('');
+  const [deviceLogin, setDeviceLogin] = useState(null);
+  const loginAttempt = useRef(0);
   const [githubLogoutBusy, setGithubLogoutBusy] = useState(false);
   const [profile, setProfile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -429,14 +432,35 @@ export default function App() {
 
   const startGithubLogin = async () => {
     if (githubLoginBusy) return;
+    const attempt = ++loginAttempt.current;
     setGithubLoginBusy(true);
     setGithubLoginError('');
-    setNotice('GitHub giriş sayfası tarayıcıda açılıyor…');
+    setNotice('GitHub cihaz kodu hazırlanıyor…');
     try {
       if (!window.__TAURI_INTERNALS__) throw new Error('GitHub girişi masaüstü uygulamasında kullanılabilir.');
       const { invoke } = await import('@tauri-apps/api/core');
-      const result = JSON.parse(await invoke('github_browser_login'));
+      const challenge = JSON.parse(await invoke('github_device_start'));
+      if (attempt !== loginAttempt.current) return;
+      const expiresIn = Math.min(Math.max(Number(challenge.expires_in) || 900, 60), 900);
+      const deadline = Date.now() + expiresIn * 1000;
+      let interval = Math.min(Math.max(Number(challenge.interval) || 5, 5), 30);
+      setDeviceLogin({ userCode: challenge.user_code, expiresIn });
+      setNotice('GitHub doğrulama kodunu onaylamanı bekliyorum.');
+      let result;
+      while (Date.now() < deadline && attempt === loginAttempt.current) {
+        await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+        if (attempt !== loginAttempt.current) return;
+        const poll = JSON.parse(await invoke('github_device_poll', { deviceCode: challenge.device_code }));
+        if (attempt !== loginAttempt.current) return;
+        if (poll.access_token) { result = poll; break; }
+        if (poll.error === 'authorization_pending') continue;
+        if (poll.error === 'slow_down') { interval = Math.min(Math.max(Number(poll.interval) || interval + 5, interval + 5), 60); continue; }
+        throw new Error(poll.error_description || poll.error || 'GitHub giriş isteğini reddetti.');
+      }
+      if (!result) throw new Error('GitHub doğrulama kodunun süresi doldu; yeniden dene.');
+      result.auth_method = 'device';
       const user = await currentGitHubUser(result.access_token);
+      if (attempt !== loginAttempt.current) return;
       await saveGitHubSession(result);
       setSecretStorageMode(result.storage_mode);
       setGithubUser(user); setSession('github'); setMode('workbench');
@@ -444,11 +468,19 @@ export default function App() {
         ? `GitHub girişi tamamlandı: ${user.login}. OS anahtar kasası bulunamadı; oturum yalnız uygulama kapanana kadar bellekte.`
         : `GitHub girişi tamamlandı: ${user.login}`);
     } catch (error) {
+      if (attempt !== loginAttempt.current) return;
       const detail = typeof error === 'string' ? error : error?.message || String(error);
       setGithubLoginError(detail);
       setNotice(`GitHub girişi başarısız: ${detail}`);
     }
-    finally { setGithubLoginBusy(false); }
+    finally { if (attempt === loginAttempt.current) { setGithubLoginBusy(false); setDeviceLogin(null); } }
+  };
+
+  const cancelGithubLogin = () => {
+    loginAttempt.current += 1;
+    setGithubLoginBusy(false);
+    setDeviceLogin(null);
+    setNotice('GitHub girişi iptal edildi.');
   };
 
   const logoutGithub = async () => {
@@ -622,7 +654,7 @@ export default function App() {
   const components = profile?.components || [];
   const componentConnections = profile?.connections.filter((item) => item.componentRef === activeComponent) || [];
 
-  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><span className="brand-mark">✦</span><div><strong>STARDROP</strong><small>AVIONICS OTA</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && <div className="welcome-auth-feedback" role="status">Tarayıcıdaki izni tamamla. Ardından yerel callback ve GitHub oturumu doğrulanacak; bu pencere açık kalmalı.</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>Tarayıcıda 127.0.0.1/callback sayfasına dönülmüyorsa yönlendirmeyi kontrol et. Döndüyse yukarıdaki hata token doğrulama adımındandır.</small></div>}<div className="welcome-status">{notice}</div></main></div>;
+  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><span className="brand-mark">✦</span><div><strong>STARDROP</strong><small>AVIONICS OTA</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}<div className="welcome-status">{notice}</div></main><DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} /></div>;
 
   if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><span className="brand-mark">✦</span><strong>STARDROP</strong></div><div className="guest-header-actions"><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/><button onClick={() => setSession('welcome')}>Girişe dön</button></div></header><EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /></div>;
 
@@ -707,5 +739,6 @@ export default function App() {
       </div>}
     </main>
     {confirmLedFlash && <div className="confirm-overlay" role="presentation"><div className="confirm-card" role="dialog" aria-modal="true" aria-labelledby="led-confirm-title"><h2 id="led-confirm-title">STM32 yazılımı değişecek</h2><p>{selectedTest?.name || 'Donanım testi'} için mevcut firmware silinip yerel derlenen kod yüklenecek. Hedef: {target?.model || 'bilinmiyor'} · {target?.uid || 'UID yok'}</p><div><button className="secondary" onClick={() => setConfirmLedFlash(false)}>VAZGEÇ</button><button className="primary" onClick={runHardwareTest}>DERLE VE YÜKLE</button></div></div></div>}
+    <DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} />
   </div>;
 }
