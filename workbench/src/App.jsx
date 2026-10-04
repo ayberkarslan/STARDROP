@@ -635,7 +635,7 @@ export default function App() {
       setLibraryEntries((items) => [entry, ...items]);
       setNotice(`${entry.name} GitHub Test Kütüphanesi’ne kaydedildi.`);
       return entry;
-    } catch (error) { setLibraryError(`Yayınlanamadı: ${error.message}. Bu depo için Contents: Read and write izni gerekli.`); return null; }
+    } catch (error) { setLibraryError(`Yayınlanamadı: ${error.message}`); return null; }
     finally { setLibraryBusy(false); }
   };
 

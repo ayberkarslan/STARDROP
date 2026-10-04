@@ -14,7 +14,9 @@ async function api(path, { token, method = 'GET', body } = {}) {
   });
   if (!response.ok) {
     const failure = await response.json().catch(() => ({}));
-    throw new Error(`GitHub API HTTP ${response.status}: ${failure.message || 'İstek reddedildi.'}`);
+    const error = new Error(`GitHub API HTTP ${response.status}: ${failure.message || 'İstek reddedildi.'}`);
+    error.status = response.status;
+    throw error;
   }
   return response.status === 204 ? null : response.json();
 }
@@ -76,7 +78,10 @@ export async function listLibraryEntries({ token, repository, ref = 'main' }) {
   try {
     files = await api(`/repos/${owner}/${repo}/contents/library?ref=${encodeURIComponent(ref)}`, { token });
   } catch (error) {
-    if (String(error.message).includes('HTTP 404')) return [];
+    if (error.status === 404) {
+      await assertRepositoryBranch({ token, owner, repo, ref });
+      return [];
+    }
     throw error;
   }
   if (!Array.isArray(files)) throw new Error('GitHub kütüphane dizini okunamadı.');
@@ -89,7 +94,28 @@ export async function listLibraryEntries({ token, repository, ref = 'main' }) {
 export async function publishLibraryEntry({ token, repository, ref = 'main', entry }) {
   const { owner, repo } = parseRepository(repository);
   if (!/^[0-9a-f-]{36}$/i.test(entry?.id || '')) throw new Error('Kütüphane kayıt kimliği geçersiz.');
-  return api(`/repos/${owner}/${repo}/contents/library/${entry.id}.json`, {
-    token, method: 'PUT', body: { message: `Add test setup: ${entry.name.slice(0, 70)}`, content: encodeContent(entry), branch: ref },
-  });
+  try {
+    return await api(`/repos/${owner}/${repo}/contents/library/${entry.id}.json`, {
+      token, method: 'PUT', body: { message: `Add test setup: ${entry.name.slice(0, 70)}`, content: encodeContent(entry), branch: ref },
+    });
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    await assertRepositoryBranch({ token, owner, repo, ref });
+    throw new Error(`Depo ve ${ref} dalı erişilebilir fakat GitHub bu dosya yazma isteğini reddetti. Bu hesap ve kullanılan token için Contents: Read and write yetkisini, GitHub App kullanılıyorsa uygulamanın depoya kurulu olduğunu kontrol et.`);
+  }
+}
+
+async function assertRepositoryBranch({ token, owner, repo, ref }) {
+  try {
+    await api(`/repos/${owner}/${repo}`, { token });
+  } catch (error) {
+    if (error.status === 404) throw new Error(`${owner}/${repo} deposu bu kimlikle görünmüyor. Depo adını, token erişimini ve GitHub App kurulumunu kontrol et.`);
+    throw error;
+  }
+  try {
+    await api(`/repos/${owner}/${repo}/branches/${encodeURIComponent(ref)}`, { token });
+  } catch (error) {
+    if (error.status === 404) throw new Error(`${owner}/${repo} deposunda ${ref} dalı bulunamadı. Ayarlar'daki dal adını kontrol et.`);
+    throw error;
+  }
 }
