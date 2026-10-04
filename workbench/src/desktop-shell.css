@@ -3,6 +3,15 @@ body{min-width:760px;background:#000;color:#fff}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .eyebrow{font:10px var(--font-mono);letter-spacing:.16em;color:#777}
 .brand-mark{border-color:#444;color:#fff}
+.brand-mark svg{width:22px;height:22px;display:block}
+.brand>div:last-child{min-width:0}
+.rail .brand{gap:8px;padding:0 3px}
+.rail .brand strong{font-size:14px}
+.rail .brand small{font-size:7px;letter-spacing:0;white-space:nowrap}
+.welcome-sidebar .brand{gap:8px}
+.welcome-sidebar .brand small{font-size:7px;letter-spacing:0;white-space:nowrap}
+.rail nav{display:flex;flex:1;flex-direction:column;min-height:0}
+.rail nav .rail-settings{margin-top:auto}
 
 /* A workspace chooser, not a marketing landing page. */
 .welcome-screen{min-height:100vh;display:grid;grid-template-columns:224px minmax(0,1fr);background:#050505}
