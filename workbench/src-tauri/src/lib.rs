@@ -9,6 +9,7 @@ use tauri::Emitter;
 mod local_build;
 
 const AUTH_WORKER: &str = "https://stardrop-auth.ayberkarslann0.workers.dev";
+const GITHUB_CLIENT_ID: &str = "Iv23liLOQvO5jpP3xkxR";
 
 fn auth_worker_base(value: &str) -> Result<String, String> {
     let url = reqwest::Url::parse(value).map_err(|_| "Geçersiz GitHub giriş servisi adresi".to_string())?;
@@ -70,6 +71,73 @@ async fn auth_worker_post(url: String, body: String) -> Result<(u16, String), St
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+async fn github_oauth_post(path: &str, fields: &[(&str, &str)]) -> Result<serde_json::Value, String> {
+    let response = reqwest::Client::builder().timeout(Duration::from_secs(15)).build()
+        .map_err(|error| error.to_string())?
+        .post(format!("https://github.com/login/{path}"))
+        .header("Accept", "application/json")
+        .header("User-Agent", "stardrop-workbench")
+        .form(fields)
+        .send().await.map_err(|error| format!("GitHub'a bağlanılamadı: {error}"))?;
+    let status = response.status();
+    let body = response.text().await.map_err(|error| error.to_string())?;
+    if body.len() > 16 * 1024 { return Err("GitHub yanıtı beklenenden büyük".into()); }
+    let value: serde_json::Value = serde_json::from_str(&body).map_err(|_| "GitHub geçerli JSON yanıtı vermedi")?;
+    if !status.is_success() {
+        return Err(format!("GitHub HTTP {status}: {}", value.get("error_description").or_else(|| value.get("error"))
+            .and_then(|value| value.as_str()).unwrap_or("İstek başarısız")));
+    }
+    Ok(value)
+}
+
+#[tauri::command]
+async fn github_device_start() -> Result<String, String> {
+    let value = github_oauth_post("device/code", &[("client_id", GITHUB_CLIENT_ID)]).await?;
+    if let Some(error) = value.get("error").and_then(|value| value.as_str()) {
+        return Err(if error == "device_flow_disabled" {
+            "GitHub App ayarlarında Enable Device Flow'u açman gerekiyor.".into()
+        } else { format!("GitHub Device Flow: {error}") });
+    }
+    for key in ["device_code", "user_code", "verification_uri", "expires_in", "interval"] {
+        if value.get(key).is_none() { return Err(format!("GitHub yanıtında {key} eksik")); }
+    }
+    Ok(value.to_string())
+}
+
+#[tauri::command]
+async fn github_device_poll(device_code: String) -> Result<String, String> {
+    if device_code.len() > 256 || device_code.is_empty() || !device_code.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.') {
+        return Err("Geçersiz GitHub cihaz kodu".into());
+    }
+    github_oauth_post("oauth/access_token", &[
+        ("client_id", GITHUB_CLIENT_ID), ("device_code", &device_code),
+        ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+    ]).await.map(|value| value.to_string())
+}
+
+#[tauri::command]
+async fn github_device_refresh(refresh_token: String) -> Result<String, String> {
+    if !refresh_token.starts_with("ghr_") || refresh_token.len() > 256 {
+        return Err("Geçersiz GitHub yenileme token'ı".into());
+    }
+    let value = github_oauth_post("oauth/access_token", &[
+        ("client_id", GITHUB_CLIENT_ID), ("grant_type", "refresh_token"),
+        ("refresh_token", &refresh_token),
+    ]).await?;
+    if let Some(error) = value.get("error").and_then(|value| value.as_str()) {
+        return Err(format!("GitHub oturumu yenilenemedi: {error}"));
+    }
+    if value.get("access_token").and_then(|value| value.as_str()).is_none() {
+        return Err("GitHub yenileme yanıtında erişim token'ı yok".into());
+    }
+    Ok(value.to_string())
+}
+
+#[tauri::command]
+fn github_device_open() -> Result<(), String> {
+    open_auth_browser("https://github.com/login/device")
 }
 
 const ESP_GET_PATHS: &[&str] = &[
@@ -413,7 +481,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }
