@@ -35,3 +35,14 @@ test('missing private repository is not mistaken for an empty library', async ()
     await assert.rejects(publishLibraryEntry({ token: 'fake', repository: 'team/tests', entry: { id: '123e4567-e89b-12d3-a456-426614174000', name: 'LED' } }), /deposu bu kimlikle görünmüyor/);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('library publication distinguishes a missing branch from missing write permission', async () => {
+  const originalFetch = globalThis.fetch;
+  const entry = { id: '123e4567-e89b-12d3-a456-426614174000', name: 'LED' };
+  try {
+    globalThis.fetch = async (url) => new Response(JSON.stringify({ message: 'Not Found' }), { status: url.endsWith('/repos/team/tests') ? 200 : 404 });
+    await assert.rejects(publishLibraryEntry({ token: 'fake', repository: 'team/tests', ref: 'wrong', entry }), /wrong dalı bulunamadı/);
+    globalThis.fetch = async (url) => new Response(JSON.stringify({ message: 'Not Found' }), { status: url.endsWith('/repos/team/tests') || url.endsWith('/branches/main') ? 200 : 404 });
+    await assert.rejects(publishLibraryEntry({ token: 'fake', repository: 'team/tests', entry }), /Contents: Read and write/);
+  } finally { globalThis.fetch = originalFetch; }
+});
