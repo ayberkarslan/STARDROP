@@ -88,6 +88,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 
 .library-workspace{max-width:1280px;margin:0 auto;padding:42px 38px 70px;color:#ececec}
 .library-create-hint{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:0 0 20px;padding:12px 15px;border:1px solid #333;border-radius:7px;background:#0d0d0d;color:#aaa;font-size:11px}.library-create-hint .secondary{flex:none}
+.repo-help{max-width:850px;margin:10px 40px 0;color:#c7b7a1;font:11px/1.6 var(--font-mono)}
 .library-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:26px}
 .library-heading h2,.library-detail h2{font-size:28px;letter-spacing:-.04em;margin:9px 0 8px}
 .library-heading p,.library-detail p{color:#a0a8a9;line-height:1.5;margin:0}
