@@ -26,7 +26,7 @@
     { "prefix": "STM32F401CCU6", "package": "UFQFPN48", "pinMap": "f401-ufn48", "build": "stm32-hal-v1" },
     { "prefix": "STM32F401CDU6", "package": "UFQFPN48", "pinMap": "f401-ufn48", "build": "stm32-hal-v1" },
     { "prefix": "STM32F401CEU6", "package": "UFQFPN48", "pinMap": "f401-ufn48", "build": null },
-    { "prefix": "STM32F446RET6", "package": "LQFP64", "pinMap": "f446-lqfp64", "build": null },
-    { "prefix": "STM32F446RE", "package": "LQFP64", "pinMap": "f446-lqfp64", "build": null }
+    { "prefix": "STM32F446RET6", "package": "LQFP64", "pinMap": "f446-lqfp64", "build": "stm32-hal-v1" },
+    { "prefix": "STM32F446RE", "package": "LQFP64", "pinMap": "f446-lqfp64", "build": "stm32-hal-v1" }
   ]
 }

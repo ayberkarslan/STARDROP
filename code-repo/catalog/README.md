@@ -46,7 +46,8 @@ Katalog v1 eski LED projeleri için okunmaya devam eder; yeni kayıtlar v2 cihaz
 tanımı kullanmalıdır. Hedef paket pinout'u Workbench içinde sürümlüdür ve
 GitHub kataloğundan gelen bilgiyle geçersiz bir fiziksel pin açılamaz.
 
-İlk LED testi geçmişte köke yüklenen CubeMX projesini `stardrop-project.json`
-ile kullanmaya devam eder. Bugünkü yerel derleyici yalnız STM32F401CC/CD
-projelerini derler. Kaynaklar sabit GitHub commit SHA'sıyla önbelleğe alınır ve
+LED kaynakları `tests/led-blink-f401/` ve `tests/led-blink-f446/` altında
+hedefe göre ayrılır. Yerel HAL derleyicisi STM32F401CC/CD ve STM32F446RE
+projelerini derler. Pin, LED yönü ve süre ayarları geçici başlıktan gelir;
+kaynak düzenlemek gerekmez. Kaynaklar sabit GitHub commit SHA'sıyla önbelleğe alınır ve
 derlemeden önce dosya karmaları doğrulanır.

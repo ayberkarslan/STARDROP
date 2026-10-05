@@ -154,10 +154,10 @@ export function supportedPeripheral(mcuPart, peripheral, role, pin) {
   if ((peripheral === 'GPIO' && ['LED', 'INT', 'RESET'].includes(role))
     || (/^(?:SPI[1-3]|I2C[1-3]|SOFT_I2C_[1-9]\d*)$/.test(peripheral || '')
       && ['CS', 'INT', 'RESET'].includes(role))) {
-    const match = normalized?.match(/^P([ABC])(\d{1,2})$/);
+    const match = normalized?.match(/^P([ABCD])(\d{1,2})$/);
     const port = match?.[1];
     const index = match ? Number(match[2]) : -1;
-    const supported = Boolean(['STM32F401', 'STM32F446'].includes(family) && index <= 15
+    const supported = Boolean(match && ['STM32F401', 'STM32F446'].includes(family) && index <= 15
       && !(port === 'A' && (index === 13 || index === 14))
       && (port !== 'C' || family === 'STM32F446' || index >= 13));
     return { supported, reason: supported ? null : `${normalized || pin || 'Boş pin'} ${mcuPart} üzerinde ${role} için uygun değil.` };

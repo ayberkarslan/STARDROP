@@ -100,7 +100,7 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
   };
   const continueWithTest = async () => {
     if (!selectedTest) { setLocalError('Önce hazır bir test seç.'); return; }
-    if (!compilerReady) { setLocalError('Yerel HAL derleyicisi şu an yalnız STM32F401CC/CD için hazır. Bu modelin derleme desteği eklenmeden flash yapılamaz.'); return; }
+    if (!compilerReady) { setLocalError('Bu modelin yerel derleme desteği eklenmeden flash yapılamaz.'); return; }
     setWorking(true); setLocalError('');
     try {
       if (!sourceStatus?.activeSha || (sourceStatus.latestSha && sourceStatus.latestSha !== sourceStatus.activeSha)) {

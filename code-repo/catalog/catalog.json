@@ -30,7 +30,21 @@
       "protocol": "GPIO",
       "matchParts": ["LED"],
       "supportedMcu": ["STM32F401"],
-      "sourcePath": "stardrop-project.json",
+      "sourcePath": "tests/led-blink-f401/stardrop-project.json",
+      "build": "stm32-hal-v1",
+      "result": "visual",
+      "requiredRoles": ["LED"]
+    },
+    {
+      "id": "led-blink-f446",
+      "deviceId": "led",
+      "name": "LED Blink · F446RE",
+      "description": "Seçilen GPIO, LED yönü ve 50–5000 ms aralığıyla yerelde derlenir. Sonuç gözle doğrulanır.",
+      "status": "ready",
+      "protocol": "GPIO",
+      "matchParts": ["LED"],
+      "supportedMcu": ["STM32F446RE"],
+      "sourcePath": "tests/led-blink-f446/stardrop-project.json",
       "build": "stm32-hal-v1",
       "result": "visual",
       "requiredRoles": ["LED"]

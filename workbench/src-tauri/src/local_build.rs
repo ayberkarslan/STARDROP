@@ -141,6 +141,7 @@ fn extract_code_archive(bytes: Vec<u8>, root: &Path, destination: &Path) -> Resu
         if !needed.contains(&relative) && !include { continue; }
         if relative.contains("/CMSIS/Device/") && relative.ends_with(".h")
             && !relative.rsplit('/').next().unwrap_or("").starts_with("stm32f401")
+            && !relative.rsplit('/').next().unwrap_or("").starts_with("stm32f446")
             && !relative.ends_with("stm32f4xx.h") && !relative.ends_with("system_stm32f4xx.h") { continue; }
         if entry.size() > 2_000_000 || total + entry.size() > 16_000_000 { return Err("Derleme kaynakları 16 MB sınırını aşıyor".into()); }
         let mut content = Vec::new();
@@ -413,10 +414,11 @@ fn validate_led_request(request: &LedBuildRequest) -> Result<(u8, u8, u64, bool,
     } else if request.mcu_part.starts_with("STM32F446RE") { "stm32f446re" } else { return Err("MCU desteklenmiyor".into()); };
     let pin = connections[0]["mcuPin"].as_str().ok_or("LED GPIO eksik")?;
     let bytes = pin.as_bytes();
-    if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C') { return Err("LED GPIO geçersiz".into()); }
+    if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C' | b'D') { return Err("LED GPIO geçersiz".into()); }
     let port = bytes[1] - b'A';
     let number: u8 = pin[2..].parse().map_err(|_| "LED GPIO geçersiz")?;
-    if number > 15 || (port == 0 && (number == 13 || number == 14)) || (port == 2 && target == "stm32f401cc" && number < 13) { return Err("GPIO bu hedef için uygun değil".into()); }
+    if number > 15 || (port == 0 && (number == 13 || number == 14))
+        || !package_pin_present(&request.mcu_part, pin) { return Err("GPIO bu hedef için uygun değil".into()); }
     let interval = component["blinkMs"].as_u64().ok_or("LED aralığı eksik")?;
     if !(50..=5000).contains(&interval) { return Err("LED aralığı 50–5000 ms olmalı".into()); }
     let active_low = component["activeLow"].as_bool().ok_or("LED polaritesi eksik")?;
@@ -480,7 +482,7 @@ fn compile_code_test_at(source: &Path, gcc: &Path, objcopy: &Path, request: Code
         let mut header = role_pin_header(&request.profile_json, &request.component_ref)?;
         header.push_str(&format!("#define STARDROP_TEST_ID_HASH {}\n#define STARDROP_PROFILE_HASH {}\n#define STARDROP_RUN_HASH {}\n",
             hash32(test.id.as_bytes()), hash32(request.profile_json.as_bytes()), hash32(request.request_id.as_bytes())));
-        if test.id == "led-blink" {
+        if protocol == "GPIO" && part == "LED" {
             let led_request = LedBuildRequest { repository: request.repository.clone(), account: String::new(),
                 profile_json: request.profile_json.clone(), component_ref: request.component_ref.clone(),
                 request_id: request.request_id.clone(), mcu_part: request.mcu_part.clone(), target_uid: request.target_uid.clone(),
@@ -564,7 +566,7 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
         let pin = connection["mcuPin"].as_str().ok_or("MCU pini eksik")?;
         if !pins.insert(pin) { return Err("İki rol aynı MCU pinine atanmış".into()); }
         let bytes = pin.as_bytes();
-        if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C') { return Err("MCU pini geçersiz".into()); }
+        if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C' | b'D') { return Err("MCU pini geçersiz".into()); }
         let number: u8 = pin[2..].parse().map_err(|_| "MCU pini geçersiz")?;
         if number > 15 || bytes[1] == b'A' && (number == 13 || number == 14)
             || !package_pin_present(mcu_part, pin) {
@@ -588,18 +590,24 @@ fn compile_blackpill_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &
 }
 
 fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest, header: String) -> Result<LedBuildResult, String> {
-    if !request.mcu_part.starts_with("STM32F401CC") && !request.mcu_part.starts_with("STM32F401CD") {
-        return Err("Bu HAL proje derleyicisi F401CC/CD için hazırlandı".into());
-    }
-    let project = project.canonicalize().map_err(|_| "BlackPill proje klasörü bulunamadı")?;
+    let (expected_target, maximum) = if request.mcu_part.starts_with("STM32F401CC") || request.mcu_part.starts_with("STM32F401CD") {
+        ("STM32F401xC", 256 * 1024)
+    } else if request.mcu_part.starts_with("STM32F446RE") {
+        ("STM32F446xx", 512 * 1024)
+    } else { return Err("HAL derleyicisi bu MCU için hazır değil".into()); };
+    let project = project.canonicalize().map_err(|_| "Test proje klasörü bulunamadı")?;
     let repo_root = repo_root.canonicalize().map_err(|_| "Test deposu bulunamadı")?;
     for required in ["stardrop-project.json", "Src/main.c", "Inc/main.h", "Inc/pin_configurations.h"] {
-        if !project.join(required).is_file() { return Err(format!("BlackPill projesinde {required} eksik")); }
+        if !project.join(required).is_file() { return Err(format!("Test projesinde {required} eksik")); }
     }
     let manifest: ProjectManifest = serde_json::from_slice(&fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?)
         .map_err(|error| format!("Proje manifesti geçersiz: {error}"))?;
-    if manifest.schema_version != 1 || manifest.target != "STM32F401xC" || manifest.cpu != "cortex-m4"
-        || manifest.fpu != "fpv4-sp-d16" || manifest.float_abi != "hard" { return Err("Proje manifesti F401xC LED hedefiyle uyuşmuyor".into()); }
+    if manifest.schema_version != 1 || manifest.target != expected_target || manifest.cpu != "cortex-m4"
+        || manifest.fpu != "fpv4-sp-d16" || manifest.float_abi != "hard"
+        || !manifest.defines.iter().any(|item| item == expected_target)
+        || manifest.defines.iter().any(|item| item.starts_with("STM32") && item != expected_target) {
+        return Err("Proje manifesti seçilen MCU hedefiyle uyuşmuyor".into());
+    }
     if manifest.sources.is_empty() || manifest.sources.len() > 64 || manifest.include_dirs.len() > 16
         || manifest_path(&project, &repo_root, &manifest.linker_script).is_err()
         || manifest.sources.iter().any(|item| manifest_path(&project, &repo_root, item).is_err())
@@ -625,20 +633,20 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
         if !output.status.success() { return Err(format!("{source} derlenemedi: {}", String::from_utf8_lossy(&output.stderr).chars().take(2000).collect::<String>())); }
         objects.push(object);
     }
-    let elf = work.path().join("blackpill.elf");
-    let bin = work.path().join("blackpill.bin");
+    let elf = work.path().join("test.elf");
+    let bin = work.path().join("test.bin");
     let mut link = Command::new(gcc);
     link.args(["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-specs=nano.specs"]);
     for object in &objects { link.arg(object); }
     let linked = link.arg("-T").arg(manifest_path(&project, &repo_root, &manifest.linker_script)?)
         .args(["-Wl,--gc-sections", "-lc", "-lm", "-lnosys"]).arg("-o").arg(&elf)
         .output().map_err(|error| format!("ARM linker başlatılamadı: {error}"))?;
-    if !linked.status.success() { return Err(format!("BlackPill bağlama hatası: {}", String::from_utf8_lossy(&linked.stderr).chars().take(2000).collect::<String>())); }
+    if !linked.status.success() { return Err(format!("Test bağlama hatası: {}", String::from_utf8_lossy(&linked.stderr).chars().take(2000).collect::<String>())); }
     let converted = Command::new(objcopy).args(["-O", "binary", "-S"]).arg(&elf).arg(&bin)
         .output().map_err(|error| format!("Objcopy başlatılamadı: {error}"))?;
     if !converted.status.success() { return Err(format!("BIN oluşturulamadı: {}", String::from_utf8_lossy(&converted.stderr).chars().take(2000).collect::<String>())); }
     let bytes = fs::read(bin).map_err(|error| format!("BIN okunamadı: {error}"))?;
-    if bytes.len() < 64 || bytes.len() > 256 * 1024 { return Err("Derlenen BIN boyutu geçersiz".into()); }
+    if bytes.len() < 64 || bytes.len() > maximum { return Err("Derlenen BIN boyutu geçersiz".into()); }
     let source = [fs::read(project.join("Src/main.c")).map_err(|error| error.to_string())?,
         fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?].concat();
     Ok(LedBuildResult { sha256: digest(&bytes), bytes,
@@ -672,8 +680,9 @@ mod tests {
     fn local_v2_device_catalog_is_native_compatible() {
         let catalog: CodeCatalog = serde_json::from_str(include_str!("../../../code-repo/catalog/catalog.json")).unwrap();
         catalog.validate().unwrap();
-        assert!(catalog.matches_component(&catalog.tests[1], "BHI360-IMU", "I2C"));
-        assert!(!catalog.matches_component(&catalog.tests[1], "MPU6050", "SPI"));
+        let bhi = catalog.tests.iter().find(|test| test.id == "bhi360-identity").unwrap();
+        assert!(catalog.matches_component(bhi, "BHI360-IMU", "I2C"));
+        assert!(!catalog.matches_component(bhi, "MPU6050", "SPI"));
     }
 
     fn fixture(interval: u64) -> LedBuildRequest {
