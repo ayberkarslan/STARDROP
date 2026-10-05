@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 
-export function usePopupDismiss(root, open, onClose) {
+export function usePopupDismiss(root, open, onClose, additionalRoot) {
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const outside = (event) => { if (!root.current?.contains(event.target)) close.current?.(); };
+    const outside = (event) => { if (!root.current?.contains(event.target) && !additionalRoot?.current?.contains(event.target)) close.current?.(); };
     const escape = (event) => { if (event.key === 'Escape' && !event.defaultPrevented) close.current?.(); };
     const tabChange = () => close.current?.();
     document.addEventListener('pointerdown', outside);
@@ -16,7 +16,7 @@ export function usePopupDismiss(root, open, onClose) {
       document.removeEventListener('keydown', escape);
       document.removeEventListener('stardrop-tab-change', tabChange);
     };
-  }, [root, open]);
+  }, [root, open, additionalRoot]);
 }
 
 export default function Popup({ children, onClose, labelledBy, ariaLabel, className = '', variant = 'dialog' }) {
