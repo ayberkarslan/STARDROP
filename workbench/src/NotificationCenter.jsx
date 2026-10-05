@@ -29,8 +29,8 @@ export default function NotificationCenter({ esp, notice, entries, onRetry, disa
       <span className="connection-copy"><strong>{label}</strong>{network && <small>{network}</small>}{signal && <small>{signal}</small>}</span>
       <RefreshCw size={13} />
     </button>
-    <details className="notification-details" ref={popup} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary title="Bildirim geçmişini aç"><Bell size={14} /><span>Bildirimler</span><small>{entries.length}</small></summary>
+    <details className="notification-details" ref={popup} open={open}>
+      <summary title="Bildirim geçmişini aç" onClick={(event) => { event.preventDefault(); setOpen((current) => !current); }}><Bell size={14} /><span>Bildirimler</span><small>{entries.length}</small></summary>
       <div className="notification-history" role="log" aria-label="Bildirim geçmişi">
         <h3>Bildirimler</h3>
         {entries.length ? entries.map((entry, index) => <p key={`${entry.time}-${index}`}><time>{entry.time}</time><span>{entry.message}</span></p>) : <p>Henüz bildirim yok.</p>}
