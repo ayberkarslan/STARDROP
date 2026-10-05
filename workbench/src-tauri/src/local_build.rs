@@ -866,6 +866,15 @@ mod tests {
         let mut wrong_target = make_request("PA5", 100, false);
         wrong_target.test_id = "led-blink".into();
         assert!(compile_code_test_at(&source, &gcc, &objcopy, wrong_target, "test-sha".into()).is_err());
+        let request = make_request("PA5", 100, false);
+        let header = role_pin_header(&request.profile_json, &request.component_ref).unwrap();
+        let mismatched_manifest = LedBuildRequest { repository: String::new(), account: String::new(),
+            profile_json: request.profile_json, component_ref: request.component_ref, request_id: request.request_id,
+            mcu_part: request.mcu_part, target_uid: request.target_uid, project_path: None };
+        assert!(compile_hal_at(&source.join("tests/led-blink-f401"), &source, &gcc, &objcopy,
+            mismatched_manifest, header).err().unwrap().contains("MCU hedefi"));
+        assert!(compile_code_test_at(&source, &gcc, &objcopy, make_request("PA5", 49, false), "test-sha".into()).is_err());
+        assert!(compile_code_test_at(&source, &gcc, &objcopy, make_request("PA5", 5001, false), "test-sha".into()).is_err());
         assert_eq!(original_header, fs::read(repo.join("tests/led-blink-f446/Inc/pin_configurations.h")).unwrap());
         assert!(code_source_valid(&source));
     }

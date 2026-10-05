@@ -33,10 +33,12 @@ bulguları otomatik doldurulur ama kullanıcı onayı gerektirir; bağlantı tes
 elektriksel uyumluluk veya sensör sağlığı kanıtı değildir.
 
 Test deposunun v2 standardı `../code-repo/catalog/README.md` içindedir. v1
-katalog okunmaya devam eder. Şu an doğrulanmış GitHub yerel HAL akışı yalnız
-**STM32F401CC/CD LED blink** içindir. BHI360 örnek `.NET` dosyasında F446RE'ye
+katalog okunmaya devam eder. GitHub yerel HAL akışı
+**STM32F401CC/CD ve STM32F446RE LED blink** için derleme testlerinden geçti.
+Pin, geçiş aralığı ve LED yönü geçici `pin_configurations.h` ile değiştirilir;
+temiz GitHub test arşivi `../code-repo/` içindedir. BHI360 örnek `.NET` dosyasında F446RE'ye
 bağlı olarak algılanır ve v2 katalogda `planned` görünür; sensör firmware'i ve
-F446 derleme desteği olmadığı için BHI360 testi henüz çalıştırılamaz. Flash
+sensör sürücüsü hazır olmadığı için BHI360 testi henüz çalıştırılamaz. Flash
 yazma doğrulaması sensör testi PASS anlamına gelmez. ESP firmware'i ve mevcut
 iki sinyalli SWD bağlantısı bu aşamada değiştirilmedi.
 

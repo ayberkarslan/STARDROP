@@ -90,6 +90,20 @@ test('LED profile validates BlackPill PC13 and rejects SWD pins', () => {
   assert.equal(createManualLedProfile({ name: 'Nucleo', mcuPart: 'STM32F446RET6', pin: 'PC9' }).connections[0].mcuPin, 'PC9');
 });
 
+test('F446 LED accepts PA5 and PD2 but never SWD or absent package pins', () => {
+  for (const pin of ['PA5', 'PB0', 'PC9', 'PD2']) {
+    const board = createManualLedProfile({ name: 'Nucleo', mcuPart: 'STM32F446RET6', pin, activeLow: false, blinkMs: 1000 });
+    assert.equal(board.connections[0].mcuPin, pin);
+    assert.equal(board.components[0].activeLow, false);
+    assert.equal(board.components[0].blinkMs, 1000);
+    board.connections[0].approved = true;
+    assert.equal(validateTestTarget(board, 'D1').valid, true);
+  }
+  for (const pin of ['PA13', 'PA14', 'PB11', 'PD3']) {
+    assert.throws(() => createManualLedProfile({ name: 'Nucleo', mcuPart: 'STM32F446RET6', pin }));
+  }
+});
+
 test('missing LED can be added to a parsed board without replacing its sensors', () => {
   const parsed = createManualI2cProfile({ name: 'Aviyonik', mcuPart: 'STM32F401CDU6', componentRef: 'U2', componentPart: 'MPU6050', scl: 'PB6', sda: 'PB7' });
   const next = addManualPeripheral(parsed, { part: 'LED', protocol: 'GPIO', ref: 'D1', pins: { LED: 'PC13' } });
