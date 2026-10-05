@@ -1,6 +1,42 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { listLibraryEntries, parseRepository, publishLibraryEntry } from './githubClient.js';
+import { fetchCatalogDocument, saveCatalogDocument, listLibraryEntries, parseRepository, publishLibraryEntry } from './githubClient.js';
+
+test('single-folder repository reads catalog and team records and writes only under stardrop', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  const record = { id: '123e4567-e89b-12d3-a456-426614174000', name: 'Test' };
+  const encode = value => ({ encoding: 'base64', content: Buffer.from(JSON.stringify(value)).toString('base64'), sha: 'blob' });
+  try {
+    globalThis.fetch = async (url, options) => {
+      requests.push({ url, options });
+      let body;
+      if (options.method === 'PUT') body = {};
+      else if (url.includes('/contents/stardrop?')) body = [];
+      else if (url.includes('/contents/stardrop/catalog/catalog.json?')) body = encode({ tests: [] });
+      else if (url.includes('/contents/stardrop/library?')) body = [{ type: 'file', name: record.id + '.json', path: 'stardrop/library/' + record.id + '.json' }];
+      else if (url.includes('/contents/stardrop/library/' + record.id)) body = encode(record);
+      else throw new Error('Unexpected path: ' + url);
+      return new Response(JSON.stringify(body), { status: 200 });
+    };
+    assert.deepEqual((await fetchCatalogDocument({ token: 'fake', repository: 'team/tests' })).catalog, { tests: [] });
+    assert.deepEqual(await listLibraryEntries({ token: 'fake', repository: 'team/tests' }), [record]);
+    await publishLibraryEntry({ token: 'fake', repository: 'team/tests', entry: record });
+    await saveCatalogDocument({ token: 'fake', repository: 'team/tests', catalog: { tests: [] }, sha: 'blob' });
+    assert.equal(requests.filter(request => request.options.method === 'PUT').length, 2);
+    assert.ok(requests.filter(request => request.options.method === 'PUT').every(request => request.url.includes('/contents/stardrop/')));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('authentication errors never fall back to an old repository layout', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  try {
+    globalThis.fetch = async () => { calls++; return new Response('{"message":"Bad credentials"}', { status: 401 }); };
+    await assert.rejects(fetchCatalogDocument({ token: 'fake', repository: 'team/tests' }), /401/);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 test('diagnostics repository parser accepts owner/repo only', () => {
   assert.deepEqual(parseRepository('YRT/stardrop-diagnostics'), { owner: 'YRT', repo: 'stardrop-diagnostics' });

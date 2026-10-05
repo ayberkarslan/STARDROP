@@ -52,9 +52,10 @@ const ref = await api(`git/ref/heads/${encodeURIComponent(branch)}`);
 const base = await api(`git/commits/${ref.object.sha}`);
 const tree = await api(`git/trees/${base.tree.sha}?recursive=1`);
 if (tree.truncated) throw new Error('Uzak dosya listesi eksik; yayın durduruldu.');
+const prefix = tree.tree.some(item => item.path === 'stardrop' && item.type === 'tree') ? 'stardrop/' : '';
 const files = await collect(root);
 const incoming = JSON.parse(files.get('catalog/catalog.json'));
-const previous = await readRemote('catalog/catalog.json', ref.object.sha);
+const previous = await readRemote(prefix + 'catalog/catalog.json', ref.object.sha);
 const catalog = previous ? JSON.parse(previous) : { schemaVersion: 2, devices: [], tests: [] };
 // Only replace our LED entries. Other tests and all team library records stay intact.
 const devices = new Map((catalog.devices || []).map(item => [item.id, item]));
@@ -70,7 +71,7 @@ if (!validation.valid) throw new Error(`Katalog birleşimi geçersiz: ${validati
 files.set('catalog/catalog.json', JSON.stringify(catalog, null, 2) + '\n');
 files.set('docs/stardrop-tests.md', files.get('README.md'));
 files.delete('README.md');
-const ignore = await readRemote('.gitignore', ref.object.sha) || '';
+const ignore = await readRemote(prefix + '.gitignore', ref.object.sha) || '';
 const existing = new Set(ignore.split('\n'));
 const additions = files.get('.gitignore').split('\n').filter(line => line && !existing.has(line));
 files.set('.gitignore', ignore + (ignore.endsWith('\n') || !ignore ? '' : '\n') + additions.join('\n') + (additions.length ? '\n' : ''));
@@ -78,25 +79,25 @@ const remote = new Map(tree.tree.map(item => [item.path, item]));
 const changed = [...files].filter(([relative, content]) => {
   const bytes = Buffer.from(content);
   const sha = crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-  return remote.get(relative)?.sha !== sha;
+  return remote.get(prefix + relative)?.sha !== sha;
 });
 console.log(JSON.stringify({ repository, branch, base: ref.object.sha,
-  changedFiles: changed.length, libraryFilesPreserved: tree.tree.filter(item => item.path.startsWith('library/')).length,
+  changedFiles: changed.length, libraryFilesPreserved: tree.tree.filter(item => item.path.startsWith(prefix + 'library/')).length,
   tests: catalog.tests.map(item => ({ id: item.id, status: item.status, sourcePath: item.sourcePath })),
   mode: apply ? 'apply' : 'check' }, null, 2));
 if (apply && changed.length) {
   const nextTree = await api('git/trees', 'POST', { base_tree: base.tree.sha,
-    tree: changed.map(([relative, content]) => ({ path: relative, mode: '100644', type: 'blob', content })) });
+    tree: changed.map(([relative, content]) => ({ path: prefix + relative, mode: '100644', type: 'blob', content })) });
   const commit = await api('git/commits', 'POST', { message: 'f446 led testini ekle',
     tree: nextTree.sha, parents: [ref.object.sha] });
   await api(`git/refs/heads/${encodeURIComponent(branch)}`, 'PATCH', { sha: commit.sha, force: false });
   const verify = await api(`git/trees/${nextTree.sha}?recursive=1`);
   if (verify.truncated) throw new Error('Yükleme sonrası dosya listesi eksik.');
   const after = new Map(verify.tree.map(item => [item.path, item]));
-  for (const item of tree.tree.filter(item => item.path.startsWith('library/'))) {
+  for (const item of tree.tree.filter(item => item.path.startsWith(prefix + 'library/'))) {
     if (after.get(item.path)?.sha !== item.sha) throw new Error('Ekip kaydı doğrulaması başarısız.');
   }
-  const verifyCatalog = JSON.parse(await readRemote('catalog/catalog.json', commit.sha));
+  const verifyCatalog = JSON.parse(await readRemote(prefix + 'catalog/catalog.json', commit.sha));
   if (!validateTestCatalog(verifyCatalog).valid) throw new Error('Yayınlanan katalog doğrulanamadı.');
   console.log(`Yayınlandı: https://github.com/${repository}/commit/${commit.sha}`);
 } else console.log(apply ? 'Kaynaklar zaten güncel.' : 'Kontrol tamamlandı; uzak repoda değişiklik yapılmadı.');

@@ -1,7 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createManualLedProfile } from './boardProfile.js';
-import { makeLibraryEntry, searchLibrary, validateLibraryEntry } from './testLibrary.js';
+import { catalogLibraryEntries, makeLibraryEntry, searchLibrary, validateLibraryEntry } from './testLibrary.js';
+import { filterLibrary } from './libraryFilters.js';
+import catalog from '../../../code-repo/catalog/catalog.json' with { type: 'json' };
+
+test('ready catalog templates are searchable without fake pins or successful runs', () => {
+  const entries = catalogLibraryEntries(catalog);
+  assert.equal(entries.length, 2);
+  assert.ok(entries.every(entry => entry.kind === 'template' && entry.pins.length === 0 && entry.result.status === 'NOT_RUN'));
+  assert.ok(entries.every(entry => !entry.profile && !entry.publishedAt && !validateLibraryEntry(entry)));
+  assert.equal(searchLibrary(entries, 'F446 LED')[0].test.id, 'led-blink-f446');
+  assert.equal(filterLibrary(entries, { mcu: 'STM32F446RET6', category: 'gpio' })[0].test.id, 'led-blink-f446');
+  assert.deepEqual(filterLibrary(entries, { result: 'PASS' }), []);
+  assert.deepEqual(searchLibrary(entries, 'BHI360'), []);
+});
 
 test('library entry generates detailed searchable information without target UID or false success', () => {
   const profile = createManualLedProfile({ name: 'LoRa bench', mcuPart: 'STM32F401CDU6', pin: 'PC13' });

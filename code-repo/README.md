@@ -1,14 +1,18 @@
 # STARDROP test kaynakları
 
-Bu klasörün **içeriğini** `ayberkarslan/stardrop-code-repo` deposunun köküne
-yerleştir. Kökten `catalog/catalog.json` okunabilmeli; `code-repo/` diye bir
-üst klasör oluşturma. Mevcut kök BlackPill projesini silmen gerekmez; yeni
-katalog artık `tests/` altındaki temiz projeleri kullanır.
+GitHub deposunda bütün platform kaynakları tek `stardrop/` klasöründedir.
+Bu yerel klasör o dizinin kaynak içeriğidir; yayınlama aracı doğru yere ekler.
+Manifest ve katalogdaki kaynak yolları `stardrop/` dizinine göre yazılır.
+Eski kök BlackPill projesi silinmeden `legacy/blackpill/` altında korunur.
 
 ```text
-catalog/catalog.json
-tests/led-blink-f401/   # BlackPill F401CC/CD
-tests/led-blink-f446/   # F446RE, Nucleo veya özel PCB
+stardrop/
+  catalog/catalog.json
+  tests/led-blink-f401/   # BlackPill F401CC/CD
+  tests/led-blink-f446/   # F446RE, Nucleo veya özel PCB
+  library/               # Ekibin paylaştığı test düzenleri
+  docs/                  # Kullanım ve pin sözleşmesi
+  legacy/blackpill/      # Eski proje, değiştirilmeden
 ```
 
 Her klasörde kaynaklar, hedefe ait startup/linker dosyası, derleme manifesti
@@ -20,6 +24,7 @@ Sürücülerin lisanslarını ve kaynak başlıklarını koru.
 
 1. Kaynakları GitHub'a yükle; uygulamada Ayarlar'dan test kataloğunu yenile
    ve yeni kaynak sürümünü indir/etkinleştir.
+   Test Kütüphanesi'nde hazır kodu seçip Yeni Test'te açabilirsin.
 2. Yeni Test → manuel kart → `STM32F446RET6` → `LED / GPIO`.
 3. GPIO'yu seç. Nucleo'nun dahili LD2 LED'i **PA5, aktif yüksek**;
    başka GPIO için dirençli harici LED bağlantısı gerekir.

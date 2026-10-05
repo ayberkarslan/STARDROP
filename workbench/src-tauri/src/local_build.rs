@@ -807,14 +807,14 @@ mod tests {
         assert_eq!(remote.source_sha, "remote-commit");
     }
 
-    fn archive_test_tree(base: &Path, dir: &Path, zip: &mut zip::ZipWriter<Cursor<Vec<u8>>>) {
+    fn archive_test_tree(base: &Path, dir: &Path, zip: &mut zip::ZipWriter<Cursor<Vec<u8>>>, prefix: &str) {
         use std::io::Write;
         for item in fs::read_dir(dir).unwrap() {
             let path = item.unwrap().path();
-            if path.is_dir() { archive_test_tree(base, &path, zip); }
+            if path.is_dir() { archive_test_tree(base, &path, zip, prefix); }
             else {
                 let relative = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
-                zip.start_file(format!("github-commit/{relative}"), zip::write::SimpleFileOptions::default()).unwrap();
+                zip.start_file(format!("github-commit/{prefix}{relative}"), zip::write::SimpleFileOptions::default()).unwrap();
                 zip.write_all(&fs::read(path).unwrap()).unwrap();
             }
         }
@@ -828,11 +828,17 @@ mod tests {
         let objcopy = gcc.with_file_name("arm-none-eabi-objcopy");
         let original_header = fs::read(repo.join("tests/led-blink-f446/Inc/pin_configurations.h")).unwrap();
         let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        archive_test_tree(&repo, &repo, &mut zip);
+        archive_test_tree(&repo, &repo, &mut zip, "");
         let root = tempfile::tempdir().unwrap();
         let source = root.path().join("source");
         extract_code_archive(zip.finish().unwrap().into_inner(), root.path(), &source).unwrap();
         assert!(code_source_valid(&source));
+        let mut nested_zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive_test_tree(&repo, &repo, &mut nested_zip, "stardrop/");
+        let source = root.path().join("nested-source");
+        extract_code_archive(nested_zip.finish().unwrap().into_inner(), root.path(), &source).unwrap();
+        assert!(code_source_valid(&source));
+        assert!(!source.join("stardrop").exists());
         assert!(source.join("tests/led-blink-f446/Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f446xx.h").is_file());
         assert!(!source.join("tests/led-blink-f446/build").exists());
         let make_request = |pin: &str, interval: u64, active_low: bool| {

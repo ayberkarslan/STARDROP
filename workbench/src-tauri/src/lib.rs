@@ -374,9 +374,14 @@ async fn github_repo_diagnostic(repository: String) -> Result<GitHubRepoDiagnost
     let repository_status = client.get(format!("https://api.github.com/repos/{repository}"))
         .header("User-Agent", "stardrop-workbench").bearer_auth(&credential)
         .send().await.map_err(|error| error.to_string())?.status().as_u16();
-    let catalog_status = client.get(format!("https://api.github.com/repos/{repository}/contents/catalog/catalog.json"))
+    let mut catalog_status = client.get(format!("https://api.github.com/repos/{repository}/contents/stardrop/catalog/catalog.json"))
         .header("User-Agent", "stardrop-workbench").bearer_auth(&credential)
         .send().await.map_err(|error| error.to_string())?.status().as_u16();
+    if catalog_status == 404 {
+        catalog_status = client.get(format!("https://api.github.com/repos/{repository}/contents/catalog/catalog.json"))
+            .header("User-Agent", "stardrop-workbench").bearer_auth(&credential)
+            .send().await.map_err(|error| error.to_string())?.status().as_u16();
+    }
     Ok(GitHubRepoDiagnostic { credential_source: source.into(), token_format: format.into(),
         token_length: credential.len(), user_status, repository_status, catalog_status })
 }
