@@ -13,7 +13,7 @@ export function useNoticeHistory(notice) {
   return entries;
 }
 
-export default function NotificationCenter({ esp, notice, entries, onRetry, disabled }) {
+export default function NotificationCenter({ esp, notice, entries, onRetry, disabled, recoveryCount = 0, onRecover }) {
   const [open, setOpen] = useState(false);
   const popup = useRef(null);
   usePopupDismiss(popup, open, () => setOpen(false));
@@ -37,5 +37,6 @@ export default function NotificationCenter({ esp, notice, entries, onRetry, disa
       </div>
     </details>
     <p className="notification-latest" role="status" aria-live="polite">{notice}</p>
+    {recoveryCount > 0 && <button className="notification-recover" onClick={onRecover}>Son taslağı geri aç ({recoveryCount})</button>}
   </section>;
 }

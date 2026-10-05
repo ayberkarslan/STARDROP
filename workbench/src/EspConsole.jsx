@@ -12,7 +12,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice }) {
+export default function EspConsole({ bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice, hardware, documentId }) {
   const [drawer, setDrawer] = useState(null);
   const [settingsTab, setSettingsTab] = useState('programmer');
   const terminalRef = useRef(null);
@@ -51,9 +51,11 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
           (path === '/api/wifi/add' && /["\\]/.test(payload.ssid))) {
         throw new Error('Ad tırnak veya ters eğik çizgi içeremez.');
       }
-      await espJson(base, path, { method: 'POST', body: payload });
+      await hardware.run(documentId, 'ESP ayarları', async () => {
+        await espJson(base, path, { method: 'POST', body: payload });
+        if (path !== '/api/wifi/switch') await loadSettings();
+      });
       setNotice(success);
-      if (path !== '/api/wifi/switch') await loadSettings();
       if (path === '/api/target/label') await refreshTarget();
       if (path === '/api/wifi/add') setPassword('');
     } catch (error) { setNotice(error.message); }
@@ -62,12 +64,15 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
 
   const scanWifi = async () => {
     setBusy(true);
-    try { setNetworks((await espJson(base, '/api/wifi/scan')).filter((item) => item.ssid)); }
+    try { await hardware.run(documentId, 'Ağ taraması', async () => setNetworks((await espJson(base, '/api/wifi/scan')).filter((item) => item.ssid))); }
     catch (error) { setNotice(`Ağ taraması başarısız: ${error.message}`); }
     finally { setBusy(false); }
   };
 
   const readUsage = () => {
+    let lease;
+    try { lease = hardware.acquire(documentId, 'Flash analizi'); }
+    catch (error) { setNotice(error.message); return; }
     setUsage(null); setUsageError(''); setUsageProgress(0); setUsageRemaining(null);
     const startedAt = performance.now();
     espStream(base, '/stream-target-flash-usage', (event) => {
@@ -81,7 +86,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
     }, 120000).then(setUsage).catch((error) => {
       setUsageError(`Flash analizi başarısız: ${error.message}`);
       setNotice(`Flash okunamadı: ${error.message}`);
-    }).finally(() => { setUsageProgress(null); setUsageRemaining(null); });
+    }).finally(() => { setUsageProgress(null); setUsageRemaining(null); hardware.release(lease); });
   };
 
   const usagePercent = usage?.totalBytes > 0

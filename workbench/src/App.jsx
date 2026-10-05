@@ -1,30 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { BookOpen, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { addAuditEvent, confidenceForConnection, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
-import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
-import { profileFromNetlist } from './lib/netlistProfile.js';
-import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
-import { hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
-import WorkbenchWizard from './WorkbenchWizard.jsx';
 import BrandMark from './BrandMark.jsx';
 import TestLibrary from './TestLibrary.jsx';
-import EspConsole from './EspConsole.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
 import NotificationCenter, { useNoticeHistory } from './NotificationCenter.jsx';
 import WorkspaceTabs, { useWorkspaceTabs } from './WorkspaceTabs.jsx';
-import Popup from './Popup.jsx';
 import { workspaceLabels } from './lib/workspaceTabs.js';
-import { prepareFirmware } from './lib/firmwareImage.js';
-import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
-import { espJson, espStream, espUpload } from './lib/espTransport.js';
-import { buildableTargetPart, testsForComponent, validateTestCatalog } from './lib/testCatalog.js';
-import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type: 'json' };
+import { validateBoardProfile } from './lib/boardProfile.js';
 import { makeLibraryEntry, validateLibraryEntry } from './lib/testLibrary.js';
+import { createHardwareGate } from './lib/hardwareGate.js';
+import TestSession from './TestSession.jsx';
+import FlashSession from './FlashSession.jsx';
+import useWorkspaceDrag from './useWorkspaceDrag.js';
+import DragPreview from './DragPreview.jsx';
+import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
+import { espJson } from './lib/espTransport.js';
+import { validateTestCatalog } from './lib/testCatalog.js';
+import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type: 'json' };
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
 
@@ -35,15 +32,31 @@ function Section({ title, children, action }) {
 }
 
 function EmptyWorkspace({ onOpenFlash }) {
-  return <div className="workspace-empty" id="panel-empty" role="tabpanel" aria-label="Boş çalışma alanı"><div className="workspace-logo-placeholder"><BrandMark />{onOpenFlash && <button className="wizard-text-button" onClick={onOpenFlash}>Hızlı Yükleme’yi aç</button>}</div></div>;
+  return <div className="workspace-empty" data-drop-empty="true" role="tabpanel" aria-label="Boş çalışma alanı"><div className="workspace-logo-placeholder"><span className="workspace-wordmark">STARDROP</span>{onOpenFlash && <button className="wizard-text-button" onClick={onOpenFlash}>Hızlı Yükleme’yi aç</button>}</div></div>;
+}
+
+function RailTool({ tool, Icon, workspace, drag, onOpen }) {
+  return <button className={(tool === 'settings' ? 'rail-settings ' : '') + (workspace.mode === tool ? 'active' : '')}
+    data-rail-tool={tool} onPointerDown={(event) => drag.start(event, { kind: 'tool', tool, label: workspaceLabels[tool] })}
+    onClick={() => { if (drag.suppressClick.current) return; workspace.open(tool); onOpen?.(); }}>
+    <Icon/>{workspaceLabels[tool]}
+  </button>;
 }
 
 export default function App() {
   const [session, setSession] = useState('welcome');
   const workspace = useWorkspaceTabs();
-  const guestWorkspace = useWorkspaceTabs();
+  const guestWorkspace = useWorkspaceTabs('guest');
   const { mode, open: setMode } = workspace;
-  const [workbenchRevision, setWorkbenchRevision] = useState(0);
+  const [hardwareBusy, setHardwareBusy] = useState(null);
+  const hardwareRef = useRef(null);
+  if (!hardwareRef.current) hardwareRef.current = createHardwareGate(setHardwareBusy);
+  const hardware = hardwareRef.current;
+  const [testDrafts, setTestDrafts] = useState({});
+  const onDraftChange = useCallback((id, draft) => setTestDrafts((current) => ({ ...current, [id]: draft })), []);
+  const lockedIds = hardwareBusy ? [hardwareBusy.ownerId] : [];
+  const drag = useWorkspaceDrag({ workspace, lockedIds, setNotice: (message) => setNotice(message) });
+  const guestDrag = useWorkspaceDrag({ workspace: guestWorkspace, lockedIds, setNotice: (message) => setNotice(message) });
   const [bridge, setBridge] = useState(savedBridge);
   const [activeBridge, setActiveBridge] = useState(null);
   const [esp, setEsp] = useState({ status: 'searching', wifi: null, base: null });
@@ -53,30 +66,14 @@ export default function App() {
   const [target, setTarget] = useState(null);
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
   const noticeHistory = useNoticeHistory(notice);
-  const [firmware, setFirmware] = useState(null);
-  const [flashLog, setFlashLog] = useState([]);
-  const appendFlashLog = (msg, type = 'info') => setFlashLog((logs) => [...logs.slice(-299), {
-    msg, type, time: new Date().toLocaleTimeString('tr-TR'),
-  }]);
-  const [flashProgress, setFlashProgress] = useState(0);
-  const [flashBusy, setFlashBusy] = useState(false);
-  const [testBusy, setTestBusy] = useState(false);
-  const [testStage, setTestStage] = useState('');
-  const [diagnosticReport, setDiagnosticReport] = useState(null);
-  const [testHistory, setTestHistory] = useState([]);
   const [libraryEntries, setLibraryEntries] = useState([]);
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryError, setLibraryError] = useState('');
   const [sourceStatus, setSourceStatus] = useState(null);
   const [sourceBusy, setSourceBusy] = useState(false);
   const [sourceError, setSourceError] = useState('');
-  const [confirmLedFlash, setConfirmLedFlash] = useState(false);
-  const [visualPending, setVisualPending] = useState(null);
   const [aiConfig, setAiConfig] = useState(() => JSON.parse(localStorage.getItem('stardrop.ai.config') || '{"endpoint":"https://api.openai.com/v1","model":"gpt-4.1-mini"}'));
   const [aiKey, setAiKey] = useState('');
-  const [aiReview, setAiReview] = useState(null);
-  const [acceptedSuggestions, setAcceptedSuggestions] = useState([]);
-  const [aiBusy, setAiBusy] = useState(false);
   const [githubConfig, setGithubConfig] = useState(() => {
     const saved = JSON.parse(localStorage.getItem('stardrop.code.config') || '{}');
     return { repository: saved.repository || 'ayberkarslan/stardrop-code-repo', ref: saved.ref || 'main' };
@@ -87,7 +84,6 @@ export default function App() {
   const [repoCredentialRevision, setRepoCredentialRevision] = useState(0);
   const [repoDiagnostic, setRepoDiagnostic] = useState(null);
   const [repoDiagnosticBusy, setRepoDiagnosticBusy] = useState(false);
-  const [selectedTestId, setSelectedTestId] = useState('led-blink');
   const [githubUser, setGithubUser] = useState(null);
   const [catalog, setCatalog] = useState(CODE_REPO_CATALOG);
   const [catalogSha, setCatalogSha] = useState(null);
@@ -99,26 +95,6 @@ export default function App() {
   const [deviceLogin, setDeviceLogin] = useState(null);
   const loginAttempt = useRef(0);
   const [githubLogoutBusy, setGithubLogoutBusy] = useState(false);
-  const [profile, setProfile] = useState(null);
-  const [analysis, setAnalysis] = useState(null);
-  const [sources, setSources] = useState({ netlist: null, schematic: null, bom: null, boardImage: null });
-  const [activeComponent, setActiveComponent] = useState(null);
-  const diagnosticTimer = useRef(null);
-
-  const activeSensor = profile?.components.find((item) => item.ref === activeComponent) || null;
-  const isLedTest = activeSensor?.protocol === 'GPIO' && activeSensor?.part === 'LED';
-  const compatibleTests = testsForComponent(catalog, activeSensor, profile?.mcu?.part, { readyOnly: true });
-  const selectedTest = compatibleTests.find((item) => item.id === selectedTestId) || compatibleTests[0] || null;
-  const testValidation = activeSensor ? validateTestTarget(profile, activeSensor.ref, selectedTest?.requiredRoles) : null;
-  const testBlocker = !target?.connected ? 'Önce ESP32 üzerinden STM32 hedefini bul.'
-    : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
-    : !githubUser ? 'Ayarlar ekranından GitHub girişi yap.'
-    : !buildableTargetPart(profile?.mcu?.part) ? 'Bu GitHub HAL derleyicisi yalnız STM32F401CC/CD hedefinde doğrulandı.'
-    : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
-    : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
-    : !sourceStatus?.activeSha ? 'Önce test kaynağını GitHub’dan indir.'
-    : isLedTest && (!Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000) ? 'Blink aralığı 50–5000 ms olmalı.'
-    : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
   const adminTest = catalog.tests.find((item) => item.id === adminTestId);
 
   const normalizedBridge = activeBridge || bridge.replace(/\/$/, '');
@@ -137,6 +113,7 @@ export default function App() {
   };
 
   const connectBridge = async (address) => {
+    if (hardware.current) { setNotice('Donanım işlemi sürerken ESP bağlantısı değiştirilemez.'); return; }
     const run = ++discoveryRun.current;
     setEsp((current) => ({ ...current, status: 'searching' }));
     try {
@@ -157,6 +134,7 @@ export default function App() {
   };
 
   const autoConnect = async () => {
+    if (hardware.current) return;
     const run = ++discoveryRun.current;
     setEsp((current) => ({ ...current, status: 'searching' }));
     let devices = [];
@@ -184,6 +162,7 @@ export default function App() {
   };
 
   const refreshTarget = () => {
+    if (hardware.current) { setNotice('Donanım işlemi sürüyor; hedef daha sonra yenilenecek.'); return; }
     try {
       const typed = normalizeEspAddress(bridge);
       if (typed !== activeBridge) return connectBridge(typed);
@@ -193,8 +172,9 @@ export default function App() {
 
   useEffect(() => { autoConnect(); return () => { discoveryRun.current++; }; }, []);
   useEffect(() => {
-    if (flashBusy || esp.status === 'searching') return;
+    if (hardwareBusy || esp.status === 'searching') return;
     const timer = window.setInterval(async () => {
+      if (hardware.current) return;
       if (esp.status !== 'online') { autoConnect(); return; }
       try {
         const live = await probeEsp(esp.base, 4000);
@@ -208,7 +188,7 @@ export default function App() {
       }
     }, esp.status === 'online' ? 10000 : 15000);
     return () => window.clearInterval(timer);
-  }, [esp.status, esp.base, flashBusy]);
+  }, [esp.status, esp.base, hardwareBusy]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
   useEffect(() => { loadSecret('github_repo_token').then((value) => setRepoTokenSaved(Boolean(value))).catch(() => {}); }, []);
@@ -259,6 +239,7 @@ export default function App() {
   };
 
   const activateSource = async () => {
+    if (hardwareRef.current.current) { setNotice('Donanım işlemi bitmeden kod kaynağı değiştirilemez.'); return false; }
     if (!githubUser || !sourceStatus?.latestSha) return false;
     setSourceBusy(true);
     try {
@@ -274,110 +255,11 @@ export default function App() {
     finally { setSourceBusy(false); }
   };
 
-  useEffect(() => () => window.clearInterval(diagnosticTimer.current), []);
-
-  const waitForDiagnosticReport = async (expectedHashes, allowRunning = false) => {
-    setDiagnosticReport({ state: 'WAITING', valid: false });
-    const deadline = Date.now() + 30000;
-    while (Date.now() < deadline) {
-      try {
-        const report = await espJson(normalizedBridge, '/api/diagnostic/report', { timeoutMs: 2500 });
-        const matches = report.valid && (parseInt(report.testIdHash, 16) >>> 0) === expectedHashes.test
-          && (parseInt(report.profileHash, 16) >>> 0) === expectedHashes.profile
-          && (parseInt(report.runHash, 16) >>> 0) === expectedHashes.run;
-        if (matches) {
-          setDiagnosticReport(report);
-          if (['PASS', 'FAIL', 'FATAL'].includes(report.state) || (allowRunning && report.state === 'RUNNING')) return report;
-        }
-      } catch (_) {
-        // Reset sırasında kısa SWD kesintisi normaldir.
-      }
-      await new Promise((resolve) => setTimeout(resolve, 750));
-    }
-    throw new Error('STM32 geçerli ve bu çalıştırmaya ait SRAM test raporu üretmedi (30 saniye).');
-  };
-
-  const flashFirmware = async (selected = firmware) => {
-    if (!selected) return setNotice('Önce bir .bin veya .elf seç.');
-    if (esp.status !== 'online' || !activeBridge || !target?.connected) return setNotice('Önce ESP32 ve STM32 hedef bağlantısını doğrula.');
-    if (flashBusy) return false;
-    setFlashBusy(true);
-    setFlashLog([{ msg: 'Yazılım ESP32 belleğine aktarılıyor...', type: 'info', time: new Date().toLocaleTimeString('tr-TR') }]);
-    setFlashProgress(0);
-    try {
-      const image = await prepareFirmware(selected, target?.flashSizeKb);
-      await espUpload(normalizedBridge, image);
-      appendFlashLog(`Yazılım belleğe alındı. SWD Flash akışı başlıyor... (${selected.name}, ${image.size} bayt)`, 'success');
-      await espStream(normalizedBridge, '/stream-flash', (event) => {
-        if (event.msg) appendFlashLog(event.msg, event.type || 'info');
-        if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
-      });
-      appendFlashLog('🎉 STM32 başarıyla programlandı ve çalıştırıldı!', 'success');
-      await refreshTargetAt(activeBridge);
-      return true;
-    } catch (error) { appendFlashLog(`Hata: ${error.message}`, 'error'); setNotice(`Flash başarısız: ${error.message}`); return false; }
-    finally { setFlashBusy(false); }
-  };
-
-  const loadNetlist = async (file) => {
-    if (session !== 'github' || !githubUser) { setNotice('Otomatik pin analizi için GitHub oturumu gerekli.'); return; }
-    if (!file) return;
-    try {
-      const netlist = await file.text();
-      const result = profileFromNetlist(netlist, { netlistName: file.name });
-      setProfile(result.profile); setAnalysis(result.analysis);
-      setSources((current) => ({ ...current, netlist })); setActiveComponent(result.profile.components[0]?.ref || null);
-      setMode('workbench'); setNotice(`${result.profile.components.length} cihaz adayı bulundu; pinleri onayla.`);
-      return true;
-    } catch (error) { setNotice(`NET okunamadı: ${error.message}`); return false; }
-  };
-
-  const editConnection = (index, field, value) => { setVisualPending(null); setProfile((current) => {
-    const connections = current.connections.map((item, itemIndex) => {
-      if (itemIndex !== index) return item;
-      const pinChanged = field === 'mcuPin' && value !== item.mcuPin;
-      const busChanged = field === 'peripheral' && value !== item.peripheral;
-      const evidence = pinChanged ? { ...item.evidence, directTrace: false, namedNet: false, validAlternateFunction: false }
-        : busChanged ? { ...item.evidence, validAlternateFunction: false } : item.evidence;
-      const changed = { ...item, [field]: value, evidence, path: pinChanged ? [] : item.path,
-        source: pinChanged || busChanged ? 'USER' : item.source, approved: pinChanged || busChanged ? false : item.approved };
-      return { ...changed, confidence: confidenceForConnection(changed) };
-    });
-    return addAuditEvent({ ...current, connections }, 'PIN_OVERRIDE', { index, field, value });
-  }); };
-
-  const approveComponent = (componentRef) => setProfile((current) => {
-    const connections = current.connections.map((item) => item.componentRef === componentRef ? { ...item, approved: true } : item);
-    return addAuditEvent({ ...current, connections }, 'CONNECTIONS_APPROVED', { componentRef });
-  });
-
-  const updateLedSetting = (field, value) => {
-    setVisualPending(null);
-    setProfile((current) => addAuditEvent({ ...current, components: current.components.map((component) =>
-      component.ref === activeComponent ? { ...component, [field]: value } : component) }, 'LED_CONFIG_CHANGED', { componentRef: activeComponent, field, value }));
-  };
-
   const updateAiConfig = (field, value) => setAiConfig((current) => {
     const next = { ...current, [field]: value };
     localStorage.setItem('stardrop.ai.config', JSON.stringify(next));
     return next;
   });
-
-  const runAiReview = async () => {
-    if (!profile) return;
-    setAiBusy(true); setAiReview(null); setAcceptedSuggestions([]);
-    try {
-      await saveSecret('ai_api_key', aiKey);
-      const review = await requestAiReview({ ...aiConfig, apiKey: aiKey, profile, netlist: sources.netlist, schematicPdf: sources.schematic });
-      setAiReview(review); setNotice(`AI incelemesi ${review.suggestions.length} öneri üretti; hiçbir değişiklik uygulanmadı.`);
-    } catch (error) { setNotice(`AI incelemesi başarısız: ${error.message}`); }
-    finally { setAiBusy(false); }
-  };
-
-  const applySelectedAiSuggestions = () => {
-    setProfile((current) => applyAiSuggestions(current, aiReview, acceptedSuggestions));
-    setNotice(`${acceptedSuggestions.length} AI önerisi profile uygulandı; hepsi yeniden onay bekliyor.`);
-  };
 
   const updateGithubConfig = (field, value) => setGithubConfig((current) => {
     const next = { ...current, [field]: value };
@@ -466,6 +348,7 @@ export default function App() {
 
   const logoutGithub = async () => {
     if (githubLogoutBusy) return;
+    if (hardware.current) { setNotice('Donanım işlemi bitmeden çıkış yapılamaz.'); return; }
     setGithubLogoutBusy(true);
     try {
       if (githubUser?.login) await invoke('clear_source_cache', { account: githubUser.login });
@@ -477,6 +360,7 @@ export default function App() {
       setCatalog(CODE_REPO_CATALOG);
       setCatalogSha(null);
       setCatalogAdmin(false);
+      workspace.reset(); guestWorkspace.reset(); setTestDrafts({});
       setSession('welcome');
       setNotice('GitHub oturumu kapatıldı. Yeniden giriş yapabilirsin.');
     } catch (error) { setNotice(`Çıkış başarısız: ${error.message}`); }
@@ -515,84 +399,6 @@ export default function App() {
     } catch (error) { setNotice(`Test kataloğu kurulamadı: ${error.message}`); }
   };
 
-  const runHardwareTest = async () => {
-    if (testBusy || !selectedTest || testBlocker) return;
-    const requestId = crypto.randomUUID();
-    setConfirmLedFlash(false); setVisualPending(null); setTestBusy(true); setDiagnosticReport(null);
-    try {
-      const profileJson = JSON.stringify(profile);
-      setTestStage(`${selectedTest.name} GitHub kaynağından bilgisayarda derleniyor…`);
-      const built = await invoke('compile_code_test', { request: { repository: githubConfig.repository, testId: selectedTest.id,
-        profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid } });
-      const firmwareBytes = Uint8Array.from(built.bytes);
-      if (await sha256Hex(new Blob([firmwareBytes])) !== built.sha256) throw new Error('Derlenen BIN özeti uyuşmuyor.');
-      if (firmwareBytes.length > target.flashSizeKb * 1024) throw new Error('BIN hedef flash kapasitesini aşıyor.');
-      const live = await espJson(normalizedBridge, '/api/target/status', { timeoutMs: 6000 });
-      if (!live.connected || live.uid !== target.uid || live.uid !== profile.targetUid || !live.model?.startsWith(profile.mcu.family)) {
-        throw new Error('Canlı STM32 hedefi profille uyuşmuyor; flash yapılmadı.');
-      }
-      const expectedDeviceId = profile.mcu.part.startsWith('STM32F401CC') ? '0x423'
-        : profile.mcu.part.startsWith('STM32F401C') ? '0x433'
-        : profile.mcu.part.startsWith('STM32F446RE') ? '0x421' : null;
-      if (expectedDeviceId && live.deviceId?.toLowerCase() !== expectedDeviceId) {
-        throw new Error(`STM32 varyantı uyuşmuyor: ${expectedDeviceId} beklenirken ${live.deviceId || 'bilinmiyor'} okundu.`);
-      }
-      setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
-      const file = new File([firmwareBytes], `stardrop-${selectedTest.id}.bin`, { type: 'application/octet-stream' });
-      if (!await flashFirmware(file)) throw new Error('ESP32 flash işlemi başarısız.');
-      if (selectedTest.result === 'sram') {
-        setTestStage('STM32 test raporu okunuyor…');
-        const report = await waitForDiagnosticReport({
-          test: hash32FromSha256(await sha256Hex(selectedTest.id)),
-          profile: hash32FromSha256(await sha256Hex(profileJson)),
-          run: hash32FromSha256(await sha256Hex(requestId)),
-        });
-        setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
-          testId: selectedTest.id, targetUid: live.uid, status: report.state, sourceSha: built.sourceSha,
-          firmwareSha256: built.sha256, report }]);
-        setTestStage(`STM32 test raporu: ${report.state}.`);
-        return;
-      }
-      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
-        testId: selectedTest.id, targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
-        firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin,
-        blinkMs: activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
-      setVisualPending(requestId);
-      setTestStage('GitHub test firmware’i yüklendi. Sonucu gözle kontrol et.');
-    } catch (error) {
-      setTestStage(`${selectedTest.name} durdu: ${error.message}`);
-      setNotice(`Donanım testi başarısız: ${error.message}`);
-      setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
-        testId: selectedTest.id, status: 'ERROR', error: error.message }]);
-    } finally { setTestBusy(false); }
-  };
-
-  const finishVisualTest = (passed) => {
-    if (!visualPending) return;
-    setTestHistory((items) => items.map((item) => item.requestId === visualPending && item.status === 'PENDING_VISUAL'
-      ? { ...item, status: passed ? 'PASS' : 'FAIL', confirmedAt: new Date().toISOString(), confirmation: 'VISUAL' } : item));
-    setVisualPending(null);
-    setTestStage(passed ? 'LED gözlemi başarılı olarak kaydedildi.' : 'LED gözlemi başarısız olarak kaydedildi.');
-  };
-
-  const exportProject = async () => {
-    try {
-      const file = await exportStardropProject({ profile, netlist: sources.netlist, bom: sources.bom, schematicPdf: sources.schematic, boardImage: sources.boardImage, testHistory });
-      const url = URL.createObjectURL(file); const link = document.createElement('a');
-      link.href = url; link.download = `${profile.name}.stardrop`; link.click(); URL.revokeObjectURL(url);
-      setNotice('Taşınabilir .stardrop paketi indirildi.');
-    } catch (error) { setNotice(error.message); }
-  };
-
-  const importProject = async (file) => {
-    try {
-      const data = await importStardropProject(file); setProfile(data.profile); setTestHistory(data.testHistory || []);
-      setSources({ netlist: data.sources['sources/board.NET'] ? await data.sources['sources/board.NET'].text() : null, schematic: data.sources['sources/schematic.pdf'] || null, bom: data.sources['sources/bom.csv'] ? await data.sources['sources/bom.csv'].text() : null, boardImage: Object.entries(data.sources).find(([path]) => path.startsWith('sources/board-image.'))?.[1] || null });
-      setActiveComponent(data.profile.components[0]?.ref || null); setMode('workbench'); setNotice('STARDROP projesi güvenle geri yüklendi.');
-      return true;
-    } catch (error) { setNotice(`Proje açılamadı: ${error.message}`); return false; }
-  };
-
   const refreshLibrary = async () => {
     setLibraryBusy(true); setLibraryError('');
     try {
@@ -604,64 +410,97 @@ export default function App() {
     finally { setLibraryBusy(false); }
   };
 
-  const publishLibrary = async ({ name, note }) => {
+  const libraryPublishLock = useRef(false);
+  const publishLibrary = async ({ name, note, documentId }) => {
+    if (libraryPublishLock.current) { setNotice('Başka bir kütüphane kaydı yayınlanıyor; bitmesini bekle.'); return null; }
+    const draft = testDrafts[documentId];
+    if (!draft?.profile || !draft.activeComponent) { setLibraryError('Önce paylaşılacak test çalışmasını seç.'); return null; }
+    libraryPublishLock.current = true;
     setLibraryBusy(true); setLibraryError('');
     try {
-      const entry = makeLibraryEntry({ name, note, profile, componentRef: activeComponent,
-        test: selectedTest, history: testHistory, author: githubUser?.login, sourceSha: sourceStatus?.activeSha });
+      const entry = makeLibraryEntry({ name, note, profile: draft.profile, componentRef: draft.activeComponent,
+        test: draft.selectedTest, history: draft.testHistory, author: githubUser?.login, sourceSha: sourceStatus?.activeSha });
       const token = await validRepoToken();
       if (!token) throw new Error('GitHub oturumu veya depo anahtarı gerekli.');
       await publishLibraryEntry({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', entry });
       setLibraryEntries((items) => [entry, ...items]);
-      setNotice(`${entry.name} GitHub Test Kütüphanesi’ne kaydedildi.`);
+      setNotice(entry.name + ' GitHub Test Kütüphanesi’ne kaydedildi.');
       return entry;
-    } catch (error) { setLibraryError(`Yayınlanamadı: ${error.message}`); return null; }
-    finally { setLibraryBusy(false); }
+    } catch (error) { setLibraryError('Yayınlanamadı: ' + error.message); return null; }
+    finally { libraryPublishLock.current = false; setLibraryBusy(false); }
   };
 
   const openLibraryEntry = (entry) => {
     if (!validateLibraryEntry(entry) || !validateBoardProfile(entry.profile).valid) {
       setLibraryError('Kayıt profili geçersiz; güvenle açılamıyor.'); return;
     }
-    const restored = JSON.parse(JSON.stringify(entry.profile));
-    setWorkbenchRevision((revision) => revision + 1);
-    restored.targetUid = null;
-    restored.connections = restored.connections.map((connection) => ({ ...connection, approved: false }));
-    setProfile(restored); setActiveComponent(entry.component.ref); setSelectedTestId(entry.test.id || '');
-    setTestHistory([]); setSources({ netlist: null, schematic: null, bom: null, boardImage: null }); setAnalysis(null);
-    setMode('workbench');
-    setNotice(`${entry.name} açıldı. Canlı hedefi eşleştirip pinleri yeniden onayla.`);
+    const profile = JSON.parse(JSON.stringify(entry.profile));
+    profile.targetUid = null;
+    profile.connections = profile.connections.map((connection) => ({ ...connection, approved: false }));
+    workspace.open('workbench', { fresh: true, data: { profile, componentRef: entry.component.ref, testId: entry.test.id || '' } });
+    setNotice(entry.name + ' ayrı test sekmesinde açıldı. Canlı hedefi eşleştirip pinleri yeniden onayla.');
   };
 
-  const notificationCenter = <NotificationCenter esp={esp} notice={notice} entries={noticeHistory} onRetry={autoConnect} disabled={flashBusy} />;
-
-  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div><div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}</main><DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} /></div>;
-
-  if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><BrandMark/><strong>STARDROP</strong></div><div className="guest-header-actions"><button onClick={() => setSession('welcome')}>Girişe dön</button></div></header><WorkspaceTabs workspace={guestWorkspace} lockedTypes={flashBusy ? ['flash'] : []}/>{guestWorkspace.mode === 'empty' && <EmptyWorkspace onOpenFlash={() => guestWorkspace.open('flash')}/>}<section className="workspace-panel" id="panel-flash" role="tabpanel" hidden={guestWorkspace.mode !== 'flash'}><EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /></section><div className="guest-notification-center">{notificationCenter}</div></div>;
-
-  return <div className="app-shell">
-    <aside className="rail">
-      <div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div>
-      <nav>
-        <button className={mode === 'flash' ? 'active' : ''} onClick={() => setMode('flash')}><Upload />Hızlı Yükleme</button>
-        {session === 'github' && githubUser && <button className={mode === 'workbench' ? 'active' : ''} onClick={() => setMode('workbench')}><FlaskConical />Yeni Test</button>}
-        {session === 'github' && githubUser && <button className={mode === 'library' ? 'active' : ''} onClick={() => { setMode('library'); refreshLibrary(); }}><BookOpen />Test Kütüphanesi</button>}
-        {session === 'github' && githubUser && catalogAdmin && <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}><ShieldCheck />Test Yönetimi</button>}
-        {session === 'github' && githubUser && <button className={`rail-settings ${mode === 'settings' ? 'active' : ''}`} onClick={() => setMode('settings')}><Settings />Ayarlar</button>}
-      </nav>
-      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}<div><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions"><button onClick={() => setSession('welcome')}>Girişe dön</button><button onClick={logoutGithub} disabled={githubLogoutBusy}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button></div></div></div></div>{notificationCenter}
-    </aside>
-    <main>
-      <WorkspaceTabs workspace={workspace} lockedTypes={testBusy || flashBusy ? ['flash', 'workbench'] : []} />
-      {mode === 'empty' && <EmptyWorkspace />}
-      {workspace.state.visited.map((mode) => <section className="workspace-panel" key={mode} id={`panel-${mode}`} role="tabpanel" aria-label={workspaceLabels[mode]} hidden={workspace.mode !== mode}>
+  const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
+    refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, setNotice,
+    aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy,
+    espBase: activeBridge, devices: discoveredDevices, onConnect: connectBridge, onDiscover: autoConnect, notice };
+  const titles = Object.fromEntries(Object.entries(testDrafts).filter(([, draft]) => draft.profile).map(([id, draft]) => [id, draft.profile.name + ' · ' + (draft.selectedTest?.name || 'Yeni Test')]));
+  const renderDocument = (doc, activeId, currentWorkspace) => {
+    const mode = doc.type;
+    const tab = currentWorkspace.state.tabs.find((item) => item.documentId === doc.id);
+    const visible = tab?.id === activeId;
+    if (mode === 'empty') return null;
+    return <section className={'workspace-panel' + (drag.preview?.overId === tab?.id ? ' panel-drop-target' : '')} key={doc.id}
+      id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
       {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
       {mode === 'settings' && repoDiagnostic?.repositoryStatus === 404 && <p className="repo-help">Hesap tanınsa bile özel depo bu kimlikle görünmüyor. GitHub App’i bu depoya Contents izniyle kur veya yalnız bu depoya erişen fine-grained token kaydet. App iznini değiştirirsen yeniden giriş yap.</p>}
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
-      {mode === 'library' ? <TestLibrary entries={libraryEntries} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary} profile={profile} activeSensor={activeSensor} selectedTest={selectedTest} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha} startNewTest={() => setMode("workbench")} /> : mode === 'admin' ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : mode === 'settings' ? <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depodaki testleri okumak için Contents: Read, Test Kütüphanesi’ne kayıt eklemek için Contents: Read and write gerekir. GitHub App tokeni kullanıyorsan uygulamanın da bu izinle depoya kurulmuş olması gerekir. Alternatif olarak yalnız bu depoya erişen fine-grained token gir; anahtar proje dosyasına yazılmaz.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />GitHub token: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div> : mode === 'flash' ? <EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} flashFirmware={flashFirmware} firmware={firmware} setFirmware={setFirmware} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} setTestStage={setTestStage} setFlashLog={setFlashLog} flashBusy={flashBusy} setNotice={setNotice} /> : <WorkbenchWizard key={workbenchRevision} profile={profile} setProfile={setProfile} sources={sources} catalog={catalog} githubConfig={githubConfig} sourceStatus={sourceStatus} sourceError={sourceError} sourceBusy={sourceBusy} refreshSource={refreshSource} activateSource={activateSource} target={target} esp={esp} activeSensor={activeSensor} activeComponent={activeComponent} setActiveComponent={setActiveComponent} editConnection={editConnection} approveComponent={approveComponent} updateLedSetting={updateLedSetting} compatibleTests={compatibleTests} selectedTest={selectedTest} setSelectedTestId={setSelectedTestId} testBlocker={testBlocker} testBusy={testBusy} testStage={testStage} flashBusy={flashBusy} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} finishVisualTest={finishVisualTest} setConfirmLedFlash={setConfirmLedFlash} loadNetlist={loadNetlist} importProject={importProject} exportProject={exportProject} setAnalysis={setAnalysis} setSources={setSources} bindTarget={() => setProfile((current) => addAuditEvent({ ...current, targetUid: target.uid }, 'TARGET_UID_BOUND', { uid: target.uid }))} refreshTarget={refreshTarget} setFlashLog={setFlashLog} setTestStage={setTestStage} setNotice={setNotice} aiConfig={aiConfig} updateAiConfig={updateAiConfig} aiKey={aiKey} setAiKey={setAiKey} aiBusy={aiBusy} runAiReview={runAiReview} aiReview={aiReview} acceptedSuggestions={acceptedSuggestions} setAcceptedSuggestions={setAcceptedSuggestions} applySelectedAiSuggestions={applySelectedAiSuggestions} diagnosticReport={diagnosticReport} testHistory={testHistory} />}
-      </section>)}
+      {mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
+        mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
+        mode === 'library' ? <TestLibrary entries={libraryEntries} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
+          drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
+          startNewTest={() => workspace.open('workbench', { fresh: true })}/> :
+        mode === 'admin' ? (catalogAdmin ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : <p className="workspace">Bu ekran için yönetim yetkisi gerekli.</p>) :
+        <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depodaki testleri okumak için Contents: Read, Test Kütüphanesi’ne kayıt eklemek için Contents: Read and write gerekir. GitHub App tokeni kullanıyorsan uygulamanın da bu izinle depoya kurulmuş olması gerekir. Alternatif olarak yalnız bu depoya erişen fine-grained token gir; anahtar proje dosyasına yazılmaz.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />GitHub token: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div>}
+    </section>;
+  };
+  const notificationCenter = <NotificationCenter esp={esp} notice={notice} entries={noticeHistory} onRetry={autoConnect} disabled={Boolean(hardwareBusy)}
+    recoveryCount={(session === 'guest' ? guestWorkspace : workspace).state.recovery.length}
+    onRecover={() => { (session === 'guest' ? guestWorkspace : workspace).undo(); setNotice('Önceki çalışma ayrı sekmede geri açıldı.'); }}/>;
+
+  const welcomeView = <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div><div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}</main></div>;
+
+  const guestView = <div className="guest-layout"><header className="guest-header"><div className="brand"><BrandMark/><strong>STARDROP</strong></div>
+    <div className="guest-header-actions"><button disabled={Boolean(hardwareBusy)} onClick={() => setSession('welcome')}>Girişe dön</button></div></header>
+    <WorkspaceTabs workspace={guestWorkspace} lockedIds={lockedIds} drag={guestDrag} titles={titles}/>
+    {guestWorkspace.mode === 'empty' && <EmptyWorkspace onOpenFlash={() => guestWorkspace.open('flash')}/>}
+    {guestWorkspace.state.documents.map((doc) => renderDocument(doc, guestWorkspace.state.activeId, guestWorkspace))}
+    <div className="guest-notification-center">{notificationCenter}</div><DragPreview preview={guestDrag.preview}/></div>;
+
+  const signedView = <div className="app-shell">
+    <aside className="rail">
+      <div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div>
+      <nav>
+        <RailTool tool="flash" Icon={Upload} workspace={workspace} drag={drag}/>
+        <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
+        <RailTool tool="library" Icon={BookOpen} workspace={workspace} drag={drag} onOpen={refreshLibrary}/>
+        {catalogAdmin && <RailTool tool="admin" Icon={ShieldCheck} workspace={workspace} drag={drag}/>}
+        <RailTool tool="settings" Icon={Settings} workspace={workspace} drag={drag}/>
+      </nav>
+      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}
+        <div><span>{githubUser ? '@' + githubUser.login : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions">
+          <button disabled={Boolean(hardwareBusy)} onClick={() => setSession('welcome')}>Girişe dön</button>
+          <button onClick={logoutGithub} disabled={githubLogoutBusy || Boolean(hardwareBusy)}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button>
+        </div></div></div></div>{notificationCenter}
+    </aside>
+    <main>
+      <WorkspaceTabs workspace={workspace} lockedIds={lockedIds} drag={drag} titles={titles}/>
+      {mode === 'empty' && <EmptyWorkspace />}
+      {workspace.state.documents.map((doc) => renderDocument(doc, workspace.state.activeId, workspace))}
     </main>
-    {confirmLedFlash && <Popup className="confirm-card" labelledBy="led-confirm-title" onClose={() => setConfirmLedFlash(false)}><h2 id="led-confirm-title">STM32 yazılımı değişecek</h2><p>{selectedTest?.name || 'Donanım testi'} için mevcut firmware silinip yerel derlenen kod yüklenecek. Hedef: {target?.model || 'bilinmiyor'} · {target?.uid || 'UID yok'}</p><div><button className="secondary" onClick={() => setConfirmLedFlash(false)}>VAZGEÇ</button><button className="primary" onClick={runHardwareTest}>DERLE VE YÜKLE</button></div></Popup>}
-    <DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} />
+    <DragPreview preview={drag.preview}/>
+    
   </div>;
+  return <><div className="session-view" hidden={session !== 'welcome'}>{welcomeView}</div><div className="session-view" hidden={session !== 'guest'}>{guestView}</div><div className="session-view" hidden={session !== 'github'}>{signedView}</div><DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} /></>;
 }
