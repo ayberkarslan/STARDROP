@@ -30,6 +30,9 @@ export default function TestSession({ documentId, initialData, services, onDraft
   const [aiReview, setAiReview] = useState(null);
   const [acceptedSuggestions, setAcceptedSuggestions] = useState([]);
   const [aiBusy, setAiBusy] = useState(false);
+  const currentProfile = useRef(profile);
+  currentProfile.current = profile;
+  const reviewProfile = useRef(null);
   const diagnosticTimer = useRef(null);
   const { flashFirmware, flashLog, flashProgress, flashBusy, setFlashLog } = useFirmwareJob({ documentId, ...services });
   const normalizedBridge = activeBridge || bridge.replace(/\/$/, '');
@@ -45,6 +48,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu GitHub HAL derleyicisi yalnız STM32F401CC/CD hedefinde doğrulandı.'
     : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
     : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
+    : sourceBusy ? 'Kod kaynağı güncelleniyor; indirme bitince testi başlat.'
     : !sourceStatus?.activeSha ? 'Önce test kaynağını GitHub’dan indir.'
     : isLedTest && (!Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000) ? 'Blink aralığı 50–5000 ms olmalı.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
@@ -115,17 +119,21 @@ export default function TestSession({ documentId, initialData, services, onDraft
   };
 
   const runAiReview = async () => {
-    if (!profile) return;
+    if (!profile || aiBusy) return;
+    const snapshot = profile;
     setAiBusy(true); setAiReview(null); setAcceptedSuggestions([]);
     try {
       await saveSecret('ai_api_key', aiKey);
       const review = await requestAiReview({ ...aiConfig, apiKey: aiKey, profile, netlist: sources.netlist, schematicPdf: sources.schematic });
+      if (currentProfile.current !== snapshot) { setNotice('İnceleme sırasında kart değişti. Güncel kart için AI kontrolünü yeniden başlat.'); return; }
+      reviewProfile.current = snapshot;
       setAiReview(review); setNotice(`AI incelemesi ${review.suggestions.length} öneri üretti; hiçbir değişiklik uygulanmadı.`);
     } catch (error) { setNotice(`AI incelemesi başarısız: ${error.message}`); }
     finally { setAiBusy(false); }
   };
 
   const applySelectedAiSuggestions = () => {
+    if (currentProfile.current !== reviewProfile.current) { setNotice('Kart değişti; eski AI önerileri uygulanmadı. Yeniden kontrol et.'); return; }
     setProfile((current) => applyAiSuggestions(current, aiReview, acceptedSuggestions));
     setNotice(`${acceptedSuggestions.length} AI önerisi profile uygulandı; hepsi yeniden onay bekliyor.`);
   };
@@ -142,6 +150,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
       setTestStage(`${selectedTest.name} GitHub kaynağından bilgisayarda derleniyor…`);
       const built = await invoke('compile_code_test', { request: { repository: githubConfig.repository, testId: selectedTest.id,
         profileJson, componentRef: activeSensor.ref, requestId, mcuPart: profile.mcu.part, targetUid: target.uid } });
+      if (built.sourceSha !== sourceStatus.activeSha) throw new Error('Derleme kaynağı değişti; testi yeni kaynakla tekrar başlat.');
       const firmwareBytes = Uint8Array.from(built.bytes);
       if (await sha256Hex(new Blob([firmwareBytes])) !== built.sha256) throw new Error('Derlenen BIN özeti uyuşmuyor.');
       if (firmwareBytes.length > target.flashSizeKb * 1024) throw new Error('BIN hedef flash kapasitesini aşıyor.');

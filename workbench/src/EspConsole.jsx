@@ -12,7 +12,8 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice, hardware, documentId }) {
+export default function EspConsole({ bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice, hardware, hardwareBusy, documentId }) {
+  const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [settingsTab, setSettingsTab] = useState('programmer');
   const terminalRef = useRef(null);
@@ -103,7 +104,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
           <strong>{usage ? `${usagePercent.toFixed(1)}%` : '—'}</strong>
           <span>{usageProgress !== null ? 'Flash SWD üzerinden okunuyor...'
             : usageError || (usage ? `${kb(usage.programmedBytes)} programlanmış · ${kb(usage.freeBytes)} boş · ${(usage.durationMs / 1000).toFixed(1)} sn` : 'Flash analizi yapılmadı.')}</span>
-          <button className="flash-analyze" disabled={usageProgress !== null || flashBusy} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</button>
+          <button className="flash-analyze" disabled={usageProgress !== null || deviceBusy} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</button>
         </div>
       </div>
       {usageProgress !== null && <div className="target-analysis-progress"><div className="flash-feedback-top"><span>{usageRemaining === null ? 'SWD FLASH OKUNUYOR...' : `FLASH TARANIYOR · ~${usageRemaining} SN KALDI`}</span><strong>{usageProgress}%</strong></div><div className="progress"><i style={{ width: `${usageProgress}%` }}/></div></div>}
@@ -138,13 +139,13 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
   return <main className="flash-workspace">
     <div className="flash-heading"><div><h1>STARDROP</h1><p>Yıldız Roket Takımı • Aviyonik OTA</p></div><button className="icon-link" onClick={() => setDrawer('settings')} title="ESP32 ayarları"><Settings size={17} /><span>Ayarlar</span></button></div>
 
-    <div className={`target-line ${target?.connected ? 'connected' : ''}`}><button className="target-open" onClick={() => setDrawer('target')} disabled={!target?.connected || flashBusy} title={target?.connected ? 'Kart ayrıntıları ve flash analizi' : undefined}><span className="target-indicator"/><span className="target-label"><strong>{target?.connected ? target.label || target.model : target?.dpConnected ? 'SWD bağlı · STM32 okunamıyor' : 'STM32 hedefi bekleniyor'}</strong><small>{target?.connected ? target.model : notice}</small></span>{target?.connected && <ChevronRight className="target-chevron" size={15}/>}</button><button className="icon-link refresh" onClick={refreshTarget} disabled={flashBusy} aria-label="Hedefi yenile" title="Hedefi yenile"><RefreshCw size={15}/></button></div>
+    <div className={`target-line ${target?.connected ? 'connected' : ''}`}><button className="target-open" onClick={() => setDrawer('target')} disabled={!target?.connected || deviceBusy} title={target?.connected ? 'Kart ayrıntıları ve flash analizi' : undefined}><span className="target-indicator"/><span className="target-label"><strong>{target?.connected ? target.label || target.model : target?.dpConnected ? 'SWD bağlı · STM32 okunamıyor' : 'STM32 hedefi bekleniyor'}</strong><small>{target?.connected ? target.model : notice}</small></span>{target?.connected && <ChevronRight className="target-chevron" size={15}/>}</button><button className="icon-link refresh" onClick={refreshTarget} disabled={deviceBusy} aria-label="Hedefi yenile" title="Hedefi yenile"><RefreshCw size={15}/></button></div>
     {target?.connected && /başarısız|hata|erişilemedi|okunamadı|zaman aşımı|geçersiz/i.test(notice) && <p className="flash-error" role="alert">{notice}</p>}
 
     <label className="firmware-select" onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }} onDragOver={(event) => event.preventDefault()}><FileUp size={23}/><strong>Firmware dosyası seç</strong><small>.ELF VEYA .BIN SÜRÜKLE</small><input type="file" accept=".bin,.elf" onChange={(event) => chooseFile(event.target.files?.[0])}/></label>
     {firmware && <div className="firmware-file-card"><div><strong title={firmware.name}>{firmware.name}</strong><span>{firmware.name.toLowerCase().endsWith('.elf') ? 'ELF → BIN' : 'RAW BIN'}</span></div><small>{kb(firmware.size)}</small></div>}
 
-    <button className="flash-submit" disabled={!firmware || !target?.connected || flashBusy} onClick={() => flashFirmware()}>{flashBusy ? 'YÜKLENİYOR…' : 'YAZILIMI YÜKLE (SWD)'}</button>
+    <button className="flash-submit" disabled={!firmware || !target?.connected || deviceBusy} onClick={() => flashFirmware()}>{flashBusy ? 'YÜKLENİYOR…' : hardwareBusy ? 'DONANIM İŞLEMİ BEKLENİYOR…' : 'YAZILIMI YÜKLE (SWD)'}</button>
     {(flashBusy || flashLog.length > 0) && <div className="flash-feedback"><div className="flash-feedback-top"><span>{flashBusy ? 'İŞLEM SÜRÜYOR' : flashProgress === 100 ? 'DOĞRULANDI' : 'SON İŞLEM'}</span><strong>{flashProgress}%</strong></div><div className="progress"><i style={{ width: `${flashProgress}%` }}/></div></div>}
     {!flashBusy && !flashLog.length && <p className="flash-footnote">Yükleme mevcut firmware’i siler; yazılan veriler geri okunarak doğrulanır.</p>}
     <div className="flash-terminal" ref={terminalRef} role="log" aria-label="SWD işlem terminali" aria-live="off">
@@ -153,7 +154,7 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
     </div>
 
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel={drawer === 'target' ? 'Kart bilgileri' : 'ESP32 ayarları'} onClose={() => setDrawer(null)}><div className="drawer-title"><div><span className="eyebrow">{drawer === 'target' ? 'SWD HEDEFİ' : 'ESP32'}</span><h2>{drawer === 'target' ? 'Kart bilgileri' : 'Ayarlar'}</h2></div><button className="icon-link" onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>
-      {drawer === 'settings' && <div className="discovered-list"><div className="discovered-list-head"><span>BULUNAN ESP32</span><button onClick={onDiscover} disabled={flashBusy}>Yeniden tara</button></div>{devices.map((device) => <button key={`${device.mac}-${device.replyAddress}`} onClick={() => onConnect(device.replyAddress)} disabled={flashBusy}>{device.name || 'STARDROP'} · {device.replyAddress}<small>{device.rssi ? `${device.rssi} dBm` : 'AP'}</small></button>)}</div>}
+      {drawer === 'settings' && <div className="discovered-list"><div className="discovered-list-head"><span>BULUNAN ESP32</span><button onClick={onDiscover} disabled={deviceBusy}>Yeniden tara</button></div>{devices.map((device) => <button key={`${device.mac}-${device.replyAddress}`} onClick={() => onConnect(device.replyAddress)} disabled={deviceBusy}>{device.name || 'STARDROP'} · {device.replyAddress}<small>{device.rssi ? `${device.rssi} dBm` : 'AP'}</small></button>)}</div>}
       {drawer === 'target' ? renderTargetBody()
       : renderSettingsBody()}
       <div className="drawer-notice" role="status">{notice}</div>

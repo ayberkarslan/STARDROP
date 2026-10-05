@@ -45,6 +45,7 @@ function RailTool({ tool, Icon, workspace, drag, onOpen }) {
 
 export default function App() {
   const [session, setSession] = useState('welcome');
+  useEffect(() => { document.dispatchEvent(new Event('stardrop-tab-change')); }, [session]);
   const workspace = useWorkspaceTabs();
   const guestWorkspace = useWorkspaceTabs('guest');
   const { mode, open: setMode } = workspace;
@@ -450,8 +451,9 @@ export default function App() {
     const mode = doc.type;
     const tab = currentWorkspace.state.tabs.find((item) => item.documentId === doc.id);
     const visible = tab?.id === activeId;
+    const preview = currentWorkspace === guestWorkspace ? guestDrag.preview : drag.preview;
     if (mode === 'empty') return null;
-    return <section className={'workspace-panel' + (drag.preview?.overId === tab?.id ? ' panel-drop-target' : '')} key={doc.id}
+    return <section className={'workspace-panel' + (preview?.overId === tab?.id ? ' panel-drop-target' : '')} key={doc.id}
       id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
       {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
       {mode === 'settings' && repoDiagnostic?.repositoryStatus === 404 && <p className="repo-help">Hesap tanınsa bile özel depo bu kimlikle görünmüyor. GitHub App’i bu depoya Contents izniyle kur veya yalnız bu depoya erişen fine-grained token kaydet. App iznini değiştirirsen yeniden giriş yap.</p>}

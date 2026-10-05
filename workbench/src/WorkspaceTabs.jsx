@@ -42,7 +42,7 @@ export default function WorkspaceTabs({ workspace, lockedIds = [], drag, titles 
         const label = labelFor(doc);
         const locked = lockedIds.includes(doc.id);
         return <div className={'workspace-tab' + (tab.id === state.activeId ? ' active' : '') +
-          (drag?.preview?.overId === tab.id ? ' drop-target' : '') + (drag?.preview?.sourceId === tab.id ? ' dragging' : '')}
+          (drag?.preview?.overId === tab.id ? ' drop-target' + (drag.preview.kind === 'tab' ? ' insert-target' : '') : '') + (drag?.preview?.sourceId === tab.id ? ' dragging' : '')}
           key={tab.id} data-drop-tab={tab.id}>
           <button type="button" role="tab" id={'tab-' + tab.id} aria-controls={'panel-' + doc.id} aria-selected={tab.id === state.activeId}
             tabIndex={tab.id === state.activeId ? 0 : -1} data-tab-id={tab.id} onKeyDown={keyboard}
