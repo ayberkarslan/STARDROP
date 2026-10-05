@@ -478,10 +478,12 @@ export default function App() {
         const bytes = await fetchLibraryProject({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', entryId: entry.id });
         const imported = await importStardropProject(bytes);
         if (!imported.validation.valid || imported.profile.id !== profile.id) throw new Error('Proje ile kayıt eşleşmiyor.');
+        const image = Object.entries(imported.sources).find(([path]) => path.startsWith('sources/board-image.'));
+        const imageType = image?.[0].endsWith('.png') ? 'image/png' : image?.[0].endsWith('.webp') ? 'image/webp' : 'image/jpeg';
         restored = { sources: { netlist: imported.sources['sources/board.NET'] ? await imported.sources['sources/board.NET'].text() : null,
           bom: imported.sources['sources/bom.csv'] ? await imported.sources['sources/bom.csv'].text() : null,
           schematic: imported.sources['sources/schematic.pdf'] || null,
-          boardImage: Object.entries(imported.sources).find(([path]) => path.startsWith('sources/board-image.'))?.[1] || null },
+          boardImage: image ? new File([image[1]], image[0].split('/').at(-1), { type: imageType }) : null },
           testHistory: imported.testHistory };
       } catch (error) { setLibraryError(`Proje açılamadı: ${error.message}`); return; }
       finally { setLibraryBusy(false); }
