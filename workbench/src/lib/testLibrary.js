@@ -2,6 +2,18 @@ import { validateBoardProfile } from './boardProfile.js';
 
 export const LIBRARY_SCHEMA_VERSION = 1;
 
+// Templates are source code, not a saved wiring diagram or a successful run.
+export function catalogLibraryEntries(catalog) {
+  return (catalog?.tests || []).filter(test => test.status === 'ready' && test.sourcePath).map(test => ({
+    kind: 'template', id: `template:${test.id}`, name: test.name, note: test.description || '',
+    board: { name: 'Hazır test kodu', mcu: (test.supportedMcu || []).join(' · ') },
+    supportedMcu: test.supportedMcu || [],
+    component: { part: test.matchParts?.[0] || catalog.devices?.find(device => device.id === test.deviceId)?.matchParts?.[0] || test.deviceId,
+      ref: '', protocol: test.protocol },
+    test, pins: [], result: { status: 'NOT_RUN' },
+  }));
+}
+
 export function makeLibraryEntry({ name, note = '', profile, componentRef, test, history = [], author, sourceSha = null }) {
   const title = String(name || '').trim();
   if (title.length < 3 || title.length > 100) throw new Error('Kayıt adı 3–100 karakter olmalı.');

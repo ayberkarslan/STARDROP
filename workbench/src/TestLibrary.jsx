@@ -3,11 +3,13 @@ import { Minus, Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lu
 import { filterLibrary, SENSOR_GROUPS } from './lib/libraryFilters.js';
 import SelectMenu from './SelectMenu.jsx';
 import SensorFilter from './SensorFilter.jsx';
+import { catalogLibraryEntries } from './lib/testLibrary.js';
 
 const resultLabel = { PASS: 'Başarılı', FAIL: 'Başarısız', NOT_RUN: 'Henüz denenmedi' };
 const results = [{ value: 'all', label: 'Tüm sonuçlar' }, ...Object.entries(resultLabel).map(([value, label]) => ({ value, label }))];
 
-export default function TestLibrary({ entries, busy, error, refresh, publish, drafts = {}, documents = [], openEntry, sourceSha, startNewTest }) {
+export default function TestLibrary({ entries, catalog, busy, error, refresh, publish, drafts = {}, documents = [], openEntry, sourceSha, startNewTest }) {
+  const allEntries = useMemo(() => [...entries, ...catalogLibraryEntries(catalog)], [entries, catalog]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [name, setName] = useState('');
@@ -25,9 +27,9 @@ export default function TestLibrary({ entries, busy, error, refresh, publish, dr
   const profile = draft?.profile;
   const activeSensor = profile?.components.find(component => component.ref === draft?.activeComponent);
   const selectedTest = draft?.selectedTest;
-  const filtered = useMemo(() => filterLibrary(entries, { query, category, parts, result, mcu }), [entries, query, category, parts, result, mcu]);
+  const filtered = useMemo(() => filterLibrary(allEntries, { query, category, parts, result, mcu }), [allEntries, query, category, parts, result, mcu]);
   const selected = filtered.find(item => item.id === selectedId) || null;
-  const mcuOptions = [{ value: 'all', label: 'Tüm kartlar' }, ...[...new Set(entries.map(entry => entry.board.mcu))].sort().map(value => ({ value, label: value }))];
+  const mcuOptions = [{ value: 'all', label: 'Tüm kartlar' }, ...[...new Set(allEntries.flatMap(entry => entry.supportedMcu || [entry.board.mcu]))].sort().map(value => ({ value, label: value }))];
   const hasFilters = category !== 'all' || parts.length > 0 || result !== 'all' || mcu !== 'all';
   const clear = () => { setCategory('all'); setParts([]); setResult('all'); setMcu('all'); };
   const submit = async event => {
@@ -54,7 +56,7 @@ export default function TestLibrary({ entries, busy, error, refresh, publish, dr
       <div className="library-browse">
         <div className="library-count"><span>{filtered.length} kayıt</span>{selected && <button className="wizard-text-button" onClick={() => setSelectedId(null)}>Listeye dön</button>}</div>
         {selected ? <article className="library-detail library-record">
-          <div className="library-record-heading"><h2>{selected.name}</h2><span className={'library-result result-' + selected.result.status.toLowerCase()}>{resultLabel[selected.result.status]}</span></div>
+          <div className="library-record-heading"><h2>{selected.name}</h2><span className={'library-result result-' + selected.result.status.toLowerCase()}>{selected.kind === 'template' ? 'Kod hazır' : resultLabel[selected.result.status]}</span></div>
           {selected.note && <p className="library-record-note">{selected.note}</p>}
           <div className="library-facts">
             <div><small>Kart</small><strong>{selected.board.name}</strong><span>{selected.board.mcu}</span></div>
@@ -62,14 +64,14 @@ export default function TestLibrary({ entries, busy, error, refresh, publish, dr
             <div><small>Test kodu</small><strong>{selected.test.name}</strong><span>{selected.test.id || 'Kod bekleniyor'}</span></div>
             <div><small>Son deneme</small><span>{selected.result.at ? new Date(selected.result.at).toLocaleString('tr-TR') : 'Henüz denenmedi'}</span></div>
           </div>
-          <h3>Pinler</h3><div className="library-pins">{selected.pins.map(pin => <div key={pin.role}><span>{selected.component.ref} · {pin.role}</span><strong>{pin.mcuPin}</strong><small>{pin.peripheral}</small></div>)}</div>
-          <details className="library-record-meta"><summary>Kayıt bilgileri</summary><p className="library-meta">@{selected.author || 'ekip'} · {new Date(selected.publishedAt).toLocaleString('tr-TR')}<br/>Kaynak commit: {selected.test.sourceSha || 'hazır kod yok'}</p></details>
+          <h3>Pinler</h3>{selected.kind === 'template' ? <p>Kartını ve pinlerini Yeni Test adımlarında seç. Kod GitHub’dan indirilip bu ayarlarla derlenir.</p> : <div className="library-pins">{selected.pins.map(pin => <div key={pin.role}><span>{selected.component.ref} · {pin.role}</span><strong>{pin.mcuPin}</strong><small>{pin.peripheral}</small></div>)}</div>}
+          {selected.kind !== 'template' && <details className="library-record-meta"><summary>Kayıt bilgileri</summary><p className="library-meta">@{selected.author || 'ekip'} · {new Date(selected.publishedAt).toLocaleString('tr-TR')}<br/>Kaynak commit: {selected.test.sourceSha || 'hazır kod yok'}</p></details>}
           {selected.test.sourceSha && sourceSha && selected.test.sourceSha !== sourceSha && <p className="validation warn">Kod sürümü değişmiş. Pinleri ve kaynağı yeniden kontrol et.</p>}
           <button className="primary" onClick={() => openEntry(selected)}>YENİ TESTTE AÇ</button><small className="library-open-note">Yüklemeden önce hedef ve pinler yeniden onaylanır.</small>
         </article> : <div className="library-results">
           {filtered.map(entry => <button className="library-card" key={entry.id} onClick={() => setSelectedId(entry.id)}>
-            <span className="library-card-head"><strong>{entry.name}</strong><em className={'result-' + entry.result.status.toLowerCase()}>{resultLabel[entry.result.status]}</em></span>
-            <span>{entry.component.part} · {entry.test.name}</span><small>{entry.board.name} · {entry.board.mcu}</small><small>@{entry.author || 'ekip'} · {new Date(entry.publishedAt).toLocaleDateString('tr-TR')}</small>
+            <span className="library-card-head"><strong>{entry.name}</strong><em className={'result-' + entry.result.status.toLowerCase()}>{entry.kind === 'template' ? 'Kod hazır' : resultLabel[entry.result.status]}</em></span>
+            <span>{entry.component.part} · {entry.test.name}</span><small>{entry.board.name} · {entry.board.mcu}</small><small>{entry.kind === 'template' ? 'GitHub · kaynak kodu' : `@${entry.author || 'ekip'} · ${new Date(entry.publishedAt).toLocaleDateString('tr-TR')}`}</small>
           </button>)}
           {!busy && filtered.length === 0 && <div className="library-empty-state"><Search size={26}/><h3>{query || hasFilters ? 'Eşleşen kayıt yok' : 'Henüz kayıt yok'}</h3><p>{query || hasFilters ? 'Filtreleri değiştirerek tekrar ara.' : 'İlk test düzenini ekibinle paylaş.'}</p>{(query || hasFilters) && <button className="wizard-text-button" onClick={() => { clear(); setQuery(''); }}>Aramayı temizle</button>}</div>}
           {busy && !filtered.length && <p className="library-empty" role="status">Yükleniyor…</p>}
@@ -89,6 +91,6 @@ export default function TestLibrary({ entries, busy, error, refresh, publish, dr
         </form>
       </aside>
     </div>
-    {filterOpen && <SensorFilter entries={entries} category={category} parts={parts} onApply={(group, selectedParts) => { setCategory(group); setParts(selectedParts); setSelectedId(null); }} onClose={() => setFilterOpen(false)}/>}
+    {filterOpen && <SensorFilter entries={allEntries} category={category} parts={parts} onApply={(group, selectedParts) => { setCategory(group); setParts(selectedParts); setSelectedId(null); }} onClose={() => setFilterOpen(false)}/>}
   </div>;
 }

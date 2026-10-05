@@ -36,9 +36,20 @@ export async function fetchPrivateCatalog({ token, repository, ref = 'main' }) {
   return (await fetchCatalogDocument({ token, repository, ref })).catalog;
 }
 
+async function contentRoot({ token, owner, repo, ref }) {
+  try {
+    await api(`/repos/${owner}/${repo}/contents/stardrop?ref=${encodeURIComponent(ref)}`, { token });
+    return 'stardrop/';
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    return ''; // Existing repositories remain readable during migration.
+  }
+}
+
 export async function fetchCatalogDocument({ token, repository, ref = 'main' }) {
   const { owner, repo } = parseRepository(repository);
-  const response = await api(`/repos/${owner}/${repo}/contents/catalog/catalog.json?ref=${encodeURIComponent(ref)}`, { token });
+  const root = await contentRoot({ token, owner, repo, ref });
+  const response = await api(`/repos/${owner}/${repo}/contents/${root}catalog/catalog.json?ref=${encodeURIComponent(ref)}`, { token });
   const bytes = Uint8Array.from(atob(response.content.replace(/\n/g, '')), (character) => character.charCodeAt(0));
   return { catalog: JSON.parse(new TextDecoder().decode(bytes)), sha: response.sha };
 }
@@ -51,10 +62,11 @@ export async function catalogWritePermission({ token, repository }) {
 
 export async function saveCatalogDocument({ token, repository, ref = 'main', catalog, sha }) {
   const { owner, repo } = parseRepository(repository);
+  const root = await contentRoot({ token, owner, repo, ref });
   const bytes = new TextEncoder().encode(`${JSON.stringify(catalog, null, 2)}\n`);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return api(`/repos/${owner}/${repo}/contents/catalog/catalog.json`, {
+  return api(`/repos/${owner}/${repo}/contents/${root}catalog/catalog.json`, {
     token, method: 'PUT', body: { message: 'Update sensor diagnostic mappings', content: btoa(binary), sha, branch: ref },
   });
 }
@@ -74,9 +86,10 @@ function decodeContent(response) {
 
 export async function listLibraryEntries({ token, repository, ref = 'main' }) {
   const { owner, repo } = parseRepository(repository);
+  const root = await contentRoot({ token, owner, repo, ref });
   let files;
   try {
-    files = await api(`/repos/${owner}/${repo}/contents/library?ref=${encodeURIComponent(ref)}`, { token });
+    files = await api(`/repos/${owner}/${repo}/contents/${root}library?ref=${encodeURIComponent(ref)}`, { token });
   } catch (error) {
     if (error.status === 404) {
       await assertRepositoryBranch({ token, owner, repo, ref });
@@ -94,8 +107,9 @@ export async function listLibraryEntries({ token, repository, ref = 'main' }) {
 export async function publishLibraryEntry({ token, repository, ref = 'main', entry }) {
   const { owner, repo } = parseRepository(repository);
   if (!/^[0-9a-f-]{36}$/i.test(entry?.id || '')) throw new Error('Kütüphane kayıt kimliği geçersiz.');
+  const root = await contentRoot({ token, owner, repo, ref });
   try {
-    return await api(`/repos/${owner}/${repo}/contents/library/${entry.id}.json`, {
+    return await api(`/repos/${owner}/${repo}/contents/${root}library/${entry.id}.json`, {
       token, method: 'PUT', body: { message: `Add test setup: ${entry.name.slice(0, 70)}`, content: encodeContent(entry), branch: ref },
     });
   } catch (error) {

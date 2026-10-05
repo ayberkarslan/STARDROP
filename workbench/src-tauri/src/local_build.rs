@@ -111,13 +111,16 @@ fn archive_file(archive: &mut zip::ZipArchive<Cursor<Vec<u8>>>, path: &str) -> R
 
 fn extract_code_archive(bytes: Vec<u8>, root: &Path, destination: &Path) -> Result<(), String> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| error.to_string())?;
-    let catalog_bytes = archive_file(&mut archive, "catalog/catalog.json")?;
+    let prefix = if (0..archive.len()).any(|index| archive.by_index(index).map(|entry|
+        entry.name().split_once('/').map(|(_, relative)| relative == "stardrop/catalog/catalog.json").unwrap_or(false)
+    ).unwrap_or(false)) { "stardrop/" } else { "" };
+    let catalog_bytes = archive_file(&mut archive, &format!("{prefix}catalog/catalog.json"))?;
     let catalog: CodeCatalog = serde_json::from_slice(&catalog_bytes).map_err(|_| "Test kataloğu geçersiz")?;
     catalog.validate()?;
     let mut needed = std::collections::HashSet::from(["catalog/catalog.json".to_string()]);
     let mut include_dirs = Vec::new();
     for test in catalog.tests.iter().filter(|test| test.status == "ready") {
-        let manifest_bytes = archive_file(&mut archive, &test.source_path)?;
+        let manifest_bytes = archive_file(&mut archive, &format!("{prefix}{}", test.source_path))?;
         let manifest: ProjectManifest = serde_json::from_slice(&manifest_bytes).map_err(|_| "Proje manifesti geçersiz")?;
         let base = Path::new(&test.source_path).parent().unwrap_or(Path::new(""));
         needed.insert(test.source_path.clone());
@@ -135,6 +138,7 @@ fn extract_code_archive(bytes: Vec<u8>, root: &Path, destination: &Path) -> Resu
         let mut entry = archive.by_index(index).map_err(|error| error.to_string())?;
         if !entry.is_file() { continue; }
         let Some((_, relative)) = entry.name().split_once('/') else { continue; };
+        let Some(relative) = relative.strip_prefix(prefix) else { continue; };
         let relative = relative.to_string();
         if !safe_relative(&relative) { continue; }
         let include = include_dirs.iter().any(|dir| relative.starts_with(&format!("{dir}/")));

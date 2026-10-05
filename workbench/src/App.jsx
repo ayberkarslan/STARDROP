@@ -417,7 +417,13 @@ export default function App() {
     try {
       const token = await validRepoToken();
       if (!token) throw new Error('GitHub oturumu veya depo anahtarı gerekli.');
-      const entries = await listLibraryEntries({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' });
+      const [entries, remote] = await Promise.all([
+        listLibraryEntries({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' }),
+        fetchCatalogDocument({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main' }),
+      ]);
+      const validation = validateTestCatalog(remote.catalog);
+      if (!validation.valid) throw new Error(validation.errors.join('; '));
+      setCatalog(remote.catalog); setCatalogSha(remote.sha);
       setLibraryEntries(entries.filter(validateLibraryEntry).sort((a, b) => b.publishedAt.localeCompare(a.publishedAt)));
     } catch (error) { setLibraryError(`Test kütüphanesi okunamadı: ${error.message}`); }
     finally { setLibraryBusy(false); }
@@ -444,6 +450,14 @@ export default function App() {
   };
 
   const openLibraryEntry = (entry) => {
+    if (entry.kind === 'template') {
+      const test = catalog.tests.find(item => item.id === entry.test.id && item.status === 'ready');
+      if (!test) { setLibraryError('Test kodu artık katalogda hazır değil. Listeyi yenile.'); return; }
+      workspace.open('workbench', { fresh: true, data: { testId: test.id, catalogPreset: {
+        part: entry.component.part, protocol: test.protocol, supportedMcu: test.supportedMcu,
+      } } });
+      return;
+    }
     if (!validateLibraryEntry(entry) || !validateBoardProfile(entry.profile).valid) {
       setLibraryError('Kayıt profili geçersiz; güvenle açılamıyor.'); return;
     }
@@ -472,7 +486,7 @@ export default function App() {
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
       {mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
-        mode === 'library' ? <TestLibrary entries={libraryEntries} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
+        mode === 'library' ? <TestLibrary entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
           drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
           startNewTest={() => workspace.open('workbench', { fresh: true })}/> :
         mode === 'admin' ? (catalogAdmin ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : <p className="workspace">Bu ekran için yönetim yetkisi gerekli.</p>) :
