@@ -39,6 +39,18 @@ const char* DISCOVERY_REQUEST = "STARDROP_DISCOVER_V1";
 #ifndef ONBOARD_LED_PIN
 #define ONBOARD_LED_PIN   2
 #endif
+
+static bool statusLedOn = false;
+
+void setStatusLed(bool on) {
+    statusLedOn = on;
+#if defined(ONBOARD_LED_RGB) && ONBOARD_LED_RGB
+    // Adreslenebilir RGB LED, digitalWrite ile kapatılamaz.
+    neopixelWrite(ONBOARD_LED_PIN, 0, 0, on ? 12 : 0);
+#else
+    digitalWrite(ONBOARD_LED_PIN, on ? HIGH : LOW);
+#endif
+}
 #define FLASH_START_ADDR  0x08000000
 #define DIAGNOSTIC_REPORT_ADDR 0x20000100UL
 #define DIAGNOSTIC_REPORT_SIZE 128U
@@ -254,12 +266,12 @@ void initNetworkSubsystem() {
         unsigned long start = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - start < 4000) {
             delay(100);
-            digitalWrite(ONBOARD_LED_PIN, !digitalRead(ONBOARD_LED_PIN));
+            setStatusLed(!statusLedOn);
         }
 
         if (WiFi.status() == WL_CONNECTED) {
             staConnected = true;
-            digitalWrite(ONBOARD_LED_PIN, LOW); // Sabit Açık
+            setStatusLed(false);
             Serial.printf("BAĞLANDI!\n[WI-FI] Yerel IP: %s\n", WiFi.localIP().toString().c_str());
 
             MDNS.end();
@@ -914,7 +926,7 @@ void setup() {
     Serial.println("==============================================");
 
     pinMode(ONBOARD_LED_PIN, OUTPUT);
-    digitalWrite(ONBOARD_LED_PIN, LOW);
+    setStatusLed(false);
 
     if (STM32_RST_PIN >= 0) {
         pinMode(STM32_RST_PIN, OUTPUT);
