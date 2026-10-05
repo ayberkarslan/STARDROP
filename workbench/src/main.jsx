@@ -9,5 +9,6 @@ import './premium-black.css';
 import './notification-center.css';
 import './workspace-tabs.css';
 import './popup.css';
+import './workspace-interactions.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><WindowChrome /><App /></React.StrictMode>);
