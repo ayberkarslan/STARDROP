@@ -555,6 +555,11 @@ void handleProgrammerStatus() {
     json += "\"speedMode\":\"" + String(configuredSpeedModeName()) + "\",";
     json += "\"verifyRequired\":true,";
     json += "\"maintenanceAvailable\":true,";
+    json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
+    json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
+    json += "\"psramBytes\":" + String(ESP.getPsramSize()) + ",";
+    json += "\"freeHeapBytes\":" + String(ESP.getFreeHeap()) + ",";
+    json += "\"cpuMhz\":" + String(ESP.getCpuFreqMHz()) + ",";
     json += "\"swclkPin\":" + String(SWD_CLK_PIN) + ",";
     json += "\"swdioPin\":" + String(SWD_DIO_PIN) + ",";
     json += "\"resetAvailable\":" + String(STM32_RST_PIN >= 0 ? "true" : "false") + ",";
@@ -1007,6 +1012,14 @@ void setup() {
     server.on("/api/wifi/remove", HTTP_POST, handleWifiRemove);
     server.on("/api/programmer/status", HTTP_GET, handleProgrammerStatus);
     server.on("/api/programmer/settings", HTTP_POST, handleProgrammerSettings);
+    server.on("/api/programmer/restart", HTTP_POST, []() {
+        if (server.arg("plain").indexOf("\"confirmation\":\"ESP RESET\"") < 0) {
+            server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"ESP reset onayı gerekli\"}"); return;
+        }
+        server.send(200, "application/json", "{\"status\":\"ok\"}");
+        delay(250);
+        ESP.restart();
+    });
     server.on("/api/target/status", HTTP_GET, handleTargetStatus);
     server.on("/api/target/label", HTTP_POST, handleTargetLabel);
     server.on("/api/target/maintenance", HTTP_POST, handleTargetMaintenance);

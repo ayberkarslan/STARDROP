@@ -44,7 +44,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
 
   useEffect(() => { if (drawer === 'settings' && base) loadSettings(); }, [drawer, base]);
   useEffect(() => { if (devicesOnly && base) loadSettings(); }, [devicesOnly, base]);
-  useEffect(() => { setLabel(target?.label || ''); setUsage(null); setUsageError(''); }, [target?.uid]);
+  useEffect(() => { setLabel(target?.label || ''); setUsage(null); setUsageError(''); }, [target?.uid, target?.label, base]);
   useEffect(() => { if (flashBusy) { setUsage(null); setUsageError(''); } }, [flashBusy]);
   useEffect(() => { if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight; }, [flashLog]);
 
@@ -101,14 +101,18 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     setBusy(true);
     try {
       await hardware.run(documentId, 'STM32 bakım', async () => {
+        if (operation === 'esp-reset') {
+          await espJson(base, '/api/programmer/restart', { method: 'POST', body: { confirmation: 'ESP RESET' } });
+          return;
+        }
         const live = await espJson(base, '/api/target/status');
         if (!live.connected || live.uid !== uid) throw new Error('Hedef değişti; işlem yapılmadı.');
         await espJson(base, '/api/target/maintenance', { method: 'POST', timeoutMs: 120000,
           body: { operation, uid, confirmation } });
       });
       setUsage(null); setMaintenance(null); setConfirmation('');
-      setNotice(operation === 'erase' ? 'Flash silindi ve boş olduğu doğrulandı. Yeni kod yükle.' : 'STM32 yeniden başlatıldı.');
-      await refreshTarget();
+      setNotice(operation === 'erase' ? 'Flash silindi ve boş olduğu doğrulandı. Yeni kod yükle.' : operation === 'esp-reset' ? 'ESP32 yeniden başlatılıyor; ağ bağlantısının dönmesini bekle.' : 'STM32 yeniden başlatıldı.');
+      if (operation !== 'esp-reset') await refreshTarget();
     } catch (error) { setNotice(`Bakım başarısız: ${error.message}`); }
     finally { setBusy(false); }
   };
@@ -160,12 +164,16 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     <div className="device-page-heading"><h2>Cihazlar</h2><button className="secondary" disabled={deviceBusy || busy} onClick={() => { loadSettings(); refreshTarget(); }}><RefreshCw size={15}/>Yenile</button></div>
     <div className="device-chain"><section><small>PROGRAMLAYICI</small><h3>ESP32</h3><span>{esp?.status === 'online' ? 'Bağlı' : 'Çevrimdışı'}</span><code>{base || 'Adres bekleniyor'}</code></section><span className="device-chain-link">SWD →</span><section><small>HEDEF</small><h3>{target?.label || target?.model || 'STM32 bekleniyor'}</h3><span>{target?.connected ? target.model : 'Bağlı değil'}</span><code>{target?.uid || 'UID bekleniyor'}</code></section></div>
     <div className="device-columns"><section className="device-section"><h3>ESP32</h3>
+      <div className="detail-row"><span>Model</span><strong>{programmer?.chipModel || '—'}</strong></div>
+      <div className="detail-row"><span>Flash / PSRAM</span><strong>{programmer ? `${kb(programmer.flashBytes || 0)} / ${kb(programmer.psramBytes || 0)}` : '—'}</strong></div>
+      <div className="detail-row"><span>Boş heap / CPU</span><strong>{programmer ? `${kb(programmer.freeHeapBytes || 0)} / ${programmer.cpuMhz || '—'} MHz` : '—'}</strong></div>
       <div className="detail-row"><span>Ağ</span><strong>{wifi?.ssid || '—'}</strong></div>
       <div className="detail-row"><span>Sinyal</span><strong>{wifi?.rssi ?? '—'} dBm</strong></div>
       <div className="detail-row"><span>SWCLK / SWDIO</span><code>{programmer?.swclkPin ?? '—'} / {programmer?.swdioPin ?? '—'}</code></div>
       <div className="detail-row"><span>Reset bağlantısı</span><strong>{programmer ? programmer.resetAvailable ? 'Destekleniyor' : 'Yok' : '—'}</strong></div>
       <div className="detail-row"><span>Son işlem</span><strong>{programmer?.lastResult || '—'}</strong></div>
       <button className="secondary" onClick={() => setDrawer('settings')}>ESP ayarları</button>
+      <button className="secondary" disabled={deviceBusy || busy || !programmer?.maintenanceAvailable} onClick={() => setMaintenance('esp-reset')}>ESP32 yeniden başlat</button>
     </section><section className="device-section"><h3>STM32</h3>{target?.connected ? renderTargetBody() : <p>ESP32’ye bağlı hedef bulunamadı. SWD bağlantılarını kontrol et.</p>}
       <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
         {!programmer?.maintenanceAvailable && <p>Bakım işlemleri için ESP firmware’ini güncelle.</p>}
@@ -174,7 +182,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       </details>
     </section></div>
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel="ESP32 ayarları" onClose={() => setDrawer(null)}><div className="drawer-title"><h2>ESP32 ayarları</h2><button onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>{renderSettingsBody()}</Popup>}
-    {maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}><h2>{maintenance === 'erase' ? 'Flash silinecek' : maintenance === 'recover' ? 'Kurtarma denemesi' : 'STM32 yeniden başlatılacak'}</h2><p>{target?.label || target?.model} · {target?.uid}</p><p>{maintenance === 'erase' ? 'Program ve tüm flash verileri kalıcı olarak silinir. Sonrasında yeniden kod yüklemelisin.' : 'Çalışan test kesilir ve geçici RAM durumu kaybolur. Flash programı korunur.'}</p>{maintenance === 'erase' && <label>Onay için FLASH SIL yaz<input value={confirmation} onChange={event => setConfirmation(event.target.value)}/></label>}<div className="device-action-row"><button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>Vazgeç</button><button className="primary" disabled={busy || deviceBusy || (maintenance === 'erase' && confirmation !== 'FLASH SIL')} onClick={runMaintenance}>{busy ? 'İşlem sürüyor…' : 'ONAYLA'}</button></div></Popup>}
+    {maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}><h2>{maintenance === 'erase' ? 'Flash silinecek' : maintenance === 'recover' ? 'Kurtarma denemesi' : maintenance === 'esp-reset' ? 'ESP32 yeniden başlatılacak' : 'STM32 yeniden başlatılacak'}</h2><p>{maintenance === 'esp-reset' ? base : (target?.label || target?.model) + ' · ' + target?.uid}</p><p>{maintenance === 'erase' ? 'Program ve tüm flash verileri kalıcı olarak silinir. Sonrasında yeniden kod yüklemelisin.' : maintenance === 'esp-reset' ? 'ESP32 ağ bağlantısı geçici kesilir. Kayıtlı ağlar ve ayarlar korunur; STM32 flash’ı değiştirilmez.' : 'Çalışan test kesilir ve geçici RAM durumu kaybolur. Flash programı korunur.'}</p>{maintenance === 'erase' && <label>Onay için FLASH SIL yaz<input value={confirmation} onChange={event => setConfirmation(event.target.value)}/></label>}<div className="device-action-row"><button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>Vazgeç</button><button className="primary" disabled={busy || deviceBusy || (maintenance === 'erase' && confirmation !== 'FLASH SIL')} onClick={runMaintenance}>{busy ? 'İşlem sürüyor…' : 'ONAYLA'}</button></div></Popup>}
   </div>;
 
   return <main className="flash-workspace">

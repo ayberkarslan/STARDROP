@@ -146,7 +146,7 @@ const ESP_GET_PATHS: &[&str] = &[
 ];
 const ESP_POST_PATHS: &[&str] = &[
     "/api/wifi/switch", "/api/wifi/add", "/api/wifi/remove",
-    "/api/programmer/settings", "/api/target/label", "/api/target/maintenance",
+    "/api/programmer/settings", "/api/programmer/restart", "/api/target/label", "/api/target/maintenance",
 ];
 
 fn esp_url(base: &str, path: &str) -> Result<reqwest::Url, String> {
@@ -162,7 +162,8 @@ fn esp_url(base: &str, path: &str) -> Result<reqwest::Url, String> {
 #[tauri::command]
 async fn esp_http(base: String, path: String, method: String, body: Option<String>, timeout_ms: Option<u64>) -> Result<String, String> {
     let url = esp_url(&base, &path)?;
-    let client = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms.unwrap_or(10000).clamp(1000, 30000)))
+    let maximum_timeout = if path == "/api/target/maintenance" { 180000 } else { 30000 };
+    let client = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms.unwrap_or(10000).clamp(1000, maximum_timeout)))
         .build().map_err(|error| error.to_string())?;
     let request = match method.as_str() {
         "GET" if ESP_GET_PATHS.contains(&path.as_str()) => client.get(url),
