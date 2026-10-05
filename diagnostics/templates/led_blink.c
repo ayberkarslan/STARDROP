@@ -17,6 +17,8 @@ int diagnostic_run(diagnostic_result_t *result) {
 
 void diagnostic_idle(void) {
     const uint32_t base = GPIO_BASE(STARDROP_LED_PORT);
-    REG32(base + 0x14UL) ^= 1UL << STARDROP_LED_PIN;
-    delay_ms(STARDROP_BLINK_MS);
+    REG32(base + 0x18UL) = 1UL << (STARDROP_LED_PIN + (STARDROP_LED_ACTIVE_LOW ? 16U : 0U));
+    delay_ms(STARDROP_LED_ON_MS);
+    REG32(base + 0x18UL) = 1UL << (STARDROP_LED_PIN + (STARDROP_LED_ACTIVE_LOW ? 0U : 16U));
+    delay_ms(STARDROP_LED_OFF_MS);
 }

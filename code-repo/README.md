@@ -28,12 +28,12 @@ Sürücülerin lisanslarını ve kaynak başlıklarını koru.
 2. Yeni Test → manuel kart → `STM32F446RET6` → `LED / GPIO`.
 3. GPIO'yu seç. Nucleo'nun dahili LD2 LED'i **PA5, aktif yüksek**;
    başka GPIO için dirençli harici LED bağlantısı gerekir.
-4. LED yönünü ve geçiş aralığını (50–5000 ms) ayarla.
+4. LED yönünü, yanma süresini ve sönük kalma süresini ayrı ayrı ayarla (0,05–60 saniye).
 5. `LED Blink · F446RE` testini seç, pinleri onayla ve bağlı hedefi eşleştir.
 6. Derle ve STM32'ye yükle. Kod yerelde derlenir; GitHub Actions gerekmez.
 
-Süre her durumun bekleme süresidir: 100 ms seçimi 100 ms açık + 100 ms
-kapalı, yani 200 ms tam çevrim verir. LED sonucunu kullanıcı gözle onaylar;
+Örneğin 1 saniye açık + 2 saniye kapalı, 3 saniyelik tam çevrim verir.
+LED sonucunu kullanıcı gözle onaylar;
 başarılı flash işlemi otomatik olarak LED testi başarılı sayılmaz.
 
 ## Pin sözleşmesi
@@ -47,6 +47,8 @@ Firmware pinleri `Inc/pin_configurations.h` üzerinden kullanır:
 #define STARDROP_LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIOA_CLK_ENABLE()
 #define STARDROP_LED_ACTIVE_LOW 0
 #define STARDROP_LED_BLINK_MS 100
+#define STARDROP_LED_ON_MS 1000
+#define STARDROP_LED_OFF_MS 2000
 #define STARDROP_LED_SERIAL_ENABLED 0
 ```
 
@@ -57,3 +59,13 @@ F401 kaynakları F446 isteğiyle derlenemez. PA13/PA14 SWD için ayrılmıştır
 
 Yeni testte aynı klasör/manifest/pin-rol düzenini kullan. Sensör kodu ve
 başarı ölçütü hazır olmadan `ready` yapma; BHI360 hâlâ `planned`.
+
+## Ekiple proje paylaşma
+
+Yükleme adımındaki “Projeyi ekiple paylaş” çalışma seçimini kütüphaneye taşır.
+Kayıt adı ve isteğe bağlı not dışında bilgi dosyası elle yazılmaz. Tek GitHub
+commit'inde `library/<id>.json`, `library/projects/<id>/project.stardrop` ve
+otomatik `README.md` eklenir. Proje pin/süre ayarlarını, kart dosyalarını ve
+test geçmişini içerir; kaynak kodu katalogdaki test ve commit ile eşleşir.
+API anahtarları ve fiziksel hedef UID'si paylaşılmaz. Yeniden açılan proje
+canlı hedefle eşleştirilmeden ve pinler onaylanmadan yüklenemez.

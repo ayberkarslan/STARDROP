@@ -385,6 +385,8 @@ fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRe
     let (port, number, interval, active_low, target) = validate_led_request(&request)?;
     let header = format!("#pragma once\n#define STARDROP_SCL_PORT 0\n#define STARDROP_SCL_PIN 0\n#define STARDROP_SDA_PORT 0\n#define STARDROP_SDA_PIN 0\n#define STARDROP_LED_PORT {port}\n#define STARDROP_LED_PIN {number}\n#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_BLINK_MS {interval}\n#define STARDROP_VISUAL_TEST 1\n#define STARDROP_USE_I2C 0\n#define STARDROP_F401 {}\n#define STARDROP_TEST_ID_HASH {}\n#define STARDROP_PROFILE_HASH {}\n#define STARDROP_RUN_HASH {}\n", active_low as u8, (target == "stm32f401cc") as u8, hash32(b"led-blink"), hash32(request.profile_json.as_bytes()), hash32(request.request_id.as_bytes()));
     let work = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let (on, off) = led_timing(&request.profile_json, &request.component_ref)?;
+    let header = format!("{header}#define STARDROP_LED_ON_MS {on}\n#define STARDROP_LED_OFF_MS {off}\n");
     fs::write(work.path().join("generated_config.h"), &header).map_err(|error| error.to_string())?;
     let elf = work.path().join("led.elf");
     let bin = work.path().join("led.bin");
@@ -532,6 +534,8 @@ struct ProjectManifest {
     defines: Vec<String>,
     include_dirs: Vec<String>,
     sources: Vec<String>,
+    #[serde(default)]
+    capabilities: Vec<String>,
 }
 
 fn safe_relative(value: &str) -> bool {
@@ -622,6 +626,15 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
     }
     let manifest: ProjectManifest = serde_json::from_slice(&fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?)
         .map_err(|error| format!("Proje manifesti geçersiz: {error}"))?;
+    let profile: serde_json::Value = serde_json::from_str(&request.profile_json).map_err(|_| "Profil geçersiz")?;
+    let is_led = profile["components"].as_array().map(|items| items.iter().any(|component|
+        component["ref"] == request.component_ref && component["part"] == "LED")).unwrap_or(false);
+    if is_led {
+        let (on, off) = led_timing(&request.profile_json, &request.component_ref)?;
+        if on != off && !manifest.capabilities.iter().any(|capability| capability == "led-on-off-v1") {
+            return Err("Bu kaynak ayrı LED sürelerini desteklemiyor. GitHub'daki yeni kaynak sürümünü indir ve etkinleştir.".into());
+        }
+    }
     if manifest.schema_version != 1 || manifest.target != expected_target || manifest.cpu != "cortex-m4"
         || manifest.fpu != "fpv4-sp-d16" || manifest.float_abi != "hard"
         || !manifest.defines.iter().any(|item| item == expected_target)
@@ -902,6 +915,14 @@ mod tests {
         assert!(compile_code_test_at(&source, &gcc, &objcopy, make_request("PA5", 49, false), "test-sha".into()).is_err());
         assert!(compile_code_test_at(&source, &gcc, &objcopy, make_request("PA5", 5001, false), "test-sha".into()).is_err());
         assert_eq!(original_header, fs::read(repo.join("tests/led-blink-f446/Inc/pin_configurations.h")).unwrap());
+        let mut asymmetric = make_request("PA5", 100, false);
+        let mut profile: serde_json::Value = serde_json::from_str(&asymmetric.profile_json).unwrap();
+        profile["components"][0]["onMs"] = serde_json::json!(1000);
+        profile["components"][0]["offMs"] = serde_json::json!(2000);
+        asymmetric.profile_json = profile.to_string();
+        let built = compile_code_test_at(&source, &gcc, &objcopy, asymmetric, "test-sha".into()).unwrap();
+        assert!(built.header.contains("STARDROP_LED_ON_MS 1000"));
+        assert!(built.header.contains("STARDROP_LED_OFF_MS 2000"));
         assert!(code_source_valid(&source));
     }
 

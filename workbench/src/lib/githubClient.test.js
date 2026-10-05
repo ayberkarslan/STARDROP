@@ -38,6 +38,38 @@ test('authentication errors never fall back to an old repository layout', async 
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test('project publication adds archive, readme and index in a single non-force commit', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  try {
+    globalThis.fetch = async (url, options) => {
+      requests.push({ url, options });
+      const body = url.includes('/contents/stardrop?') ? []
+        : url.endsWith('/git/ref/heads/main') ? { object: { sha: 'parent' } }
+          : url.endsWith('/git/commits/parent') ? { tree: { sha: 'base-tree' } }
+            : { sha: 'new-object' };
+      return new Response(JSON.stringify(body), { status: 200 });
+    };
+    await publishLibraryEntry({ token: 'fake', repository: 'team/tests', entry: {
+      id: '123e4567-e89b-12d3-a456-426614174000', name: 'LED' },
+      project: new Blob(['test-archive']), readme: '# LED' });
+    const tree = JSON.parse(requests.find(request => request.url.endsWith('/git/trees')).options.body);
+    assert.equal(tree.base_tree, 'base-tree');
+    assert.equal(tree.tree.length, 3);
+    assert.ok(tree.tree.every(file => file.path.startsWith('stardrop/library/')));
+    assert.ok(tree.tree.some(file => file.path.endsWith('/project.stardrop')));
+    assert.equal(JSON.parse(requests.at(-1).options.body).force, false);
+    assert.equal(requests.at(-1).options.method, 'PATCH');
+    globalThis.fetch = async (url, options) => {
+      if (options.method === 'PATCH') return new Response('{"message":"Conflict"}', { status: 409 });
+      return new Response(JSON.stringify(url.endsWith('/git/ref/heads/main') ? { object: { sha: 'parent' } }
+        : url.endsWith('/git/commits/parent') ? { tree: { sha: 'base' } } : { sha: 'new' }), { status: 200 });
+    };
+    await assert.rejects(publishLibraryEntry({ token: 'fake', repository: 'team/tests',
+      entry: { id: '123e4567-e89b-12d3-a456-426614174000', name: 'LED' }, project: new Blob(['test']), readme: '# LED' }), /409/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('diagnostics repository parser accepts owner/repo only', () => {
   assert.deepEqual(parseRepository('YRT/stardrop-diagnostics'), { owner: 'YRT', repo: 'stardrop-diagnostics' });
   assert.throws(() => parseRepository('https://github.com/YRT/repo'));

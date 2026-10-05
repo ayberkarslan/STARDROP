@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "capabilities": ["led-on-off-v1"],
   "target": "STM32F401xC",
   "linkerScript": "STM32F401xx_FLASH.ld",
   "cpu": "cortex-m4",

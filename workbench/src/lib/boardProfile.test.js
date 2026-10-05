@@ -135,3 +135,11 @@ test('test-specific I2C roles keep SCL and SDA on one bus even with IRQ present'
   profile.connections[1].peripheral = 'I2C1';
   assert.match(validateTestTarget(profile, 'U2', ['SCL', 'SDA', 'INT']).errors.join(' '), /aynı I2C bus/);
 });
+test('manual components receive unique references without modifying parsed references', () => {
+  let profile = createManualLedProfile({ name: 'test', mcuPart: 'STM32F446RET6', pin: 'PA5' });
+  profile = addManualPeripheral(profile, { part: 'LED', protocol: 'GPIO', pins: { LED: 'PB0' } });
+  assert.deepEqual(profile.components.map(component => component.ref), ['D1', 'D2']);
+  assert.equal(profile.connections.at(-1).componentRef, 'D2');
+  profile = addManualPeripheral(profile, { part: 'BHI360', protocol: 'I2C', pins: { SCL: 'PB6', SDA: 'PB7' } });
+  assert.equal(profile.components.at(-1).ref, 'U1');
+});

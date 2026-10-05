@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createManualLedProfile } from './boardProfile.js';
-import { catalogLibraryEntries, makeLibraryEntry, searchLibrary, validateLibraryEntry } from './testLibrary.js';
+import { catalogLibraryEntries, libraryReadme, makeLibraryEntry, searchLibrary, validateLibraryEntry } from './testLibrary.js';
 import { filterLibrary } from './libraryFilters.js';
 import catalog from '../../../code-repo/catalog/catalog.json' with { type: 'json' };
 
@@ -36,4 +36,16 @@ test('library entry generates detailed searchable information without target UID
   assert.equal(planned.test.status, 'planned');
   assert.equal(planned.result.status, 'NOT_RUN');
   assert.throws(() => makeLibraryEntry({ name: 'x', profile, componentRef: 'D1', test: selectedTest }));
+});
+
+test('shared project retains board alias, notes and asymmetric LED timing', () => {
+  const profile = createManualLedProfile({ name: 'Breadboard', mcuPart: 'STM32F446RET6', pin: 'PA5' });
+  profile.targetLabel = 'Telemetri kartı';
+  profile.connections[0].approved = true;
+  profile.components[0].onMs = 1000; profile.components[0].offMs = 2000;
+  const entry = makeLibraryEntry({ name: 'LED kontrolü', note: '3.3 V besleme', profile, componentRef: 'D1' });
+  assert.equal(entry.board.name, 'Telemetri kartı');
+  assert.equal(entry.profile.components[0].offMs, 2000);
+  assert.match(libraryReadme(entry), /1000 ms açık \/ 2000 ms kapalı/);
+  assert.match(libraryReadme(entry), /3.3 V besleme/);
 });

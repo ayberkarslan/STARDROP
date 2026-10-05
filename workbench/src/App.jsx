@@ -438,7 +438,8 @@ export default function App() {
     libraryPublishLock.current = true;
     setLibraryBusy(true); setLibraryError('');
     try {
-      const entry = makeLibraryEntry({ name, note, profile: draft.profile, componentRef: draft.activeComponent,
+      const entry = makeLibraryEntry({ name, note, profile: { ...draft.profile,
+        targetLabel: draft.profile.targetUid === target?.uid ? target.label || draft.profile.targetLabel : draft.profile.targetLabel }, componentRef: draft.activeComponent,
         test: draft.selectedTest, history: draft.testHistory, author: githubUser?.login, sourceSha: sourceStatus?.activeSha });
       entry.projectArchive = true;
       const token = await validRepoToken();
