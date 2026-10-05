@@ -803,6 +803,73 @@ mod tests {
         assert_eq!(remote.source_sha, "remote-commit");
     }
 
+    fn archive_test_tree(base: &Path, dir: &Path, zip: &mut zip::ZipWriter<Cursor<Vec<u8>>>) {
+        use std::io::Write;
+        for item in fs::read_dir(dir).unwrap() {
+            let path = item.unwrap().path();
+            if path.is_dir() { archive_test_tree(base, &path, zip); }
+            else {
+                let relative = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+                zip.start_file(format!("github-commit/{relative}"), zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(&fs::read(path).unwrap()).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn archived_hal_catalog_builds_f446_pin_timing_and_polarity_variants() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../code-repo");
+        let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("toolchain/bin/arm-none-eabi-gcc");
+        let gcc = if bundled.is_file() { bundled } else { PathBuf::from("/usr/bin/arm-none-eabi-gcc") };
+        let objcopy = gcc.with_file_name("arm-none-eabi-objcopy");
+        let original_header = fs::read(repo.join("tests/led-blink-f446/Inc/pin_configurations.h")).unwrap();
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive_test_tree(&repo, &repo, &mut zip);
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        extract_code_archive(zip.finish().unwrap().into_inner(), root.path(), &source).unwrap();
+        assert!(code_source_valid(&source));
+        assert!(source.join("tests/led-blink-f446/Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f446xx.h").is_file());
+        assert!(!source.join("tests/led-blink-f446/build").exists());
+        let make_request = |pin: &str, interval: u64, active_low: bool| {
+            let mut led = fixture(interval);
+            led.mcu_part = "STM32F446RET6".into();
+            let mut profile: serde_json::Value = serde_json::from_str(&led.profile_json).unwrap();
+            profile["mcu"]["part"] = serde_json::json!(led.mcu_part);
+            profile["connections"][0]["mcuPin"] = serde_json::json!(pin);
+            profile["components"][0]["activeLow"] = serde_json::json!(active_low);
+            CodeBuildRequest { repository: String::new(), test_id: "led-blink-f446".into(),
+                profile_json: profile.to_string(), component_ref: led.component_ref,
+                request_id: led.request_id, mcu_part: led.mcu_part, target_uid: led.target_uid }
+        };
+        let mut hashes = std::collections::HashSet::new();
+        for (pin, interval, active_low) in [("PA5", 100, false), ("PA5", 1000, false),
+            ("PB0", 100, false), ("PD2", 100, false), ("PA5", 100, true)] {
+            let result = compile_code_test_at(&source, &gcc, &objcopy, make_request(pin, interval, active_low), "test-sha".into()).unwrap();
+            assert!(result.header.contains(&format!("STARDROP_LED_BLINK_MS {interval}")));
+            assert!(result.header.contains(&format!("STARDROP_LED_ACTIVE_LOW {}", active_low as u8)));
+            assert!(result.bytes.len() > 64 && result.bytes.len() < 512 * 1024);
+            let stack = u32::from_le_bytes(result.bytes[..4].try_into().unwrap());
+            let reset = u32::from_le_bytes(result.bytes[4..8].try_into().unwrap());
+            assert_eq!(stack, 0x20020000);
+            assert!(reset & 1 == 1 && (0x08000000..0x08080000).contains(&(reset & !1)));
+            assert!(hashes.insert(result.sha256), "pin/süre/yön değişimi BIN'e yansımadı");
+        }
+        let led = fixture(100);
+        let f401 = CodeBuildRequest { repository: String::new(), test_id: "led-blink".into(),
+            profile_json: led.profile_json, component_ref: led.component_ref, request_id: led.request_id,
+            mcu_part: led.mcu_part, target_uid: led.target_uid };
+        assert!(compile_code_test_at(&source, &gcc, &objcopy, f401, "test-sha".into()).is_ok());
+        for pin in ["PA13", "PA14", "PB11", "PD3"] {
+            assert!(compile_code_test_at(&source, &gcc, &objcopy, make_request(pin, 100, false), "test-sha".into()).is_err());
+        }
+        let mut wrong_target = make_request("PA5", 100, false);
+        wrong_target.test_id = "led-blink".into();
+        assert!(compile_code_test_at(&source, &gcc, &objcopy, wrong_target, "test-sha".into()).is_err());
+        assert_eq!(original_header, fs::read(repo.join("tests/led-blink-f446/Inc/pin_configurations.h")).unwrap());
+        assert!(code_source_valid(&source));
+    }
+
     #[test]
     fn code_catalog_requires_supported_build_and_safe_manifest_path() {
         let raw = include_str!("../../../code-repo/catalog/catalog.json");

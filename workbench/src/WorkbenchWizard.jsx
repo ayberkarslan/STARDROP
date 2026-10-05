@@ -76,7 +76,8 @@ export default function WorkbenchWizard({ profile, setProfile, sources, catalog,
   };
   const addComponent = () => {
     try {
-      const created = addManualPeripheral(profile, { part, protocol, ref, pins });
+      const created = addManualPeripheral(profile, { part, protocol, ref, pins,
+        activeLow: !profile.mcu.part.startsWith('STM32F446RE') });
       setProfile(created); setActiveComponent(ref.trim().toUpperCase()); setShowAdd(false); setStep('test'); setLocalError('');
     } catch (error) { setLocalError(error.message); }
   };
