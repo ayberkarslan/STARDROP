@@ -55,6 +55,33 @@ ekleme yapabilir. Bu prototipte dizin 1000 kayıtla sınırlıdır.
 Kontroller: `npm run test:core`, `npm run test:firmware`, `npm run build`,
 `cd src-tauri && cargo test --locked`.
 
+### Çalışma sekmeleri
+
+Michroma fontu uygulamayla birlikte gelir; çevrimdışı da yüklenir. Terminal ve
+kod çıktıları okunabilirlik için eş aralıklı font kullanır. Boş sekmede giriş
+ekranı görünür; STARDROP yazısı bu ekranın başında yer alır. Soldaki araçları
+sekme başlığına veya çalışma alanına sürükleyip
+bırakabilirsin; boş veya dolu sekmenin içeriği seçtiğin araca dönüşür. Sekme
+başlığını sürüklemek sıralamayı değiştirir; Escape sürüklemeyi iptal eder.
+
+Yeni sekme açıp Yeni Test’i üzerine bırakınca bağımsız bir test başlatılır.
+Kart, pinler, dosyalar, derleme/yükleme günlüğü ve test geçmişi o çalışmaya aittir.
+Menüye normal tıklamak açık olan aracı öne getirir. Kapatılan veya değiştirilmiş
+çalışmayı bildirim merkezindeki “Son taslağı geri aç” ile geri açabilirsin.
+Taslaklar yalnız mevcut uygulama oturumunun belleğinde korunur; kalıcı saklama
+için `.stardrop` dışa aktarmayı kullan. GitHub çıkışı çalışma oturumlarını temizler.
+
+ESP/SWD üzerinde aynı anda tek işlem çalışır. İşlem sahibi sekme kapatılamaz veya
+başka araca dönüştürülemez; diğer testlerin hazırlığı devam edebilir. Yüklemeden
+önce canlı STM32 UID’si yeniden kontrol edilir. Ayarlar ve kaynak kataloğu
+uygulama genelindeki ortak tercihlerdir; test kütüphanesinde paylaşılacak çalışma
+ayrıca seçilir.
+
+Sekme/donanım kilidi kontrolleri: `npm run test:ui`. Tarayıcı kontrolleri için
+Playwright kurulu bir ortamda `node tools/workspace-smoke.mjs` çalıştırılabilir.
+İsteğe bağlı `PLAYWRIGHT_MODULE`, `CHROMIUM_PATH` ve `UI_URL` değişkenleri
+desteklenir. Bu kontrol GitHub ve ESP’yi taklit eder; gerçek donanıma yazmaz.
+
 Fiziksel bağlantı: ESP32 DevKit V1 GPIO18 → STM32 SWCLK, GPIO19 → SWDIO,
 GND → GND. STM32 kendi 3,3 V kaynağıyla beslenebilir. Bu, iki sinyal hattı
 **artı ortak GND** demektir.
