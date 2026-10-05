@@ -129,7 +129,8 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
           if (!programmer?.maintenanceStreamAvailable) throw new Error('Canlı silme ilerlemesi için ESP32 yazılımını güncelle. Silme başlatılmadı.');
           await espStream(base, '/stream-target-maintenance', event => {
             maintenanceClock.current.updated = Date.now();
-            setMaintenanceProgress(event);
+            setMaintenanceProgress(previous => ({ ...previous, ...event }));
+            if (event.done && Number.isFinite(event.elapsedMs)) setMaintenanceSeconds(Math.floor(event.elapsedMs / 1000));
           }, 190000, { method: 'POST', body: { operation, uid, confirmation: 'FLASH SIL' } });
         } else {
           await espJson(base, '/api/target/maintenance', { method: 'POST', timeoutMs: 120000, body: { operation, uid } });
@@ -138,7 +139,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       setUsage(null);
       if (operation !== 'erase') setMaintenance(null);
       setNotice(operation === 'erase' ? 'Flash silindi ve boş olduğu doğrulandı. Yeni kod yükle.' : operation === 'esp-reset' ? 'ESP32 yeniden başlatılıyor; ağ bağlantısının dönmesini bekle.' : 'STM32 yeniden başlatıldı.');
-      if (operation !== 'esp-reset') await refreshTarget();
+      if (operation !== 'esp-reset') await refreshTarget().catch(error => setNotice(`Bakım tamamlandı; hedef bilgisi yenilenemedi: ${error.message}`));
     } catch (error) {
       setMaintenanceError(`${error.message} Tamamlandı onayı alınmadıysa flash durumu kesin değildir; bağlantıyı kontrol etmeden yeniden silme başlatma.`);
       setNotice(`Bakım başarısız: ${error.message}`);
