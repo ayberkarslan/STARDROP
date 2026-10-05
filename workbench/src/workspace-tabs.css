@@ -1,0 +1,26 @@
+.app-shell>main{display:flex;flex-direction:column;height:100vh;min-height:0;overflow:hidden}
+.window-chrome+.app-shell>main{height:calc(100vh - 30px)}
+.guest-layout{display:flex;flex-direction:column;height:100vh;min-height:0!important}
+.window-chrome+.guest-layout{height:calc(100vh - 30px)}
+.guest-header{flex:none}
+.workspace-tabbar{display:flex;align-items:stretch;height:42px;flex:none;border-bottom:1px solid #252525;background:#000;padding:0 12px;gap:4px}
+.workspace-tablist{display:flex;align-items:stretch;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.workspace-tab{display:flex;align-items:stretch;flex:none;border-right:1px solid #1e1e1e;border-bottom:1px solid transparent;color:#888;user-select:none}
+.workspace-tab.active{color:#fff;border-bottom-color:#fff}
+.workspace-tab>button{border:0;border-radius:0;background:#000;color:inherit;padding:0 14px;font:11px var(--font-mono);white-space:nowrap;touch-action:none}
+.workspace-tab>button:hover{color:#fff}
+.workspace-tab>button[role=tab]{cursor:grab}
+.workspace-tab>button[role=tab]:active{cursor:grabbing}
+.workspace-tab .workspace-tab-close{display:grid;place-items:center;padding:0 8px;margin-right:4px;color:#777}
+.workspace-tab .workspace-tab-close:hover{color:#fff}
+.workspace-tab .workspace-tab-close:disabled{opacity:.25;cursor:default}
+.workspace-tab-new{display:grid;place-items:center;flex:none;width:34px;border:0;background:#000;color:#888}
+.workspace-tab-new:hover{color:#fff}
+.workspace-tabbar button:focus-visible{outline:1px solid #fff;outline-offset:-4px}
+.workspace-panel{min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;background:#000}
+.workspace-panel[hidden]{display:none!important}
+.workspace-empty{min-height:0;flex:1;display:grid;place-items:center;background:#000}
+.workspace-logo-placeholder{display:grid;justify-items:center;gap:24px}
+.workspace-logo-placeholder .brand-mark{width:110px;height:110px;border:0;opacity:.16}
+.workspace-logo-placeholder .brand-mark svg{width:100%;height:100%}
+.workspace-logo-placeholder>button{font-size:11px;color:#aaa}
