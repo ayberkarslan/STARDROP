@@ -3,7 +3,6 @@
 body,button,input,textarea,select{font-family:var(--font-sans)}
 .log,.esp-terminal,.esp-terminal pre,.flash-terminal,.wizard-terminal,pre,code,.source-preview{font-family:ui-monospace,"SF Mono",Consolas,monospace}
 .session-controls{border:0;padding:0;margin:0;min-width:0}
-.workspace-wordmark{font-family:Michroma,sans-serif;font-size:clamp(24px,4.5vw,72px);letter-spacing:.32em;padding-left:.32em;color:#fff;font-weight:400;user-select:none}
 .workspace-placeholder{background:#000}
 .workspace-placeholder svg{display:none}
 .workspace-drag-preview{position:fixed;z-index:10000;pointer-events:none;display:flex;align-items:center;gap:12px;max-width:300px;padding:14px 18px;background:#000;color:#fff;border:1px solid #fff;border-radius:8px;box-shadow:0 14px 45px #000;white-space:nowrap;font-size:11px}
@@ -18,8 +17,6 @@ body,button,input,textarea,select{font-family:var(--font-sans)}
 .tab-busy-dot{display:inline-block;width:5px;height:5px;background:#fff;border-radius:50%;margin-left:9px}
 [data-rail-tool],.workspace-tab{touch-action:none;user-select:none}
 .notification-recover{width:100%;background:#000;color:#fff;border:1px solid #444;border-radius:6px;padding:10px;margin-top:10px;font-size:9px;text-align:left}
-.brand small{font-family:Michroma,sans-serif;font-size:4.8px;letter-spacing:0;white-space:nowrap}
 .brand strong{font-family:Michroma,sans-serif;font-weight:400;font-size:15px;letter-spacing:.1em}
 nav button{font-size:10px}.workspace-tab-title{font-size:10px}
 .welcome-content h1{font-size:30px;line-height:1.6}.welcome-actions strong{font-size:11px}.welcome-actions small{font-size:8px}
-@media(max-width:1000px){.workspace-wordmark{letter-spacing:.2em}.brand small{font-size:5.2px}}

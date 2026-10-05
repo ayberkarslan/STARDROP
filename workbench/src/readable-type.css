@@ -1,5 +1,5 @@
 /* Michroma needs actual readable sizes, not scaled or very dim microtext. */
-:root{--text-sub:#bcbcbc;--text-dim:#959595;text-rendering:optimizeLegibility}
+:root{--text-sub:#bcbcbc;--text-dim:#959595;text-rendering:optimizeLegibility;font-synthesis:none;font-kerning:normal}
 body{font-size:13px;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}
 .start-content{width:100%}
 .start-wordmark{display:block;color:#fff;font-size:clamp(22px,2.3vw,34px);font-weight:400;letter-spacing:.24em;line-height:1.5;margin-bottom:38px}
@@ -15,10 +15,12 @@ body{font-size:13px;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}
 .rail .brand,.welcome-sidebar .brand{gap:0}
 .rail .brand strong,.welcome-sidebar .brand strong{font-family:Michroma,sans-serif;font-size:16px;font-weight:400;letter-spacing:.09em}
 .rail .brand small,.welcome-sidebar .brand small{font-family:Michroma,sans-serif;font-size:10px;font-weight:400;line-height:1.9;white-space:normal;letter-spacing:0;color:#c0c0c0;margin-top:10px}
+:is(.app-shell,.guest-layout,.welcome-screen) small{font-size:11px;line-height:1.8}
+:is(.app-shell,.guest-layout,.welcome-screen) :is(.wizard-fields label,.settings-grid label,.library-publish-form label,.panel p,.panel h2,.secondary,.primary){font-size:11px}
 :is(.app-shell,.guest-layout,.welcome-screen) :is(.panel p,.catalog-note,.map-disclaimer,.empty,.flash-footnote,.wizard-subtitle,.library-meta,.detail-row span,.wizard-context-line){color:#bcbcbc}
 :is(.app-shell,.guest-layout,.welcome-screen) :is(nav button,.workspace-tab>button,.notification-center,.notification-latest,.notification-history p,.rail-account,.rail-account button,.wizard-context summary,.wizard-pin-details summary){font-size:11px}
 :is(.app-shell,.guest-layout,.welcome-screen) :is(.welcome-actions small,.settings-group small,.target-drawer-name small,.flash-summary span,.library-facts small,.library-card small,.wizard-pin-row small,.wizard-context-line,.security-list,.notification-history time){font-size:11px;color:#bcbcbc;line-height:1.8}
 .notification-latest,.rail-account span,.rail-account button{color:#bcbcbc}
 .workspace-tab>button{max-width:310px;overflow:hidden;text-overflow:ellipsis}
 .flash-terminal,.wizard-terminal,.log{font-size:12px;line-height:1.7}
-@media(max-width:850px){.rail .brand>div,.welcome-sidebar .brand>div{display:block!important}.rail .brand strong,.welcome-sidebar .brand strong{font-size:9px;letter-spacing:0}.rail .brand small,.welcome-sidebar .brand small{display:none}.empty-start-content,.welcome-content{width:calc(100% - 40px)}.start-wordmark{font-size:22px}}
+@media(max-width:850px){.app-shell,.welcome-screen{grid-template-columns:180px minmax(0,1fr)}.rail .brand>div,.welcome-sidebar .brand>div{display:block!important}.rail .brand strong,.welcome-sidebar .brand strong{font-size:13px;letter-spacing:0}.rail .brand small,.welcome-sidebar .brand small{font-size:9px}.rail nav button{font-size:10px;justify-content:flex-start;gap:8px}.empty-start-content,.welcome-content{width:calc(100% - 40px)}.start-wordmark{font-size:22px}}
