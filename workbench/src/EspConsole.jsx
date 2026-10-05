@@ -158,7 +158,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
 
   if (devicesOnly) return <div className="workspace devices-workspace">
     <div className="device-page-heading"><h2>Cihazlar</h2><button className="secondary" disabled={deviceBusy || busy} onClick={() => { loadSettings(); refreshTarget(); }}><RefreshCw size={15}/>Yenile</button></div>
-    <div className="device-chain"><section><small>PROGRAMLAYICI</small><h3>ESP32</h3><span>{esp?.connected ? 'Bağlı' : 'Çevrimdışı'}</span><code>{base || 'Adres bekleniyor'}</code></section><span className="device-chain-link">SWD →</span><section><small>HEDEF</small><h3>{target?.label || target?.model || 'STM32 bekleniyor'}</h3><span>{target?.connected ? target.model : 'Bağlı değil'}</span><code>{target?.uid || 'UID bekleniyor'}</code></section></div>
+    <div className="device-chain"><section><small>PROGRAMLAYICI</small><h3>ESP32</h3><span>{esp?.status === 'online' ? 'Bağlı' : 'Çevrimdışı'}</span><code>{base || 'Adres bekleniyor'}</code></section><span className="device-chain-link">SWD →</span><section><small>HEDEF</small><h3>{target?.label || target?.model || 'STM32 bekleniyor'}</h3><span>{target?.connected ? target.model : 'Bağlı değil'}</span><code>{target?.uid || 'UID bekleniyor'}</code></section></div>
     <div className="device-columns"><section className="device-section"><h3>ESP32</h3>
       <div className="detail-row"><span>Ağ</span><strong>{wifi?.ssid || '—'}</strong></div>
       <div className="detail-row"><span>Sinyal</span><strong>{wifi?.rssi ?? '—'} dBm</strong></div>

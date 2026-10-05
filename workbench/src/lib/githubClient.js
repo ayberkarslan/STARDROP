@@ -104,11 +104,46 @@ export async function listLibraryEntries({ token, repository, ref = 'main' }) {
   return records;
 }
 
-export async function publishLibraryEntry({ token, repository, ref = 'main', entry }) {
+export async function fetchLibraryProject({ token, repository, ref = 'main', entryId }) {
+  if (!/^[0-9a-f-]{36}$/i.test(entryId || '')) throw new Error('Proje kimliği geçersiz.');
+  const { owner, repo } = parseRepository(repository);
+  const root = await contentRoot({ token, owner, repo, ref });
+  const file = await api(`/repos/${owner}/${repo}/contents/${root}library/projects/${entryId}/project.stardrop?ref=${encodeURIComponent(ref)}`, { token });
+  if (file.size > 16 * 1024 * 1024 || file.type !== 'file') throw new Error('Proje dosyası geçersiz veya fazla büyük.');
+  const blob = await api(`/repos/${owner}/${repo}/git/blobs/${file.sha}`, { token });
+  if (blob.encoding !== 'base64') throw new Error('Proje dosyası okunamadı.');
+  return Uint8Array.from(atob(blob.content.replace(/\s/g, '')), char => char.charCodeAt(0));
+}
+
+export async function publishLibraryEntry({ token, repository, ref = 'main', entry, project, readme }) {
   const { owner, repo } = parseRepository(repository);
   if (!/^[0-9a-f-]{36}$/i.test(entry?.id || '')) throw new Error('Kütüphane kayıt kimliği geçersiz.');
   const root = await contentRoot({ token, owner, repo, ref });
   try {
+    if (project) {
+      if (project.size > 16 * 1024 * 1024) throw new Error('Paylaşılacak proje en fazla 16 MB olabilir.');
+      const branch = await api(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(ref)}`, { token });
+      const parent = await api(`/repos/${owner}/${repo}/git/commits/${branch.object.sha}`, { token });
+      const bytes = new Uint8Array(await project.arrayBuffer());
+      let binary = '';
+      for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+      const blob = await api(`/repos/${owner}/${repo}/git/blobs`, { token, method: 'POST', body: { content: btoa(binary), encoding: 'base64' } });
+      const projectPath = `${root}library/projects/${entry.id}`;
+      const tree = await api(`/repos/${owner}/${repo}/git/trees`, { token, method: 'POST', body: {
+        base_tree: parent.tree.sha, tree: [
+          { path: `${root}library/${entry.id}.json`, type: 'blob', mode: '100644', content: JSON.stringify(entry, null, 2) },
+          { path: `${projectPath}/project.stardrop`, type: 'blob', mode: '100644', sha: blob.sha },
+          { path: `${projectPath}/README.md`, type: 'blob', mode: '100644', content: readme },
+        ],
+      } });
+      const commit = await api(`/repos/${owner}/${repo}/git/commits`, { token, method: 'POST', body: {
+        message: `test ekle: ${entry.name.slice(0, 60)}`, tree: tree.sha, parents: [branch.object.sha],
+      } });
+      // Non-force update: concurrent team publications cannot overwrite each other.
+      return await api(`/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(ref)}`, {
+        token, method: 'PATCH', body: { sha: commit.sha, force: false },
+      });
+    }
     return await api(`/repos/${owner}/${repo}/contents/${root}library/${entry.id}.json`, {
       token, method: 'PUT', body: { message: `Add test setup: ${entry.name.slice(0, 70)}`, content: encodeContent(entry), branch: ref },
     });

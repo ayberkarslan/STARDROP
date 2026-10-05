@@ -38,7 +38,7 @@ export function makeLibraryEntry({ name, note = '', profile, componentRef, test,
     note: String(note).trim(),
     publishedAt: new Date().toISOString(),
     author: String(author || '').trim(),
-    board: { name: profile.name, mcu: profile.mcu.part },
+    board: { name: profile.targetLabel || profile.name, projectName: profile.name, mcu: profile.mcu.part },
     component: { ref: component.ref, part: component.part, protocol: component.protocol },
     pins: connections.map(({ role, mcuPin, peripheral }) => ({ role, mcuPin, peripheral })),
     test: test?.status === 'ready'
@@ -48,6 +48,17 @@ export function makeLibraryEntry({ name, note = '', profile, componentRef, test,
       firmwareSha256: lastRun.firmwareSha256 || null, sourceSha: lastRun.sourceSha || null } : { status: 'NOT_RUN' },
     profile: publishedProfile,
   };
+}
+
+export function libraryReadme(entry) {
+  const rows = entry.pins.map(pin => `| ${pin.role} | ${pin.mcuPin} | ${pin.peripheral || '—'} |`).join('\n');
+  const led = entry.profile.components.find(component => component.ref === entry.component.ref);
+  return `# ${entry.name}\n\n${entry.note || 'Atölye notu eklenmedi.'}\n\n` +
+    `- Kart: ${entry.board.name}\n- MCU: ${entry.board.mcu}\n- Bileşen: ${entry.component.part}\n- Test: ${entry.test.name}\n` +
+    `- Sonuç: ${entry.result.status}\n- Kaynak commit: ${entry.test.sourceSha || 'Kaydedilmedi'}\n\n` +
+    `| Rol | GPIO | Bus |\n| --- | --- | --- |\n${rows}\n\n` +
+    (led?.part === 'LED' ? `LED: ${led.activeLow ? 'aktif düşük' : 'aktif yüksek'}, ${led.onMs ?? led.blinkMs} ms açık / ${led.offMs ?? led.blinkMs} ms kapalı.\n\n` : '') +
+    `STARDROP'ta project.stardrop dosyasını aç veya Test Kütüphanesi'nden bu düzeni seç. Pinler ve canlı hedef yüklemeden önce yeniden onaylanır.\n`;
 }
 
 export function validateLibraryEntry(entry) {

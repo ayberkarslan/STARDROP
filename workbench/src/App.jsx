@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { BookOpen, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
-import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
+import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, fetchLibraryProject, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
 import TestLibrary from './TestLibrary.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
@@ -11,7 +11,8 @@ import NotificationCenter, { useNoticeHistory } from './NotificationCenter.jsx';
 import WorkspaceTabs, { useWorkspaceTabs } from './WorkspaceTabs.jsx';
 import { workspaceLabels } from './lib/workspaceTabs.js';
 import { validateBoardProfile } from './lib/boardProfile.js';
-import { makeLibraryEntry, validateLibraryEntry } from './lib/testLibrary.js';
+import { libraryReadme, makeLibraryEntry, validateLibraryEntry } from './lib/testLibrary.js';
+import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { createHardwareGate } from './lib/hardwareGate.js';
 import TestSession from './TestSession.jsx';
 import FlashSession from './FlashSession.jsx';
@@ -439,9 +440,15 @@ export default function App() {
     try {
       const entry = makeLibraryEntry({ name, note, profile: draft.profile, componentRef: draft.activeComponent,
         test: draft.selectedTest, history: draft.testHistory, author: githubUser?.login, sourceSha: sourceStatus?.activeSha });
+      entry.projectArchive = true;
       const token = await validRepoToken();
       if (!token) throw new Error('GitHub oturumu veya depo anahtarı gerekli.');
-      await publishLibraryEntry({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', entry });
+      const project = await exportStardropProject({ profile: entry.profile, netlist: draft.sources?.netlist,
+        bom: draft.sources?.bom, schematicPdf: draft.sources?.schematic, boardImage: draft.sources?.boardImage,
+        artifacts: [{ name: 'test.json', data: JSON.stringify(entry) }],
+        testHistory: (draft.testHistory || []).map(({ targetUid, ...run }) => run) });
+      await publishLibraryEntry({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', entry,
+        project, readme: libraryReadme(entry) });
       setLibraryEntries((items) => [entry, ...items]);
       setNotice(entry.name + ' GitHub Test Kütüphanesi’ne kaydedildi.');
       return entry;
@@ -449,7 +456,7 @@ export default function App() {
     finally { libraryPublishLock.current = false; setLibraryBusy(false); }
   };
 
-  const openLibraryEntry = (entry) => {
+  const openLibraryEntry = async (entry) => {
     if (entry.kind === 'template') {
       const test = catalog.tests.find(item => item.id === entry.test.id && item.status === 'ready');
       if (!test) { setLibraryError('Test kodu artık katalogda hazır değil. Listeyi yenile.'); return; }
@@ -462,13 +469,30 @@ export default function App() {
       setLibraryError('Kayıt profili geçersiz; güvenle açılamıyor.'); return;
     }
     const profile = JSON.parse(JSON.stringify(entry.profile));
+    let restored = {};
+    if (entry.projectArchive) {
+      setLibraryBusy(true);
+      try {
+        const token = await validRepoToken();
+        const bytes = await fetchLibraryProject({ token, repository: githubConfig.repository, ref: githubConfig.ref || 'main', entryId: entry.id });
+        const imported = await importStardropProject(bytes);
+        if (!imported.validation.valid || imported.profile.id !== profile.id) throw new Error('Proje ile kayıt eşleşmiyor.');
+        restored = { sources: { netlist: imported.sources['sources/board.NET'] ? await imported.sources['sources/board.NET'].text() : null,
+          bom: imported.sources['sources/bom.csv'] ? await imported.sources['sources/bom.csv'].text() : null,
+          schematic: imported.sources['sources/schematic.pdf'] || null,
+          boardImage: Object.entries(imported.sources).find(([path]) => path.startsWith('sources/board-image.'))?.[1] || null },
+          testHistory: imported.testHistory };
+      } catch (error) { setLibraryError(`Proje açılamadı: ${error.message}`); return; }
+      finally { setLibraryBusy(false); }
+    }
     profile.targetUid = null;
     profile.connections = profile.connections.map((connection) => ({ ...connection, approved: false }));
-    workspace.open('workbench', { fresh: true, data: { profile, componentRef: entry.component.ref, testId: entry.test.id || '' } });
+    workspace.open('workbench', { fresh: true, data: { ...restored, profile, componentRef: entry.component.ref, testId: entry.test.id || '' } });
     setNotice(entry.name + ' ayrı test sekmesinde açıldı. Canlı hedefi eşleştirip pinleri yeniden onayla.');
   };
 
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
+    shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, setNotice,
     aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy,
     espBase: activeBridge, devices: discoveredDevices, onConnect: connectBridge, onDiscover: autoConnect, notice };
@@ -486,7 +510,7 @@ export default function App() {
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
-        mode === 'library' ? <TestLibrary entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
+        mode === 'library' ? <TestLibrary initialDraftId={doc.initialData?.draftId} entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
           drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
           startNewTest={() => workspace.open('workbench', { fresh: true })}/> :
         mode === 'admin' ? (catalogAdmin ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : <p className="workspace">Bu ekran için yönetim yetkisi gerekli.</p>) :
