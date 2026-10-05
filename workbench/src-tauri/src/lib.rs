@@ -146,7 +146,7 @@ const ESP_GET_PATHS: &[&str] = &[
 ];
 const ESP_POST_PATHS: &[&str] = &[
     "/api/wifi/switch", "/api/wifi/add", "/api/wifi/remove",
-    "/api/programmer/settings", "/api/target/label",
+    "/api/programmer/settings", "/api/target/label", "/api/target/maintenance",
 ];
 
 fn esp_url(base: &str, path: &str) -> Result<reqwest::Url, String> {

@@ -554,6 +554,7 @@ void handleProgrammerStatus() {
     String json = "{";
     json += "\"speedMode\":\"" + String(configuredSpeedModeName()) + "\",";
     json += "\"verifyRequired\":true,";
+    json += "\"maintenanceAvailable\":true,";
     json += "\"swclkPin\":" + String(SWD_CLK_PIN) + ",";
     json += "\"swdioPin\":" + String(SWD_DIO_PIN) + ",";
     json += "\"resetAvailable\":" + String(STM32_RST_PIN >= 0 ? "true" : "false") + ",";
@@ -666,6 +667,50 @@ void handleTargetLabel() {
     }
     saveTargetLabel(lastSeenTargetUid, label);
     server.send(200, "application/json", "{\"status\":\"ok\"}");
+}
+
+void handleTargetMaintenance() {
+    const String body = server.arg("plain");
+    auto field = [&](const char* name) -> String {
+        const String marker = String("\"") + name + "\":\"";
+        int start = body.indexOf(marker);
+        if (start < 0) return "";
+        start += marker.length();
+        int end = body.indexOf('"', start);
+        return end < start ? String("") : body.substring(start, end);
+    };
+    const String operation = field("operation");
+    if (operation != "reset" && operation != "recover" && operation != "erase") {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Geçersiz bakım işlemi\"}"); return;
+    }
+    swd.setSpeedProfile(SwdSpeedProfile::SAFE);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    TargetProbeInfo target;
+    if (!swd.probe(&target) || formatTargetUid(target) != field("uid")) {
+        server.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Hedef değişti veya okunamıyor; tekrar bağlan\"}"); return;
+    }
+    if (operation == "erase" && (field("confirmation") != "FLASH SIL" ||
+        (target.deviceId != 0x423 && target.deviceId != 0x421))) {
+        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Silme onayı veya F401/F446 hedefi gerekli\"}"); return;
+    }
+    bool ok = true;
+    if (operation != "reset") {
+        swd.inspectAndDiagnose();
+        ok = swd.haltAndRecover();
+        if (ok && operation == "erase") ok = swd.unlockFlashIfNeeded() && swd.massErase();
+    }
+    if (ok && operation == "erase") {
+        if (!target.flashSizeKb || target.flashSizeKb > 1024) ok = false;
+        for (uint32_t offset = 0; ok && offset < uint32_t(target.flashSizeKb) * 1024; offset += 4) {
+            const uint32_t word = swd.readMem32(0x08000000UL + offset);
+            if (word != 0xFFFFFFFFUL || swd.lastAck != 1) ok = false;
+            if ((offset & 0xFFF) == 0) yield();
+        }
+    }
+    // Always release the debug halt, including failed erase/recovery attempts.
+    swd.resetAndRun();
+    server.send(ok ? 200 : 500, "application/json", ok ? "{\"status\":\"ok\"}" :
+        "{\"status\":\"error\",\"message\":\"Bakım işlemi doğrulanamadı; bağlantı ve flash korumasını kontrol et\"}");
 }
 
 void handleTargetFlashUsage() {
@@ -964,6 +1009,7 @@ void setup() {
     server.on("/api/programmer/settings", HTTP_POST, handleProgrammerSettings);
     server.on("/api/target/status", HTTP_GET, handleTargetStatus);
     server.on("/api/target/label", HTTP_POST, handleTargetLabel);
+    server.on("/api/target/maintenance", HTTP_POST, handleTargetMaintenance);
     server.on("/api/target/flash-usage", HTTP_GET, handleTargetFlashUsage);
     server.on("/stream-target-flash-usage", HTTP_GET, handleStreamTargetFlashUsage);
     server.on("/api/diagnostic/report", HTTP_GET, handleDiagnosticReport);
