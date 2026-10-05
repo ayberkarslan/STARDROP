@@ -12,5 +12,6 @@ import './popup.css';
 import './workspace-interactions.css';
 import './readable-type.css';
 import './desktop-viewport.css';
+import './library-refined.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><WindowChrome /><App /></React.StrictMode>);
