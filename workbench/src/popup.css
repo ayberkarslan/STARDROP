@@ -1,0 +1,18 @@
+:root{--popup-background:#000;--popup-border:#333;--popup-text:#eee;--popup-radius:10px}
+.ui-popup-backdrop{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:#000b}
+.ui-popup-backdrop .ui-popup{width:min(480px,100%);max-height:calc(100vh - 48px);overflow:auto;padding:28px;border:1px solid var(--popup-border);border-radius:var(--popup-radius);background:var(--popup-background);color:var(--popup-text);box-shadow:0 20px 80px #000;outline:none}
+.ui-popup-backdrop .ui-popup h2{color:#fff;font-size:21px;letter-spacing:-.03em}
+.ui-popup-backdrop .ui-popup p,.ui-popup-backdrop .ui-popup small{color:#aaa;line-height:1.6}
+.ui-popup-backdrop.ui-popup-drawer{display:flex;justify-content:flex-end;padding:0}
+.ui-popup-backdrop.ui-popup-drawer .ui-popup{width:min(460px,100%);height:100%;max-height:100%;padding:0;border-radius:0;border-width:0 0 0 1px}
+.ui-popup button:focus-visible,.select-options button:focus-visible{outline:1px solid #fff;outline-offset:2px}
+:is(.app-shell,.guest-layout,.welcome-screen) :is(.notification-history,.select-options){background:var(--popup-background);border:1px solid var(--popup-border);border-radius:var(--popup-radius);color:var(--popup-text);box-shadow:0 16px 50px #000c}
+:is(.app-shell,.guest-layout,.welcome-screen) .select-option{background:#000;color:#aaa}
+:is(.app-shell,.guest-layout,.welcome-screen) .select-option:hover,:is(.app-shell,.guest-layout,.welcome-screen) .select-option[aria-selected=true]{background:#000;color:#fff;box-shadow:inset 2px 0 #fff}
+:is(.app-shell,.guest-layout,.welcome-screen) :is(.validation,.flash-error,.welcome-auth-error,.catalog-setup,.repo-help){padding:12px 14px;border:1px solid var(--popup-border);border-radius:var(--popup-radius);background:var(--popup-background);color:#ddd;font:11px/1.6 var(--font-mono);box-shadow:none}
+.ui-popup-backdrop .confirm-card>div{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.ui-popup-backdrop .confirm-card .primary{margin:0;width:auto;background:#fff;color:#000;border-color:#fff}
+.ui-popup-backdrop .confirm-card .secondary{background:#000;color:#ddd;border-color:#444}
+.ui-popup-backdrop .device-login-card{display:grid;gap:15px}
+.ui-popup-backdrop .device-login-code{background:#000;border-color:#444;color:#fff}
+.ui-popup-backdrop .device-login-actions .welcome-guest{background:#000;color:#ddd;border-color:#444}

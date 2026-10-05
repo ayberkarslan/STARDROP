@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
+import { usePopupDismiss } from './Popup.jsx';
 
 export default function SelectMenu({ value, options, onChange, ariaLabel }) {
   const [open, setOpen] = useState(false);
@@ -7,15 +8,10 @@ export default function SelectMenu({ value, options, onChange, ariaLabel }) {
   const id = useId();
   const selected = options.find((option) => option.value === value);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const closeOutside = (event) => { if (!root.current?.contains(event.target)) setOpen(false); };
-    document.addEventListener('pointerdown', closeOutside);
-    return () => document.removeEventListener('pointerdown', closeOutside);
-  }, [open]);
+  usePopupDismiss(root, open, () => setOpen(false));
 
   const move = (event) => {
-    if (event.key === 'Escape') { setOpen(false); root.current?.querySelector('.select-trigger')?.focus(); return; }
+    if (event.key === 'Escape') { event.preventDefault(); setOpen(false); root.current?.querySelector('.select-trigger')?.focus(); return; }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
     if (!open) { setOpen(true); requestAnimationFrame(() => list.current?.querySelector('[aria-selected="true"]')?.focus()); return; }

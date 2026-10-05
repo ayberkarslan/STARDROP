@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bell, RefreshCw } from 'lucide-react';
+import { usePopupDismiss } from './Popup.jsx';
 
 export function useNoticeHistory(notice) {
   const [entries, setEntries] = useState([]);
@@ -13,6 +14,9 @@ export function useNoticeHistory(notice) {
 }
 
 export default function NotificationCenter({ esp, notice, entries, onRetry, disabled }) {
+  const [open, setOpen] = useState(false);
+  const popup = useRef(null);
+  usePopupDismiss(popup, open, () => setOpen(false));
   const wifi = esp.wifi;
   const online = esp.status === 'online';
   const label = online ? 'ESP32 bağlı' : esp.status === 'searching' ? 'ESP32 aranıyor…' : 'ESP32 çevrimdışı';
@@ -25,7 +29,7 @@ export default function NotificationCenter({ esp, notice, entries, onRetry, disa
       <span className="connection-copy"><strong>{label}</strong>{network && <small>{network}</small>}{signal && <small>{signal}</small>}</span>
       <RefreshCw size={13} />
     </button>
-    <details className="notification-details">
+    <details className="notification-details" ref={popup} open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary title="Bildirim geçmişini aç"><Bell size={14} /><span>Bildirimler</span><small>{entries.length}</small></summary>
       <div className="notification-history" role="log" aria-label="Bildirim geçmişi">
         <h3>Bildirimler</h3>

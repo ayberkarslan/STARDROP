@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Cpu, FileUp, RefreshCw, Settings, X } from 'lucide-react';
 import { normalizeEspAddress } from './lib/espConnection.js';
 import { espJson, espStream } from './lib/espTransport.js';
+import Popup from './Popup.jsx';
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 const speedOptions = [
@@ -146,11 +147,11 @@ export default function EspConsole({ bridge, setBridge, espBase, devices, onConn
         : <p className="log-info">[STARDROP] YRT Aviyonik SWD İstasyonu Hazır. Yazılım bekleniyor...</p>}
     </div>
 
-    {drawer && <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDrawer(null); }}><aside className="detail-drawer"><div className="drawer-title"><div><span className="eyebrow">{drawer === 'target' ? 'SWD HEDEFİ' : 'ESP32'}</span><h2>{drawer === 'target' ? 'Kart bilgileri' : 'Ayarlar'}</h2></div><button className="icon-link" onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>
+    {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel={drawer === 'target' ? 'Kart bilgileri' : 'ESP32 ayarları'} onClose={() => setDrawer(null)}><div className="drawer-title"><div><span className="eyebrow">{drawer === 'target' ? 'SWD HEDEFİ' : 'ESP32'}</span><h2>{drawer === 'target' ? 'Kart bilgileri' : 'Ayarlar'}</h2></div><button className="icon-link" onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>
       {drawer === 'settings' && <div className="discovered-list"><div className="discovered-list-head"><span>BULUNAN ESP32</span><button onClick={onDiscover} disabled={flashBusy}>Yeniden tara</button></div>{devices.map((device) => <button key={`${device.mac}-${device.replyAddress}`} onClick={() => onConnect(device.replyAddress)} disabled={flashBusy}>{device.name || 'STARDROP'} · {device.replyAddress}<small>{device.rssi ? `${device.rssi} dBm` : 'AP'}</small></button>)}</div>}
       {drawer === 'target' ? renderTargetBody()
       : renderSettingsBody()}
       <div className="drawer-notice" role="status">{notice}</div>
-    </aside></div>}
+    </Popup>}
   </main>;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Github } from 'lucide-react';
+import Popup from './Popup.jsx';
 
 export default function DeviceLogin({ challenge, onOpen, onCancel }) {
   const [feedback, setFeedback] = useState('');
@@ -19,8 +20,7 @@ export default function DeviceLogin({ challenge, onOpen, onCancel }) {
     catch (error) { setFeedback(`GitHub açılamadı: ${String(error)}`); }
   };
 
-  return <div className="device-login-overlay" role="presentation">
-    <section className="device-login-card" role="dialog" aria-modal="true" aria-labelledby="device-login-title">
+  return <Popup className="device-login-card" labelledBy="device-login-title" onClose={onCancel}>
       <span className="eyebrow">GITHUB HESABI</span>
       <Github size={25} aria-hidden="true" />
       <h2 id="device-login-title">Girişi doğrula</h2>
@@ -33,6 +33,5 @@ export default function DeviceLogin({ challenge, onOpen, onCancel }) {
       <small>Adres: github.com/login/device · Kod yaklaşık {Math.ceil(challenge.expiresIn / 60)} dakika geçerli.</small>
       <span className="device-login-feedback" role="status">{feedback || 'GitHub onayı bekleniyor…'}</span>
       <button className="device-login-cancel" onClick={onCancel}>Vazgeç</button>
-    </section>
-  </div>;
+  </Popup>;
 }
