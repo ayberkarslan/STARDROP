@@ -1,4 +1,13 @@
 :root{--accent:#fff;--line:#292929;--quiet:#888}
+#root{min-height:100vh;display:flex;flex-direction:column;background:#000}
+.window-chrome{height:30px;flex:none;display:flex;align-items:center;justify-content:flex-end;background:#050505;user-select:none;cursor:grab}
+.window-chrome:active{cursor:grabbing}
+.window-chrome-grip{flex:1;height:100%}
+.window-chrome-controls{display:flex;align-items:stretch;height:100%}
+.window-chrome-controls button{width:40px;height:30px;display:grid;place-items:center;border:0;border-radius:0;background:transparent;color:#8f8f8f;cursor:pointer}
+.window-chrome-controls button:hover{background:#1c1c1c;color:#fff}
+.window-chrome-controls .window-close:hover{background:#8f2828;color:#fff}
+.window-chrome+.welcome-screen,.window-chrome+.guest-layout,.window-chrome+.app-shell{flex:1;min-height:calc(100vh - 30px)}
 body{min-width:760px;background:#000;color:#fff}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .eyebrow{font:10px var(--font-mono);letter-spacing:.16em;color:#777}
