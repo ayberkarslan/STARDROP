@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { BookOpen, FlaskConical, Github, RefreshCw, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
+import { BookOpen, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { addAuditEvent, confidenceForConnection, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { applyAiSuggestions, requestAiReview } from './lib/aiReview.js';
 import { profileFromNetlist } from './lib/netlistProfile.js';
@@ -15,6 +15,7 @@ import TestLibrary from './TestLibrary.jsx';
 import EspConsole from './EspConsole.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
+import NotificationCenter, { useNoticeHistory } from './NotificationCenter.jsx';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { espJson, espStream, espUpload } from './lib/espTransport.js';
@@ -30,14 +31,6 @@ function Section({ title, children, action }) {
   return <section className="panel"><div className="panel-head"><h2>{title}</h2>{action}</div>{children}</section>;
 }
 
-function EspStatus({ esp, onRetry, disabled = false }) {
-  const wifi = esp.wifi;
-  const title = esp.status === 'online' ? `${wifi?.connected ? wifi.ssid : wifi?.apSsid || 'ESP32 AP'} · ${wifi?.ip || esp.base}`
-    : esp.status === 'searching' ? 'ESP32 aranıyor…' : 'ESP32 çevrimdışı';
-  const signal = esp.status === 'online' && wifi?.connected ? `${wifi.rssi} dBm` : esp.status === 'online' ? 'AP' : '';
-  return <button className={`esp-status ${esp.status}`} onClick={onRetry} disabled={disabled} title={esp.status === 'online' ? `ESP32 ${esp.base} · yeniden tara` : 'ESP32’yi yeniden ara'}><span className="esp-status-dot"/><span><strong>{title}</strong>{signal && <small>{signal}</small>}</span><RefreshCw size={13}/></button>;
-}
-
 export default function App() {
   const [session, setSession] = useState('welcome');
   const [mode, setMode] = useState('flash');
@@ -49,6 +42,7 @@ export default function App() {
   const healthMisses = useRef(0);
   const [target, setTarget] = useState(null);
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
+  const noticeHistory = useNoticeHistory(notice);
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
   const appendFlashLog = (msg, type = 'info') => setFlashLog((logs) => [...logs.slice(-299), {
@@ -628,10 +622,11 @@ export default function App() {
     setNotice(`${entry.name} açıldı. Canlı hedefi eşleştirip pinleri yeniden onayla.`);
   };
 
+  const notificationCenter = <NotificationCenter esp={esp} notice={notice} entries={noticeHistory} onRetry={autoConnect} disabled={flashBusy} />;
 
-  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div><span>YILDIZ ROKET TAKIMI</span></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}<div className="welcome-status">{notice}</div></main><DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} /></div>;
+  if (session === 'welcome') return <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div><div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}</main><DeviceLogin challenge={deviceLogin} onOpen={() => invoke('github_device_open')} onCancel={cancelGithubLogin} /></div>;
 
-  if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><BrandMark/><strong>STARDROP</strong></div><div className="guest-header-actions"><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/><button onClick={() => setSession('welcome')}>Girişe dön</button></div></header><EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /></div>;
+  if (session === 'guest') return <div className="guest-layout"><header className="guest-header"><div className="brand"><BrandMark/><strong>STARDROP</strong></div><div className="guest-header-actions"><button onClick={() => setSession('welcome')}>Girişe dön</button></div></header><EspConsole bridge={bridge} setBridge={setBridge} espBase={activeBridge} devices={discoveredDevices} onConnect={connectBridge} onDiscover={autoConnect} target={target} notice={notice} refreshTarget={refreshTarget} firmware={firmware} setFirmware={setFirmware} flashFirmware={flashFirmware} flashLog={flashLog} flashProgress={flashProgress} flashBusy={flashBusy} setNotice={setNotice} /><div className="guest-notification-center">{notificationCenter}</div></div>;
 
   return <div className="app-shell">
     <aside className="rail">
@@ -643,10 +638,10 @@ export default function App() {
         {session === 'github' && githubUser && catalogAdmin && <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}><ShieldCheck />Test Yönetimi</button>}
         {session === 'github' && githubUser && <button className={`rail-settings ${mode === 'settings' ? 'active' : ''}`} onClick={() => setMode('settings')}><Settings />Ayarlar</button>}
       </nav>
-      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}<div><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions"><button onClick={() => setSession('welcome')}>Girişe dön</button><button onClick={logoutGithub} disabled={githubLogoutBusy}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button></div></div></div></div><div className="rail-status"><span className="status-dot" /><span>{notice}</span></div>
+      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}<div><span>{session === 'github' && githubUser ? `@${githubUser.login}` : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions"><button onClick={() => setSession('welcome')}>Girişe dön</button><button onClick={logoutGithub} disabled={githubLogoutBusy}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button></div></div></div></div>{notificationCenter}
     </aside>
     <main>
-      <header><div><h1>{mode === 'flash' ? 'PROGRAMLAYICI' : mode === 'settings' ? 'AYARLAR' : mode === 'admin' ? 'TEST YÖNETİMİ' : mode === 'library' ? 'TEST KÜTÜPHANESİ' : 'YENİ TEST'}</h1><p>{mode === 'flash' ? 'ESP32 / STM32 · iki sinyal hattı' : mode === 'library' ? 'Ekibin paylaştığı kart ve test düzenleri' : 'Kart profilleri ve sensör tanı iş akışı'}</p></div><EspStatus esp={esp} onRetry={autoConnect} disabled={flashBusy}/></header>
+      <div className="workspace-breathing-room" aria-hidden="true" />
       {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
       {mode === 'settings' && repoDiagnostic?.repositoryStatus === 404 && <p className="repo-help">Hesap tanınsa bile özel depo bu kimlikle görünmüyor. GitHub App’i bu depoya Contents izniyle kur veya yalnız bu depoya erişen fine-grained token kaydet. App iznini değiştirirsen yeniden giriş yap.</p>}
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
