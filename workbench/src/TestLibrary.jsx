@@ -40,7 +40,7 @@ export default function TestLibrary({ initialDraftId, entries, catalog, busy, er
   };
 
   return <div className="workspace library-workspace library-refined">
-    <div className="library-heading"><h2>Test Kütüphanesi</h2><button className="icon-button library-refresh" onClick={refresh} disabled={busy} aria-label="Test kütüphanesini yenile" title="Yenile"><RefreshCw size={17} className={busy ? 'library-refreshing' : ''}/></button></div>
+    <div className="library-heading"><div className="library-title-row">{selected && <button className="icon-button" aria-label="Geri" title="Test listesine dön" onClick={() => setSelectedId(null)}><ArrowLeft size={19}/></button>}<h2>Test Kütüphanesi</h2></div><button className="icon-button library-refresh" onClick={refresh} disabled={busy} aria-label="Test kütüphanesini yenile" title="Yenile"><RefreshCw size={17} className={busy ? 'library-refreshing' : ''}/></button></div>
     <div className="library-toolbar">
       <label className="library-search"><Search size={17}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Test, sensör veya pin ara…" aria-label="Test kütüphanesinde ara"/></label>
       <button className={'secondary library-filter-trigger' + (category !== 'all' || parts.length ? ' active' : '')} onClick={() => setFilterOpen(true)}><SlidersHorizontal size={15}/>Sensörler{parts.length > 0 && <span>{parts.length}</span>}</button>
@@ -55,9 +55,8 @@ export default function TestLibrary({ initialDraftId, entries, catalog, busy, er
     {error && <p className="validation warn" role="alert">{error}</p>}
     <div className="library-layout">
       <div className="library-browse">
-        <div className="library-count"><span>{filtered.length} kayıt</span>{selected && <button className="wizard-text-button" onClick={() => setSelectedId(null)}>Listeye dön</button>}</div>
+        <div className="library-count"><span>{filtered.length} kayıt</span></div>
         {selected ? <article className="library-detail library-record">
-          <button className="wizard-text-button" onClick={() => setSelectedId(null)}><ArrowLeft size={15}/>Testlere dön</button>
           <div className="library-record-heading"><h2>{selected.name}</h2><span className={'library-result result-' + selected.result.status.toLowerCase()}>{selected.kind === 'template' ? 'Kod hazır' : resultLabel[selected.result.status]}</span></div>
           {selected.note && <p className="library-record-note">{selected.note}</p>}
           <div className="library-facts">

@@ -38,6 +38,11 @@ try {
   assert.equal(await page.getByText('Kod hazır', { exact: true }).count(), 2);
   assert.equal(await page.getByText('Başarılı', { exact: true }).count(), 0);
   await page.locator('.library-card').filter({ hasText: 'LED Blink · F446RE' }).click();
+  assert.equal(await page.getByRole('button', { name: 'Geri', exact: true }).count(), 1);
+  assert.equal(await page.getByRole('button', { name: 'Listeye dön', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Testlere dön', exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Geri', exact: true }).click();
+  await page.locator('.library-card').filter({ hasText: 'LED Blink · F446RE' }).click();
   await page.getByRole('button', { name: 'YENİ TESTTE AÇ' }).click();
   await page.getByRole('heading', { name: 'Hangi STM32?' }).waitFor();
   assert.match(await page.getByRole('combobox', { name: 'STM32 modeli' }).innerText(), /STM32F446RET6/);
