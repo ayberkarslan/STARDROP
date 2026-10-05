@@ -25,5 +25,6 @@ export function filterLibrary(entries, { query = '', category = 'all', parts = [
     (category === 'all' || sensorGroup(entry.component?.part) === category)
     && (!selected.size || selected.has(partKey(entry.component?.part)))
     && (result === 'all' || entry.result?.status === result)
-    && (mcu === 'all' || entry.board?.mcu === mcu || entry.supportedMcu?.some(family => mcu.startsWith(family))));
+    && (mcu === 'all' || entry.board?.mcu === mcu || entry.board?.mcu?.startsWith(mcu)
+      || entry.supportedMcu?.some(family => mcu.startsWith(family))));
 }
