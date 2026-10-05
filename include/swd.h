@@ -535,7 +535,8 @@ public:
     bool waitForFlashReady(uint32_t timeoutMs = 2000) {
         uint32_t t0 = millis();
         while (millis() - t0 < timeoutMs) {
-            uint32_t sr = readMem32(FLASH_SR);
+            uint32_t sr = 0;
+            if (!readMem32Checked(FLASH_SR, &sr)) return false;
             if (!(sr & FLASH_SR_BSY)) {
                 if (sr & FLASH_SR_ERR_MASK) {
                     writeMem32(FLASH_SR, FLASH_SR_ERR_MASK);
@@ -544,6 +545,7 @@ public:
                 return true;
             }
             swdDelay();
+            yield();
         }
         return false;
     }
@@ -563,11 +565,13 @@ public:
     // devamında 128K sektörlerden oluşur. Küçük firmware için tüm flashı
     // silmek yerine yalnızca görüntünün değdiği sektörleri sileriz.
     bool eraseImageSectors(uint32_t imageBytes, uint8_t* erasedCount = nullptr,
-                           uint16_t* flashSizeKbOut = nullptr) {
+                           uint16_t* flashSizeKbOut = nullptr,
+                           void (*progress)(uint32_t, uint32_t) = nullptr) {
         if (erasedCount) *erasedCount = 0;
         uint32_t sizeWord = readMem32(STM32F4_FLASH_SIZE_REG & ~0x3UL);
         uint16_t flashSizeKb = (uint16_t)(sizeWord >> 16);
         if (flashSizeKbOut) *flashSizeKbOut = flashSizeKb;
+        if (imageBytes == 0 || imageBytes > uint32_t(flashSizeKb) * 1024) return false;
 
         // Bu geometri yalnız bilinen STM32F4 boyutlarında güvenlidir.
         if (flashSizeKb != 256 && flashSizeKb != 384 && flashSizeKb != 512 && flashSizeKb != 1024) {
@@ -598,6 +602,7 @@ public:
             if (erasedCount) (*erasedCount)++;
 
             sectorStart += sectorSize;
+            if (progress) progress(min(sectorStart, imageEnd), imageEnd);
             sector++;
         }
         return true;

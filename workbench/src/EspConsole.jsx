@@ -29,8 +29,22 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
   const [usageError, setUsageError] = useState('');
   const [busy, setBusy] = useState(false);
   const [maintenance, setMaintenance] = useState(null);
-  const [confirmation, setConfirmation] = useState('');
+  const [eraseConfirmed, setEraseConfirmed] = useState(false);
+  const [maintenanceUid, setMaintenanceUid] = useState(null);
+  const [maintenanceProgress, setMaintenanceProgress] = useState(null);
+  const [maintenanceError, setMaintenanceError] = useState('');
+  const [maintenanceSeconds, setMaintenanceSeconds] = useState(0);
+  const maintenanceClock = useRef({ started: 0, updated: 0 });
   const base = espBase;
+  useEffect(() => {
+    if (!busy || !maintenance) return;
+    const timer = setInterval(() => setMaintenanceSeconds(Math.floor((Date.now() - maintenanceClock.current.started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [busy, maintenance]);
+  const openMaintenance = operation => {
+    setMaintenance(operation); setMaintenanceUid(target?.uid); setEraseConfirmed(false);
+    setMaintenanceProgress(null); setMaintenanceError(''); setMaintenanceSeconds(0);
+  };
 
   const loadSettings = async () => {
     if (!base) return;
@@ -97,7 +111,11 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     ? Math.max(0, Math.min(100, usage.programmedBytes * 100 / usage.totalBytes)) : 0;
   const runMaintenance = async () => {
     const operation = maintenance;
-    const uid = target?.uid;
+    const uid = maintenanceUid;
+    if (operation === 'erase' && !eraseConfirmed) return;
+    maintenanceClock.current = { started: Date.now(), updated: Date.now() };
+    setMaintenanceSeconds(0); setMaintenanceError('');
+    setMaintenanceProgress({ stage: 'connecting', pct: 0, overallPct: 0 });
     setBusy(true);
     try {
       await hardware.run(documentId, 'STM32 bakım', async () => {
@@ -107,13 +125,24 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
         }
         const live = await espJson(base, '/api/target/status');
         if (!live.connected || live.uid !== uid) throw new Error('Hedef değişti; işlem yapılmadı.');
-        await espJson(base, '/api/target/maintenance', { method: 'POST', timeoutMs: 120000,
-          body: { operation, uid, confirmation } });
+        if (operation === 'erase') {
+          if (!programmer?.maintenanceStreamAvailable) throw new Error('Canlı silme ilerlemesi için ESP32 yazılımını güncelle. Silme başlatılmadı.');
+          await espStream(base, '/stream-target-maintenance', event => {
+            maintenanceClock.current.updated = Date.now();
+            setMaintenanceProgress(event);
+          }, 190000, { method: 'POST', body: { operation, uid, confirmation: 'FLASH SIL' } });
+        } else {
+          await espJson(base, '/api/target/maintenance', { method: 'POST', timeoutMs: 120000, body: { operation, uid } });
+        }
       });
-      setUsage(null); setMaintenance(null); setConfirmation('');
+      setUsage(null);
+      if (operation !== 'erase') setMaintenance(null);
       setNotice(operation === 'erase' ? 'Flash silindi ve boş olduğu doğrulandı. Yeni kod yükle.' : operation === 'esp-reset' ? 'ESP32 yeniden başlatılıyor; ağ bağlantısının dönmesini bekle.' : 'STM32 yeniden başlatıldı.');
       if (operation !== 'esp-reset') await refreshTarget();
-    } catch (error) { setNotice(`Bakım başarısız: ${error.message}`); }
+    } catch (error) {
+      setMaintenanceError(`${error.message} Tamamlandı onayı alınmadıysa flash durumu kesin değildir; bağlantıyı kontrol etmeden yeniden silme başlatma.`);
+      setNotice(`Bakım başarısız: ${error.message}`);
+    }
     finally { setBusy(false); }
   };
   const renderTargetBody = () => <div className="drawer-body">
@@ -173,16 +202,32 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       <div className="detail-row"><span>Reset bağlantısı</span><strong>{programmer ? programmer.resetAvailable ? 'Destekleniyor' : 'Yok' : '—'}</strong></div>
       <div className="detail-row"><span>Son işlem</span><strong>{programmer?.lastResult || '—'}</strong></div>
       <button className="secondary" onClick={() => setDrawer('settings')}>ESP ayarları</button>
-      <button className="secondary" disabled={deviceBusy || busy || !programmer?.maintenanceAvailable} onClick={() => setMaintenance('esp-reset')}>ESP32 yeniden başlat</button>
+      <button className="secondary" disabled={deviceBusy || busy || !programmer?.maintenanceAvailable} onClick={() => openMaintenance('esp-reset')}>ESP32 yeniden başlat</button>
     </section><section className="device-section"><h3>STM32</h3>{target?.connected ? renderTargetBody() : <p>ESP32’ye bağlı hedef bulunamadı. SWD bağlantılarını kontrol et.</p>}
       <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
         {!programmer?.maintenanceAvailable && <p>Bakım işlemleri için ESP firmware’ini güncelle.</p>}
-        <div className="device-action-row">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <button key={operation} className="secondary" disabled={deviceBusy || busy || !target?.connected || !programmer?.maintenanceAvailable} onClick={() => { setMaintenance(operation); setConfirmation(''); }}>{text}</button>)}</div>
+        <div className="device-action-row">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <button key={operation} className="secondary" disabled={deviceBusy || busy || !target?.connected || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</button>)}</div>
         <small>Kurtarma donanım arızasını, kopuk hattı veya RDP kilidini çözmez. NRST bağlantısı kilitli hedefte gerekebilir.</small>
       </details>
     </section></div>
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel="ESP32 ayarları" onClose={() => setDrawer(null)}><div className="drawer-title"><h2>ESP32 ayarları</h2><button onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>{renderSettingsBody()}</Popup>}
-    {maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}><h2>{maintenance === 'erase' ? 'Flash silinecek' : maintenance === 'recover' ? 'Kurtarma denemesi' : maintenance === 'esp-reset' ? 'ESP32 yeniden başlatılacak' : 'STM32 yeniden başlatılacak'}</h2><p>{maintenance === 'esp-reset' ? base : (target?.label || target?.model) + ' · ' + target?.uid}</p><p>{maintenance === 'erase' ? 'Program ve tüm flash verileri kalıcı olarak silinir. Sonrasında yeniden kod yüklemelisin.' : maintenance === 'esp-reset' ? 'ESP32 ağ bağlantısı geçici kesilir. Kayıtlı ağlar ve ayarlar korunur; STM32 flash’ı değiştirilmez.' : 'Çalışan test kesilir ve geçici RAM durumu kaybolur. Flash programı korunur.'}</p>{maintenance === 'erase' && <label>Onay için FLASH SIL yaz<input value={confirmation} onChange={event => setConfirmation(event.target.value)}/></label>}<div className="device-action-row"><button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>Vazgeç</button><button className="primary" disabled={busy || deviceBusy || (maintenance === 'erase' && confirmation !== 'FLASH SIL')} onClick={runMaintenance}>{busy ? 'İşlem sürüyor…' : 'ONAYLA'}</button></div></Popup>}
+    {maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}>
+      <h2>{maintenanceProgress?.done ? 'Flash silindi' : maintenanceError ? 'İşlem tamamlanamadı' : busy ? 'Flash bakımı' : maintenance === 'erase' ? eraseConfirmed ? 'Emin misin?' : 'Flash silinecek' : maintenance === 'recover' ? 'Kurtarma denemesi' : maintenance === 'esp-reset' ? 'ESP32 yeniden başlatılacak' : 'STM32 yeniden başlatılacak'}</h2>
+      <p>{maintenance === 'esp-reset' ? base : (target?.label || target?.model) + ' · ' + maintenanceUid}</p>
+      {!maintenanceProgress && <p>{maintenance === 'erase' ? 'Program ve tüm flash verileri kalıcı olarak silinir. Geri alınamaz; sonrasında yeniden kod yüklemelisin.' : maintenance === 'esp-reset' ? 'Ağ bağlantısı geçici kesilir. Kayıtlı ayarlar ve STM32 flash’ı korunur.' : 'Çalışan test kesilir. Flash programı korunur.'}</p>}
+      {maintenanceProgress && <div className="maintenance-progress" aria-live="polite">
+        <strong>{maintenanceProgress.done ? 'Silme ve doğrulama tamamlandı · %100' : maintenanceProgress.stage === 'erasing' ? `Siliniyor · %${maintenanceProgress.pct}` : maintenanceProgress.stage === 'verifying' ? `Silindi · %100 — Doğrulanıyor · %${maintenanceProgress.pct}` : 'Hedef bağlantısı kontrol ediliyor…'}</strong>
+        <progress max="100" value={maintenanceProgress.overallPct || 0} aria-label="Silme ve doğrulama ilerlemesi" style={{ width: '100%', accentColor: '#fff', margin: '18px 0' }}/>
+        <p>{maintenanceProgress.totalBytes > 0 ? `${kb(maintenanceProgress.processedBytes || 0)} / ${kb(maintenanceProgress.totalBytes)} · ` : ''}{maintenanceSeconds} sn</p>
+        {busy && Date.now() - maintenanceClock.current.updated > 5000 && <small>Son güncelleme {Math.floor((Date.now() - maintenanceClock.current.updated) / 1000)} sn önce. Yeni sektör yanıtı bekleniyor; tekrar silme başlatma.</small>}
+        {maintenanceProgress.done && <p>Flash’ın boş olduğu doğrulandı. Yeni kod yükleyebilirsin.</p>}
+      </div>}
+      {maintenanceError && <p role="alert">{maintenanceError}</p>}
+      <div className="device-action-row">
+        <button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>{maintenanceProgress ? 'Kapat' : 'Vazgeç'}</button>
+        {!maintenanceProgress && <button className="primary" disabled={busy || deviceBusy} onClick={() => maintenance === 'erase' && !eraseConfirmed ? setEraseConfirmed(true) : runMaintenance()}>{maintenance === 'erase' ? eraseConfirmed ? 'Evet, flash’ı sil' : 'Devam et' : 'ONAYLA'}</button>}
+      </div>
+    </Popup>}
   </div>;
 
   return <main className="flash-workspace">

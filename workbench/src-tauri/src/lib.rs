@@ -205,12 +205,19 @@ struct EspStreamEvent {
 }
 
 #[tauri::command]
-async fn esp_stream(app: tauri::AppHandle, base: String, path: String, stream_id: String) -> Result<String, String> {
-    if path != "/stream-flash" && path != "/stream-target-flash-usage" { return Err("Geçersiz ESP32 akışı".into()); }
+async fn esp_stream(app: tauri::AppHandle, base: String, path: String, stream_id: String, method: Option<String>, body: Option<String>) -> Result<String, String> {
+    let method = method.as_deref().unwrap_or("GET");
+    let maintenance = path == "/stream-target-maintenance";
+    if maintenance {
+        if method != "POST" || body.as_ref().is_none_or(|value| value.len() > 4096) { return Err("Geçersiz bakım isteği".into()); }
+    } else if (path != "/stream-flash" && path != "/stream-target-flash-usage") || method != "GET" || body.is_some() {
+        return Err("Geçersiz ESP32 akışı".into());
+    }
     if stream_id.len() != 36 || !stream_id.chars().all(|ch| ch.is_ascii_hexdigit() || ch == '-') { return Err("Geçersiz akış kimliği".into()); }
     let url = esp_url(&base, &path)?;
-    let response = reqwest::Client::builder().timeout(Duration::from_secs(190)).build().map_err(|error| error.to_string())?
-        .get(url).send().await.map_err(|error| error.to_string())?;
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(190)).build().map_err(|error| error.to_string())?;
+    let request = if maintenance { client.post(url).header("Content-Type", "application/json").body(body.unwrap()) } else { client.get(url) };
+    let response = request.send().await.map_err(|error| error.to_string())?;
     if !response.status().is_success() { return Err(format!("ESP32 akışı HTTP {}", response.status())); }
     let mut response = response;
     let mut pending = Vec::<u8>::new();

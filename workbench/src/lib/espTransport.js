@@ -31,7 +31,7 @@ export async function espUpload(base, file) {
   return;
 }
 
-export async function espStream(base, path, onEvent, timeoutMs = 180000) {
+export async function espStream(base, path, onEvent, timeoutMs = 180000, { method = 'GET', body } = {}) {
   let lastMessage = '';
   const receive = (data) => {
     const event = JSON.parse(data);
@@ -50,12 +50,40 @@ export async function espStream(base, path, onEvent, timeoutMs = 180000) {
       try { final = receive(payload.data); } catch (error) { eventError = error; }
     });
     try {
-      const lastFrame = await invoke('esp_stream', { base, path, streamId });
+      const lastFrame = await invoke('esp_stream', { base, path, streamId, method, body: body === undefined ? null : JSON.stringify(body) });
       if (eventError) throw eventError;
       if (!final?.done) final = receive(lastFrame);
       if (!final?.done) throw new Error('ESP32 akışı tamamlanmadı.');
       return final;
     } finally { unlisten(); }
+  }
+  if (method === 'POST') {
+    const response = await fetch(`${base}${path}`, {
+      method, body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs), cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(`ESP32 akışı HTTP ${response.status}`);
+    if (!response.body) throw new Error('ESP32 ilerleme akışı yok.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = '';
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) throw new Error('ESP32 akışı tamamlanmadan kapandı; son durum bilinmiyor.');
+        pending += decoder.decode(value, { stream: true }).replace(/\r/g, '');
+        let end;
+        while ((end = pending.indexOf('\n\n')) !== -1) {
+          const frame = pending.slice(0, end); pending = pending.slice(end + 2);
+          for (const line of frame.split('\n')) {
+            if (!line.startsWith('data:')) continue;
+            const event = receive(line.slice(5).trim());
+            if (event.done) return event;
+          }
+        }
+        if (pending.length > 16384) throw new Error('ESP32 olay çerçevesi fazla büyük.');
+      }
+    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
   return new Promise((resolve, reject) => {
     const stream = new EventSource(`${base}${path}`);

@@ -555,6 +555,7 @@ void handleProgrammerStatus() {
     json += "\"speedMode\":\"" + String(configuredSpeedModeName()) + "\",";
     json += "\"verifyRequired\":true,";
     json += "\"maintenanceAvailable\":true,";
+    json += "\"maintenanceStreamAvailable\":true,";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
     json += "\"psramBytes\":" + String(ESP.getPsramSize()) + ",";
@@ -674,7 +675,22 @@ void handleTargetLabel() {
     server.send(200, "application/json", "{\"status\":\"ok\"}");
 }
 
-void handleTargetMaintenance() {
+uint32_t maintenanceStartedAt = 0;
+
+void sendMaintenanceProgress(const String& stage, uint32_t completed, uint32_t total, const String& msg) {
+    const int pct = total ? completed * 100UL / total : 0;
+    const int overall = stage == "verifying" ? 70 + pct * 30 / 100 : stage == "erasing" ? pct * 70 / 100 : 0;
+    server.sendContent("data: {\"stage\":\"" + stage + "\",\"pct\":" + String(pct) +
+        ",\"overallPct\":" + String(overall) + ",\"processedBytes\":" + String(completed) +
+        ",\"totalBytes\":" + String(total) + ",\"elapsedMs\":" + String(millis() - maintenanceStartedAt) +
+        ",\"msg\":\"" + msg + "\"}\n\n");
+}
+
+void maintenanceEraseProgress(uint32_t completed, uint32_t total) {
+    sendMaintenanceProgress("erasing", completed, total, "Flash sektörleri siliniyor");
+}
+
+void handleTargetMaintenance(bool stream = false) {
     const String body = server.arg("plain");
     auto field = [&](const char* name) -> String {
         const String marker = String("\"") + name + "\":\"";
@@ -688,32 +704,66 @@ void handleTargetMaintenance() {
     if (operation != "reset" && operation != "recover" && operation != "erase") {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Geçersiz bakım işlemi\"}"); return;
     }
+    maintenanceStartedAt = millis();
+    if (stream) {
+        server.sendHeader("Cache-Control", "no-store");
+        server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+        server.send(200, "text/event-stream", "");
+        sendMaintenanceProgress("connecting", 0, 0, "Hedef kimliği doğrulanıyor");
+    }
+    auto fail = [&](const String& message) {
+        if (stream) server.sendContent("data: {\"error\":true,\"msg\":\"" + message + "\"}\n\n");
+        else server.send(409, "application/json", "{\"status\":\"error\",\"message\":\"" + message + "\"}");
+    };
     swd.setSpeedProfile(SwdSpeedProfile::SAFE);
     swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
     TargetProbeInfo target;
     if (!swd.probe(&target) || formatTargetUid(target) != field("uid")) {
-        server.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Hedef değişti veya okunamıyor; tekrar bağlan\"}"); return;
+        fail("Hedef değişti veya okunamıyor; tekrar bağlan"); return;
     }
     if (operation == "erase" && (field("confirmation") != "FLASH SIL" ||
         (target.deviceId != 0x423 && target.deviceId != 0x433 && target.deviceId != 0x421))) {
-        server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Silme onayı veya F401/F446 hedefi gerekli\"}"); return;
+        fail("Silme onayı veya F401/F446 hedefi gerekli"); return;
     }
     bool ok = true;
     if (operation != "reset") {
         swd.inspectAndDiagnose();
         ok = swd.haltAndRecover();
-        if (ok && operation == "erase") ok = swd.unlockFlashIfNeeded() && swd.massErase();
+        if (ok && operation == "erase") {
+            const uint32_t total = uint32_t(target.flashSizeKb) * 1024;
+            // Only known F401/F446 sector layouts can report real erased-byte progress.
+            ok = target.flashSizeKb == 256 || target.flashSizeKb == 384 || target.flashSizeKb == 512 || target.flashSizeKb == 1024;
+            if (ok && stream) sendMaintenanceProgress("erasing", 0, total, "Flash sektörleri siliniyor");
+            ok = ok && swd.unlockFlashIfNeeded() && swd.eraseImageSectors(total, nullptr, nullptr, stream ? maintenanceEraseProgress : nullptr);
+        }
     }
     if (ok && operation == "erase") {
         if (!target.flashSizeKb || target.flashSizeKb > 1024) ok = false;
-        for (uint32_t offset = 0; ok && offset < uint32_t(target.flashSizeKb) * 1024; offset += 4) {
-            uint32_t word = 0;
-            if (!swd.readMem32Checked(0x08000000UL + offset, &word) || word != 0xFFFFFFFFUL) ok = false;
-            if ((offset & 0xFFF) == 0) yield();
+        const uint32_t total = uint32_t(target.flashSizeKb) * 1024;
+        swd.setSpeedProfile(SwdSpeedProfile::FAST);
+        uint8_t buffer[256];
+        int previousPct = -1;
+        if (stream) sendMaintenanceProgress("verifying", 0, total, "Silme tamamlandı; flash boşluğu doğrulanıyor");
+        for (uint32_t offset = 0; ok && offset < total; offset += sizeof(buffer)) {
+            if (!swd.readBlock(FLASH_START_ADDR + offset, buffer, sizeof(buffer))) { ok = false; break; }
+            for (uint16_t i = 0; i < sizeof(buffer); i++) if (buffer[i] != 0xFF) { ok = false; break; }
+            if (!ok) break;
+            const uint32_t completed = offset + sizeof(buffer);
+            const int pct = completed * 100UL / total;
+            if (stream && pct != previousPct) {
+                sendMaintenanceProgress("verifying", completed, total, "Flash boşluğu doğrulanıyor");
+                previousPct = pct;
+            }
+            yield();
         }
     }
     // Always release the debug halt, including failed erase/recovery attempts.
     swd.resetAndRun();
+    if (stream) {
+        if (!ok) { fail("Bakım işlemi doğrulanamadı; bağlantı ve flash korumasını kontrol et"); return; }
+        server.sendContent("data: {\"done\":true,\"stage\":\"done\",\"pct\":100,\"overallPct\":100,\"elapsedMs\":" + String(millis() - maintenanceStartedAt) + "}\n\n");
+        return;
+    }
     server.send(ok ? 200 : 500, "application/json", ok ? "{\"status\":\"ok\"}" :
         "{\"status\":\"error\",\"message\":\"Bakım işlemi doğrulanamadı; bağlantı ve flash korumasını kontrol et\"}");
 }
@@ -1022,7 +1072,8 @@ void setup() {
     });
     server.on("/api/target/status", HTTP_GET, handleTargetStatus);
     server.on("/api/target/label", HTTP_POST, handleTargetLabel);
-    server.on("/api/target/maintenance", HTTP_POST, handleTargetMaintenance);
+    server.on("/api/target/maintenance", HTTP_POST, []() { handleTargetMaintenance(); });
+    server.on("/stream-target-maintenance", HTTP_POST, []() { handleTargetMaintenance(true); });
     server.on("/api/target/flash-usage", HTTP_GET, handleTargetFlashUsage);
     server.on("/stream-target-flash-usage", HTTP_GET, handleStreamTargetFlashUsage);
     server.on("/api/diagnostic/report", HTTP_GET, handleDiagnosticReport);
