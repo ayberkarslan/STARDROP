@@ -31,7 +31,6 @@ export default function WorkbenchWizard({ preset, profile, setProfile, sources, 
   const [mcuPart, setMcuPart] = useState(initialMcu);
   const [part, setPart] = useState(preset?.part || 'LED');
   const [protocol, setProtocol] = useState(preset?.protocol || 'GPIO');
-  const [ref, setRef] = useState('D1');
   const [pins, setPins] = useState(defaultsFor(preset?.protocol || 'GPIO', initialMcu));
   const [working, setWorking] = useState(false);
   const [showAdd, setShowAdd] = useState(flow === 'manual');
@@ -78,9 +77,9 @@ export default function WorkbenchWizard({ preset, profile, setProfile, sources, 
   };
   const addComponent = () => {
     try {
-      const created = addManualPeripheral(profile, { part, protocol, ref, pins,
+      const created = addManualPeripheral(profile, { part, protocol, pins,
         activeLow: !profile.mcu.part.startsWith('STM32F446RE') });
-      setProfile(created); setActiveComponent(ref.trim().toUpperCase()); setShowAdd(false); setStep('test'); setLocalError('');
+      setProfile(created); setActiveComponent(created.components.at(-1).ref); setShowAdd(false); setStep('test'); setLocalError('');
     } catch (error) { setLocalError(error.message); }
   };
   const chooseComponent = (componentRef) => { setActiveComponent(componentRef); setStep('test'); setLocalError(''); };
@@ -113,7 +112,7 @@ export default function WorkbenchWizard({ preset, profile, setProfile, sources, 
       setFlashLog([]); setTestStage(''); setStep('flash');
     } finally { setWorking(false); }
   };
-  const startMissingComponent = () => { setPart('LED'); setProtocol('GPIO'); setRef('D1'); setShowAdd(true);
+  const startMissingComponent = () => { setPart('LED'); setProtocol('GPIO'); setShowAdd(true);
     setPins(defaultsFor('GPIO', profile.mcu.part)); setStep('component'); setLocalError(''); };
   const assignSelectedPin = (pin) => {
     const connection = currentConnections[selectedPinIndex];
@@ -131,7 +130,7 @@ export default function WorkbenchWizard({ preset, profile, setProfile, sources, 
       {step === 'start' && <><h2>Nasıl başlamak istersin?</h2><p>Bağlantıları kendin seç veya kart dosyanı yükle.</p><div className="wizard-choices"><button onClick={() => start('manual')}><Cpu/><strong>Bağlantıları kendim seçeceğim</strong><small>STM32 modelini, sensörü ve pinleri elle gir.</small><ArrowRight className="wizard-arrow"/></button><button onClick={() => start('net')}><FileUp/><strong>Kart dosyamı yükleyeceğim</strong><small>Altium .NET dosyasındaki bileşen ve pin adaylarını incele.</small><ArrowRight className="wizard-arrow"/></button></div></>}
       {step === 'board' && <><span className="eyebrow">1 / KART</span><h2>Hangi STM32?</h2><p>Test yazılımı bu modele göre derlenecek. Bağlı hedefin de aynı model olması gerekir.</p><div className="wizard-fields"><label>Kart adı<input value={boardName} onChange={(event) => setBoardName(event.target.value)}/></label><label>STM32 modeli<SelectMenu ariaLabel="STM32 modeli" value={mcuPart} options={presetModels} onChange={setMcuPart}/></label></div><button className="primary wizard-next" onClick={createBoard}>DEVAM ET <ArrowRight size={16}/></button></>}
       {step === 'file' && <><span className="eyebrow">1 / KART DOSYASI</span><h2>Altium .NET dosyanı yükle</h2><p>Algılanan sensörler ve bağlantı adayları sonraki ekranda görünecek. Pinleri flash öncesinde sen onaylayacaksın.</p><div className="wizard-file-options"><label className="wizard-file"><FileUp/><strong>.NET DOSYASI SEÇ</strong><small>Altium netlist · .NET veya .txt</small><input type="file" accept=".NET,.net,.txt" onChange={(event) => readNetlist(event.target.files?.[0])}/></label><label className="wizard-file"><Download/><strong>KAYITLI .STARDROP AÇ</strong><small>Daha önce bıraktığın yerden devam et</small><input type="file" accept=".stardrop" onChange={(event) => readProject(event.target.files?.[0])}/></label></div>{working && <p>Dosya okunuyor…</p>}</>}
-      {step === 'component' && profile && <><span className="eyebrow">2 / BİLEŞEN</span><h2>{flow === 'net' ? 'Kartta neyi test edeceğiz?' : 'Neyi bağladın?'}</h2><p>{profile.mcu.part} · {profile.name}. {flow === 'net' ? 'Algılanan bileşenlerden birini seç; listede olmayanı elle ekleyebilirsin.' : 'Sensörün adını ve bağlantı türünü yaz; testler bu bilgiye göre filtrelenecek.'}</p>{profile.components.length > 0 && <div className="wizard-components">{profile.components.map((component) => <button key={component.ref} onClick={() => chooseComponent(component.ref)}><Activity size={18}/><span><strong>{component.part}</strong><small>{component.ref} · {component.protocol}</small></span><ArrowRight size={16}/></button>)}</div>}{(flow === 'net' || profile.components.length > 0) && <button className="wizard-text-button" onClick={startMissingComponent}>{flow === 'net' ? 'LED veya başka bileşen görünmüyor mu? Elle ekle' : 'Başka bileşen ekle'}</button>}{showAdd && <div className="wizard-add"><h3>{profile.components.length ? 'Yeni bileşen ekle' : 'Bileşeni tanımla'}</h3><div className="wizard-fields"><label>Parça adı<input value={part} placeholder="LED, MPU6050, MS5611..." onChange={(event) => setPart(event.target.value.toUpperCase())}/></label><label>Bağlantı türü<SelectMenu ariaLabel="Bağlantı türü" value={protocol} options={protocols} onChange={(value) => { setProtocol(value); setPins(defaultsFor(value, profile.mcu.part)); setRef(value === 'GPIO' ? 'D1' : 'U2'); if (value === 'GPIO') setPart('LED'); }}/></label><label>Şemadaki adı<input value={ref} placeholder="U2 veya D1" onChange={(event) => setRef(event.target.value.toUpperCase())}/></label></div><button className="primary wizard-next" onClick={addComponent}>TESTLERİ GÖR <ArrowRight size={16}/></button></div>}</>}
+      {step === 'component' && profile && <><span className="eyebrow">2 / BİLEŞEN</span><h2>{flow === 'net' ? 'Kartta neyi test edeceğiz?' : 'Neyi bağladın?'}</h2><p>{profile.mcu.part} · {profile.name}. {flow === 'net' ? 'Algılanan bileşenlerden birini seç; listede olmayanı elle ekleyebilirsin.' : 'Sensörün adını ve bağlantı türünü yaz; testler bu bilgiye göre filtrelenecek.'}</p>{profile.components.length > 0 && <div className="wizard-components">{profile.components.map((component) => <button key={component.ref} onClick={() => chooseComponent(component.ref)}><Activity size={18}/><span><strong>{component.part}</strong><small>{component.ref} · {component.protocol}</small></span><ArrowRight size={16}/></button>)}</div>}{(flow === 'net' || profile.components.length > 0) && <button className="wizard-text-button" onClick={startMissingComponent}>{flow === 'net' ? 'LED veya başka bileşen görünmüyor mu? Elle ekle' : 'Başka bileşen ekle'}</button>}{showAdd && <div className="wizard-add"><h3>{profile.components.length ? 'Yeni bileşen ekle' : 'Bileşeni tanımla'}</h3><div className="wizard-fields"><label>Parça adı<input value={part} placeholder="LED, MPU6050, MS5611..." onChange={(event) => setPart(event.target.value.toUpperCase())}/></label><label>Bağlantı türü<SelectMenu ariaLabel="Bağlantı türü" value={protocol} options={protocols} onChange={(value) => { setProtocol(value); setPins(defaultsFor(value, profile.mcu.part)); if (value === 'GPIO') setPart('LED'); }}/></label></div><button className="primary wizard-next" onClick={addComponent}>TESTLERİ GÖR <ArrowRight size={16}/></button></div>}</>}
       {step === 'component' && profile && <div className="wizard-context">
         <div className="wizard-context-line"><span>{sources.netlist ? `Parser güveni: ${overallConfidence(profile)}%` : 'Manuel kart profili'} · {profile.components.length} bileşen</span><span>Hedef UID: {profile.targetUid || 'atanmadı'}</span></div>
         <details><summary>Kart görünümü ve fotoğrafı</summary><BoardMap profile={profile} components={profile.components} target={target} image={sources.boardImage} selectedRef={activeComponent} onSelect={chooseComponent} onImageChange={(file) => { if (file && (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024)) { setNotice('Kart fotoğrafı PNG, JPEG veya WebP ve en fazla 8 MB olmalı.'); return; } setSources((current) => ({ ...current, boardImage: file })); }} /><p className="wizard-hint">Düğümler görsel özet içindir; PCB üzerindeki fiziksel koordinatları göstermez.</p></details>
@@ -160,8 +159,10 @@ export default function WorkbenchWizard({ preset, profile, setProfile, sources, 
           <label>LED yönü<SelectMenu ariaLabel="LED yönü" value={activeSensor.activeLow ? 'low' : 'high'}
             options={[{ value: 'low', label: 'Aktif düşük' }, { value: 'high', label: 'Aktif yüksek' }]}
             onChange={(value) => updateLedSetting('activeLow', value === 'low')}/></label>
-          <label>Yanıp sönme aralığı (ms)<input type="number" min="50" max="5000"
-            value={activeSensor.blinkMs || 100} onChange={(event) => updateLedSetting('blinkMs', Number(event.target.value))}/></label>
+          <label>Yanma süresi (s)<input type="number" min="0.05" max="60" step="0.05"
+            value={(activeSensor.onMs ?? activeSensor.blinkMs ?? 100) / 1000} onChange={(event) => updateLedSetting('onMs', Math.round(Number(event.target.value) * 1000))}/></label>
+          <label>Sönük kalma süresi (s)<input type="number" min="0.05" max="60" step="0.05"
+            value={(activeSensor.offMs ?? activeSensor.blinkMs ?? 100) / 1000} onChange={(event) => updateLedSetting('offMs', Math.round(Number(event.target.value) * 1000))}/></label>
         </div>}
         {selectedValidation?.errors.length > 0 && <div className="validation bad">{selectedValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>}
         {selectedValidation?.warnings.length > 0 && <div className="validation warn">{selectedValidation.warnings.slice(0, 5).map((warning) => <span key={warning}>{warning}</span>)}</div>}

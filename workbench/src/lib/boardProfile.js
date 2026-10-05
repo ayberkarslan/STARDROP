@@ -108,7 +108,13 @@ export function createManualLedProfile({ name, mcuPart, pin, activeLow = true, b
 export function addManualPeripheral(profile, { part, protocol, ref, pins, activeLow = true, blinkMs = 100 }) {
   if (!profile || !['GPIO', 'I2C', 'SPI'].includes(protocol)) throw new Error('Önce kartı ve bağlantı türünü seç.');
   const componentPart = String(part || '').trim().toUpperCase();
-  const componentRef = String(ref || '').trim().toUpperCase();
+  let componentRef = String(ref || '').trim().toUpperCase();
+  if (!componentRef) {
+    const prefix = protocol === 'GPIO' ? 'D' : 'U';
+    let number = 1;
+    while (profile.components.some(item => item.ref === `${prefix}${number}`)) number++;
+    componentRef = `${prefix}${number}`;
+  }
   if (!componentPart || !/^[A-Z]+\d+$/.test(componentRef) || profile.components.some((item) => item.ref === componentRef)) {
     throw new Error('Bileşen adı veya U2 gibi benzersiz referans geçersiz.');
   }
@@ -120,7 +126,7 @@ export function addManualPeripheral(profile, { part, protocol, ref, pins, active
     peripheral, approved: false, source: 'USER', path: [], evidence: {}, confidence: 0,
   }));
   const component = { ref: componentRef, part: componentPart, category: protocol === 'GPIO' ? 'OUTPUT' : 'SENSOR', protocol, peripheral,
-    ...(protocol === 'GPIO' ? { activeLow: Boolean(activeLow), blinkMs: Number(blinkMs) } : {}) };
+    ...(protocol === 'GPIO' ? { activeLow: Boolean(activeLow), blinkMs: Number(blinkMs), onMs: Number(blinkMs), offMs: Number(blinkMs) } : {}) };
   const next = { ...profile, components: [...profile.components, component], connections: [...profile.connections, ...connections] };
   return addAuditEvent(next, 'MANUAL_COMPONENT_ADDED', { componentRef, protocol });
 }

@@ -423,11 +423,24 @@ fn validate_led_request(request: &LedBuildRequest) -> Result<(u8, u8, u64, bool,
     let number: u8 = pin[2..].parse().map_err(|_| "LED GPIO geçersiz")?;
     if number > 15 || (port == 0 && (number == 13 || number == 14))
         || !package_pin_present(&request.mcu_part, pin) { return Err("GPIO bu hedef için uygun değil".into()); }
-    let interval = component["blinkMs"].as_u64().ok_or("LED aralığı eksik")?;
-    if !(50..=5000).contains(&interval) { return Err("LED aralığı 50–5000 ms olmalı".into()); }
+    let (interval, _) = led_timing(&request.profile_json, &request.component_ref)?;
     let active_low = component["activeLow"].as_bool().ok_or("LED polaritesi eksik")?;
     if request.request_id.len() > 100 || !request.request_id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-') { return Err("Çalıştırma kimliği geçersiz".into()); }
     Ok((port, number, interval, active_low, target))
+}
+
+fn led_timing(profile_json: &str, component_ref: &str) -> Result<(u64, u64), String> {
+    let profile: serde_json::Value = serde_json::from_str(profile_json).map_err(|_| "Profil geçersiz")?;
+    let component = profile["components"].as_array().ok_or("Bileşen yok")?.iter()
+        .find(|item| item["ref"] == component_ref).ok_or("LED yok")?;
+    let read = |key: &str| -> Result<u64, String> {
+        let value = component.get(key).unwrap_or(&component["blinkMs"]);
+        let ms = value.as_u64().ok_or("LED süresi geçersiz")?;
+        let maximum = if component.get(key).is_some() { 60000 } else { 5000 };
+        if !(50..=maximum).contains(&ms) { return Err("LED süresi sınır dışında".into()); }
+        Ok(ms)
+    };
+    Ok((read("onMs")?, read("offMs")?))
 }
 
 #[tauri::command]
@@ -493,6 +506,8 @@ fn compile_code_test_at(source: &Path, gcc: &Path, objcopy: &Path, request: Code
                 project_path: None };
             let (_, _, interval, active_low, _) = validate_led_request(&led_request)?;
             header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n", active_low as u8));
+            let (on, off) = led_timing(&request.profile_json, &request.component_ref)?;
+            header.push_str(&format!("#define STARDROP_LED_ON_MS {on}\n#define STARDROP_LED_OFF_MS {off}\n"));
         }
         header.push_str("#endif\n");
         let project = source.join(Path::new(&test.source_path).parent().unwrap_or(Path::new("")));
@@ -589,7 +604,8 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
 fn compile_blackpill_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRequest) -> Result<LedBuildResult, String> {
     let (_port, _number, interval, active_low, _) = validate_led_request(&request)?;
     let mut header = role_pin_header(&request.profile_json, &request.component_ref)?;
-    header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8));
+    let (on, off) = led_timing(&request.profile_json, &request.component_ref)?;
+    header.push_str(&format!("#define STARDROP_LED_ACTIVE_LOW {}\n#define STARDROP_LED_BLINK_MS {interval}\n#define STARDROP_LED_ON_MS {on}\n#define STARDROP_LED_OFF_MS {off}\n#define STARDROP_LED_SERIAL_ENABLED 0\n#endif\n", active_low as u8));
     compile_hal_at(project, repo_root, gcc, objcopy, request, header)
 }
 

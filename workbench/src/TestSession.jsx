@@ -50,7 +50,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
     : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
     : sourceBusy ? 'Kod kaynağı güncelleniyor; indirme bitince testi başlat.'
     : !sourceStatus?.activeSha ? 'Önce test kaynağını GitHub’dan indir.'
-    : isLedTest && (!Number.isInteger(activeSensor.blinkMs) || activeSensor.blinkMs < 50 || activeSensor.blinkMs > 5000) ? 'Blink aralığı 50–5000 ms olmalı.'
+    : isLedTest && [activeSensor.onMs ?? activeSensor.blinkMs, activeSensor.offMs ?? activeSensor.blinkMs].some(ms => !Number.isInteger(ms) || ms < 50 || ms > 60000) ? 'Yanma ve sönük kalma süreleri 0,05–60 saniye olmalı.'
     : !testValidation?.valid ? 'Önce sensör pinlerini doğrula ve onayla.' : null;
 
   useEffect(() => {
@@ -183,7 +183,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
       setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
         testId: selectedTest.id, targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
         firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin,
-        blinkMs: activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
+        blinkMs: activeSensor.blinkMs, onMs: activeSensor.onMs ?? activeSensor.blinkMs, offMs: activeSensor.offMs ?? activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
       setVisualPending(requestId);
       setTestStage('GitHub test firmware’i yüklendi. Sonucu gözle kontrol et.');
     } catch (error) {

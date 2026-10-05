@@ -107,9 +107,11 @@ int main(void)
         static const char message[] = "YRT IDE Serial Monitor Test: Roket atesleniyor...\r\n";
         HAL_UART_Transmit(&huart1, (uint8_t*)message, sizeof(message) - 1U, 1000);
       }
-      HAL_GPIO_TogglePin(STARDROP_LED_GPIO_PORT, STARDROP_LED_GPIO_PIN);
+      HAL_GPIO_WritePin(STARDROP_LED_GPIO_PORT, STARDROP_LED_GPIO_PIN, STARDROP_LED_ACTIVE_LOW ? GPIO_PIN_RESET : GPIO_PIN_SET);
+      HAL_Delay(STARDROP_LED_ON_MS);
+      HAL_GPIO_WritePin(STARDROP_LED_GPIO_PORT, STARDROP_LED_GPIO_PIN, STARDROP_LED_ACTIVE_LOW ? GPIO_PIN_SET : GPIO_PIN_RESET);
+      HAL_Delay(STARDROP_LED_OFF_MS);
       live_counter++;
-      HAL_Delay(STARDROP_LED_BLINK_MS);
 
         
       

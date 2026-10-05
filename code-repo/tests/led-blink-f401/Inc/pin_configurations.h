@@ -9,6 +9,8 @@
 #define STARDROP_LED_GPIO_CLK_ENABLE() __HAL_RCC_GPIOC_CLK_ENABLE()
 #define STARDROP_LED_ACTIVE_LOW 1
 #define STARDROP_LED_BLINK_MS 100
+#define STARDROP_LED_ON_MS 100
+#define STARDROP_LED_OFF_MS 100
 #define STARDROP_LED_SERIAL_ENABLED 0
 
 /* Future single-device tests use semantic roles in the same format, e.g.
