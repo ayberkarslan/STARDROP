@@ -568,7 +568,8 @@ public:
                            uint16_t* flashSizeKbOut = nullptr,
                            void (*progress)(uint32_t, uint32_t) = nullptr) {
         if (erasedCount) *erasedCount = 0;
-        uint32_t sizeWord = readMem32(STM32F4_FLASH_SIZE_REG & ~0x3UL);
+        uint32_t sizeWord = 0;
+        if (!readMem32Checked(STM32F4_FLASH_SIZE_REG & ~0x3UL, &sizeWord)) return false;
         uint16_t flashSizeKb = (uint16_t)(sizeWord >> 16);
         if (flashSizeKbOut) *flashSizeKbOut = flashSizeKb;
         if (imageBytes == 0 || imageBytes > uint32_t(flashSizeKb) * 1024) return false;
