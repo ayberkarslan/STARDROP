@@ -695,7 +695,7 @@ void handleTargetMaintenance() {
         server.send(409, "application/json", "{\"status\":\"error\",\"message\":\"Hedef değişti veya okunamıyor; tekrar bağlan\"}"); return;
     }
     if (operation == "erase" && (field("confirmation") != "FLASH SIL" ||
-        (target.deviceId != 0x423 && target.deviceId != 0x421))) {
+        (target.deviceId != 0x423 && target.deviceId != 0x433 && target.deviceId != 0x421))) {
         server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Silme onayı veya F401/F446 hedefi gerekli\"}"); return;
     }
     bool ok = true;
@@ -707,8 +707,8 @@ void handleTargetMaintenance() {
     if (ok && operation == "erase") {
         if (!target.flashSizeKb || target.flashSizeKb > 1024) ok = false;
         for (uint32_t offset = 0; ok && offset < uint32_t(target.flashSizeKb) * 1024; offset += 4) {
-            const uint32_t word = swd.readMem32(0x08000000UL + offset);
-            if (word != 0xFFFFFFFFUL || swd.lastAck != 1) ok = false;
+            uint32_t word = 0;
+            if (!swd.readMem32Checked(0x08000000UL + offset, &word) || word != 0xFFFFFFFFUL) ok = false;
             if ((offset & 0xFFF) == 0) yield();
         }
     }
