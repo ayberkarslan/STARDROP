@@ -44,6 +44,11 @@ const drag = async (from, to, checkPreview = false) => {
 };
 try {
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
+  const welcomeSidebar = await page.locator('.welcome-sidebar:visible').boundingBox();
+  await page.mouse.move(80, 400); await page.mouse.wheel(0, 1000);
+  await page.waitForTimeout(100);
+  assert.equal(await page.evaluate(() => window.scrollY), 0);
+  assert.equal((await page.locator('.welcome-sidebar:visible').boundingBox()).y, welcomeSidebar.y);
   await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
   await page.getByRole('dialog', { name: 'Girişi doğrula' }).waitFor();
   await page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' }).waitFor({ timeout: 12000 });
@@ -102,6 +107,26 @@ try {
   while (await page.getByRole('button', { name: /sekmesini kapat/ }).count()) await page.getByRole('button', { name: /sekmesini kapat/ }).first().click();
   assert.equal(await page.getByRole('tab').count(), 0);
   assert.equal(await page.locator('.start-wordmark:visible').innerText(), 'STARDROP');
+  await page.locator('[data-rail-tool="settings"]:visible').click();
+  const fixedRail = await page.locator('.rail:visible').boundingBox();
+  const fixedTabs = await page.locator('.workspace-tabbar:visible').boundingBox();
+  await page.setViewportSize({ width: 1440, height: 600 });
+  const smallRail = await page.locator('.rail:visible').boundingBox();
+  const smallTabs = await page.locator('.workspace-tabbar:visible').boundingBox();
+  await page.locator('.workspace-panel:visible').evaluate(el => { const filler = document.createElement('div'); filler.dataset.scrollTest = 'true'; filler.style.height = '1200px'; el.append(filler); });
+  await page.mouse.move(1100, 400); await page.mouse.wheel(0, 1600);
+  await page.waitForTimeout(150);
+  assert.ok(await page.locator('.workspace-panel:visible').evaluate(el => el.scrollTop > 0));
+  assert.equal(await page.evaluate(() => window.scrollY), 0);
+  assert.equal((await page.locator('.rail:visible').boundingBox()).y, smallRail.y);
+  assert.equal((await page.locator('.workspace-tabbar:visible').boundingBox()).y, smallTabs.y);
+  await page.mouse.move(60, 400); await page.mouse.wheel(0, -1800);
+  await page.waitForTimeout(100);
+  assert.equal((await page.locator('.rail:visible').boundingBox()).y, smallRail.y);
+  await page.locator('[data-scroll-test]').evaluate(el => el.remove());
+  await page.setViewportSize({ width: 1440, height: 900 });
+  assert.equal((await page.locator('.rail:visible').boundingBox()).y, fixedRail.y);
+  assert.equal((await page.locator('.workspace-tabbar:visible').boundingBox()).y, fixedTabs.y);
   // No real hardware: hold a mocked upload to exercise inter-tab exclusion.
   await page.evaluate(() => { window.__mockOnline = true; });
   await page.locator('.connection-status:visible').click();

@@ -6,11 +6,13 @@ body{position:fixed;inset:0}
 .app-shell,.welcome-screen{grid-template-rows:minmax(0,1fr)}
 .app-shell>main{height:100%;min-height:0;overflow:hidden}
 .rail,.welcome-sidebar{min-height:0;overflow:hidden;overscroll-behavior:none}
+.app-shell>.rail{position:relative;top:auto;align-self:stretch;height:100%}
+.window-chrome{position:relative;top:auto}
 .rail nav{min-height:0;overflow:auto;overscroll-behavior:none}
 .brand,.rail-footer,.rail>.notification-center,.welcome-footer{flex-shrink:0}
 .workspace-tabbar,.guest-header,.window-chrome{flex-shrink:0;overscroll-behavior:none}
 .workspace-tablist{overflow-y:hidden;overscroll-behavior:none}
 .workspace-panel{min-height:0;overflow:auto;overscroll-behavior:none}
-.workspace-empty{min-height:0;overflow:auto;overscroll-behavior:none}
+.workspace-empty{min-height:0;overflow:auto;overscroll-behavior:none;place-items:safe center}
 .welcome-content{max-height:100%;min-height:0;overflow:auto;overscroll-behavior:none}
 .select-options,.notification-history,.flash-terminal,.wizard-terminal,.log,.ui-popup,.drawer-body,.network-scan{overscroll-behavior:none}
