@@ -4,7 +4,6 @@ import { BookOpen, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } f
 import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
-import BrandMark from './BrandMark.jsx';
 import TestLibrary from './TestLibrary.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
@@ -31,8 +30,21 @@ function Section({ title, children, action }) {
   return <section className="panel"><div className="panel-head"><h2>{title}</h2>{action}</div>{children}</section>;
 }
 
-function EmptyWorkspace({ onOpenFlash }) {
-  return <div className="workspace-empty" data-drop-empty="true" role="tabpanel" aria-label="Boş çalışma alanı"><div className="workspace-logo-placeholder"><span className="workspace-wordmark">STARDROP</span>{onOpenFlash && <button className="wizard-text-button" onClick={onOpenFlash}>Hızlı Yükleme’yi aç</button>}</div></div>;
+function StartContent({ user, busy, onGithub, onGuest, error, preparing }) {
+  return <div className="start-content">
+    <span className="start-wordmark">STARDROP</span>
+    <span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p>
+    <div className="welcome-actions">
+      <button className="welcome-primary" disabled={busy} onClick={onGithub}><Github size={18}/><span><strong>{user ? `@${user.login} ile devam et` : busy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button>
+      <button className="welcome-guest" onClick={onGuest}><Upload size={18}/><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button>
+    </div>
+    {preparing && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}
+    {error && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{error}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}
+  </div>;
+}
+
+function EmptyWorkspace({ children }) {
+  return <div className="workspace-empty" data-drop-empty="true" role="tabpanel" aria-label="Boş çalışma alanı"><div className="empty-start-content">{children}</div></div>;
 }
 
 function RailTool({ tool, Icon, workspace, drag, onOpen }) {
@@ -471,18 +483,25 @@ export default function App() {
     recoveryCount={(session === 'guest' ? guestWorkspace : workspace).state.recovery.length}
     onRecover={() => { (session === 'guest' ? guestWorkspace : workspace).undo(); setNotice('Önceki çalışma ayrı sekmede geri açıldı.'); }}/>;
 
-  const welcomeView = <div className="welcome-screen"><aside className="welcome-sidebar"><div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div><div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div></aside><main className="welcome-content"><span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p><div className="welcome-actions"><button className="welcome-primary" disabled={githubLoginBusy} onClick={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}><Github size={18} /><span><strong>{githubUser ? `@${githubUser.login} ile devam et` : githubLoginBusy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button><button className="welcome-guest" onClick={() => { setSession('guest'); setMode('flash'); }}><Upload size={18} /><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button></div>{githubLoginBusy && !deviceLogin && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}{githubLoginError && <div className="welcome-auth-error" role="alert"><strong>GitHub girişi tamamlanamadı</strong><span>{githubLoginError}</span><small>GitHub App ayarlarında Device Flow açık olmalı. Cloudflare Worker veya callback gerekmiyor.</small></div>}</main></div>;
+  const startContent = <StartContent user={githubUser} busy={githubLoginBusy}
+    onGithub={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}
+    onGuest={() => { setSession('guest'); guestWorkspace.open('flash'); }}
+    error={githubLoginError} preparing={githubLoginBusy && !deviceLogin}/>;
+  const welcomeView = <div className="welcome-screen"><aside className="welcome-sidebar">
+    <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
+    <div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div>
+    </aside><main className="welcome-content">{startContent}</main></div>;
 
-  const guestView = <div className="guest-layout"><header className="guest-header"><div className="brand"><BrandMark/><strong>STARDROP</strong></div>
+  const guestView = <div className="guest-layout"><header className="guest-header"><div className="brand"><strong>STARDROP</strong></div>
     <div className="guest-header-actions"><button disabled={Boolean(hardwareBusy)} onClick={() => setSession('welcome')}>Girişe dön</button></div></header>
     <WorkspaceTabs workspace={guestWorkspace} lockedIds={lockedIds} drag={guestDrag} titles={titles}/>
-    {guestWorkspace.mode === 'empty' && <EmptyWorkspace onOpenFlash={() => guestWorkspace.open('flash')}/>}
+    {guestWorkspace.mode === 'empty' && <EmptyWorkspace>{startContent}</EmptyWorkspace>}
     {guestWorkspace.state.documents.map((doc) => renderDocument(doc, guestWorkspace.state.activeId, guestWorkspace))}
     <div className="guest-notification-center">{notificationCenter}</div><DragPreview preview={guestDrag.preview}/></div>;
 
   const signedView = <div className="app-shell">
     <aside className="rail">
-      <div className="brand"><BrandMark/><div><strong>STARDROP</strong><small>Remote Code Flash and Test Platform</small></div></div>
+      <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
       <nav>
         <RailTool tool="flash" Icon={Upload} workspace={workspace} drag={drag}/>
         <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
@@ -498,7 +517,7 @@ export default function App() {
     </aside>
     <main>
       <WorkspaceTabs workspace={workspace} lockedIds={lockedIds} drag={drag} titles={titles}/>
-      {mode === 'empty' && <EmptyWorkspace />}
+      {mode === 'empty' && <EmptyWorkspace>{startContent}</EmptyWorkspace>}
       {workspace.state.documents.map((doc) => renderDocument(doc, workspace.state.activeId, workspace))}
     </main>
     <DragPreview preview={drag.preview}/>
