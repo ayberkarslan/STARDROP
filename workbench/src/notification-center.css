@@ -28,6 +28,7 @@
 .notification-history p{display:grid;gap:5px;margin:0;padding:12px 0;border-top:1px solid #222;overflow-wrap:anywhere;color:#bbb;font-size:11px}
 .notification-history time{color:#777;font-size:9px}
 .notification-history-floating{position:fixed;z-index:900;background:#000;border:1px solid var(--popup-border);border-radius:var(--popup-radius);color:var(--popup-text);font-family:var(--font-mono);overscroll-behavior:none;box-shadow:0 16px 50px #000c}
+.notification-history-floating time{font-size:11px;color:#bcbcbc}
 .welcome-footer{margin-top:auto;display:grid;gap:16px;min-width:0}
 .welcome-footer>span{color:#666;font:9px var(--font-mono);letter-spacing:.12em}
 .welcome-footer .notification-center{padding-left:0;padding-right:0}

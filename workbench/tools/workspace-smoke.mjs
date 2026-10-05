@@ -75,6 +75,14 @@ try {
   await drag(page.locator('[data-rail-tool="settings"]:visible'), page.locator('.workspace-panel:visible'), true);
   await page.getByRole('heading', { name: 'GITHUB TEST DEPOSU' }).waitFor();
   await page.locator('.notification-details:visible summary').click();
+  await page.locator('.notification-history-floating').waitFor();
+  assert.equal(await page.locator('.notification-history-floating').evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return document.elementFromPoint(r.right - 8, r.top + 20)?.closest('.notification-history-floating') === el;
+  }), true);
+  assert.equal(await page.locator('.notification-history-floating').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
+  await page.getByRole('heading', { name: 'Bildirimler', exact: true }).click();
+  assert.equal(await page.locator('.notification-details:visible').evaluate(el => el.open), true);
   await page.getByRole('button', { name: /Son taslağı geri aç/ }).click();
   assert.equal(await page.getByRole('textbox', { name: 'Kart adı' }).inputValue(), 'İkinci kart');
   await page.getByRole('button', { name: 'Yeni Test sekmesini kapat' }).last().click();
