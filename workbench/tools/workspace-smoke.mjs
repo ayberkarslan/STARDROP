@@ -67,7 +67,7 @@ try {
   await page.getByRole('button', { name: 'Filtreleri temizle', exact: true }).click();
   await page.getByRole('button', { name: 'Not ekle', exact: true }).click();
   await page.getByRole('textbox', { name: 'Atölye notu', exact: true }).fill('Besleme notu');
-  await page.getByRole('button', { name: 'Notu düzenle', exact: true }).click();
+  await page.getByRole('button', { name: 'Notu gizle', exact: true }).click();
   await page.getByRole('button', { name: 'Notu düzenle', exact: true }).click();
   assert.equal(await page.getByRole('textbox', { name: 'Atölye notu', exact: true }).inputValue(), 'Besleme notu');
   assert.ok((await page.locator('.library-share:visible').boundingBox()).height < 500);

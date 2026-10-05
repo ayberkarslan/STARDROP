@@ -46,7 +46,7 @@
 .sensor-filter-groups button[aria-pressed=true]{border-color:#fff;color:#fff}
 .sensor-filter-parts{max-height:320px;overflow:auto;overscroll-behavior:none;display:flex;flex-direction:column;gap:7px}
 .sensor-filter-parts>button{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:center;padding:11px;background:#000;color:#fff;text-align:left;border:1px solid #333;border-radius:6px}
-.sensor-filter-parts>button[aria-checked=true]{border-color:#fff}.sensor-filter-parts strong{font-size:11px;font-weight:400}.sensor-filter-parts small{font-size:9px!important;color:#bcbcbc!important}
+.sensor-filter-parts>button[aria-checked=true]{border-color:#fff}.sensor-filter-parts strong{font-size:11px;font-weight:400}.sensor-filter-parts small{font-size:11px!important;color:#bcbcbc!important}
 .sensor-filter-check{width:17px;height:17px;display:grid;place-items:center;border:1px solid #666;border-radius:3px}
 .sensor-filter-footer{display:flex;justify-content:space-between;gap:15px;margin-top:20px;padding-top:16px;border-top:1px solid #333}.sensor-filter-footer .primary{margin:0;width:auto;padding:10px 18px}
 @keyframes library-spin{to{transform:rotate(360deg)}}.library-refreshing{animation:library-spin 1s linear infinite}

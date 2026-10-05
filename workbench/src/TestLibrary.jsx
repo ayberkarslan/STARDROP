@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
+import { Minus, Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { filterLibrary, SENSOR_GROUPS } from './lib/libraryFilters.js';
 import SelectMenu from './SelectMenu.jsx';
 import SensorFilter from './SensorFilter.jsx';
@@ -81,7 +81,7 @@ export default function TestLibrary({ entries, busy, error, refresh, publish, dr
           {availableDrafts.length > 0 ? <label>Çalışma<SelectMenu ariaLabel="Paylaşılacak çalışma" value={selectedDraftId} options={availableDrafts.map((doc, index) => ({ value: doc.id, label: drafts[doc.id].profile.name + ' · ' + (drafts[doc.id].selectedTest?.name || 'Yeni Test') + ' (' + (index + 1) + ')' }))} onChange={setDraftId}/></label>
             : <div className="library-no-draft"><p>Önce bir çalışma oluştur.</p><button type="button" className="secondary" onClick={startNewTest}><Plus size={14}/>Yeni Test</button></div>}
           <label>Kayıt adı<input maxLength={100} value={name} onChange={event => setName(event.target.value)} placeholder="Örn. BlackPill · LED"/></label>
-          <button type="button" className="wizard-text-button library-note-toggle" aria-expanded={showNote} onClick={() => setShowNote(current => !current)}><Plus size={13}/>{note ? 'Notu düzenle' : 'Not ekle'}</button>
+          <button type="button" className="wizard-text-button library-note-toggle" aria-expanded={showNote} onClick={() => setShowNote(current => !current)}>{showNote ? <Minus size={13}/> : <Plus size={13}/>} {showNote ? 'Notu gizle' : note ? 'Notu düzenle' : 'Not ekle'}</button>
           {showNote && <label>Atölye notu<textarea maxLength={2000} rows={2} value={note} onChange={event => setNote(event.target.value)} placeholder="Besleme, bağlantı veya deneme notu…"/></label>}
           {profile && <div className="library-preview"><span>{profile.mcu.part} · {activeSensor?.part || 'Bileşen seçilmedi'}</span><small>{selectedTest?.name || 'Kod bekleniyor'}</small></div>}
           <button type="submit" className="primary" disabled={busy || !profile || !activeSensor || name.trim().length < 3}>{busy ? 'KAYDEDİLİYOR…' : 'GITHUB’A KAYDET'}</button>
