@@ -16,7 +16,7 @@ export default function useTargetRegistry(rawTarget, setNotice) {
 
   useEffect(() => {
     const uid = targetUid(rawTarget?.uid);
-    if (!ready || !rawTarget?.connected || !uid || records[uid] || !rawTarget.label?.trim()) return;
+    if (!ready || !rawTarget?.connected || !uid || records[uid]?.label || !rawTarget.label?.trim()) return;
     // Migrate existing ESP names without allowing firmware to overwrite a local rename.
     registry.current.save(uid, rawTarget.label, rawTarget.model || '', false)
       .catch(error => setNotice(`Kart adı yerel kayda aktarılamadı: ${String(error)}`));
@@ -26,5 +26,9 @@ export default function useTargetRegistry(rawTarget, setNotice) {
     if (!target?.connected || !registry.current) throw new Error('Önce UID okunmuş bir STM32 bağla.');
     return registry.current.save(target.uid, label, target.model || '');
   }, []);
-  return { records, saveTargetName };
+  const saveTargetAnalysis = useCallback(async (target, analysis) => {
+    if (!target?.connected || !registry.current) throw new Error('Önce UID okunmuş bir STM32 bağla.');
+    return registry.current.saveAnalysis(target.uid, target.model || '', analysis);
+  }, []);
+  return { records, saveTargetName, saveTargetAnalysis };
 }

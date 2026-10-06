@@ -83,7 +83,7 @@ export default function App() {
   const healthMisses = useRef(0);
   const [rawTarget, setTarget] = useState(null);
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
-  const { records: targetRecords, saveTargetName } = useTargetRegistry(rawTarget, setNotice);
+  const { records: targetRecords, saveTargetName, saveTargetAnalysis } = useTargetRegistry(rawTarget, setNotice);
   const target = namedTarget(rawTarget, targetRecords);
   const noticeHistory = useNoticeHistory(notice);
   const [libraryEntries, setLibraryEntries] = useState([]);
@@ -534,7 +534,7 @@ export default function App() {
 
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
-    refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, setNotice,
+    refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,
     aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy,
     espBase: activeBridge, devices: discoveredDevices, onConnect: connectBridge, onDiscover: autoConnect, notice };
   const titles = Object.fromEntries(Object.entries(testDrafts).filter(([, draft]) => draft.profile).map(([id, draft]) => [id, draft.profile.name + ' · ' + (draft.selectedTest?.name || 'Yeni Test')]));

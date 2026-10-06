@@ -496,7 +496,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, esp_watch::esp_watch, esp_watch::esp_watch_stop, target_registry::target_registry_load, target_registry::target_registry_save, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
+        .invoke_handler(tauri::generate_handler![save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, esp_watch::esp_watch, esp_watch::esp_watch_stop, target_registry::target_registry_load, target_registry::target_registry_save, target_registry::target_registry_analysis_save, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }

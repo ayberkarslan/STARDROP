@@ -12,6 +12,27 @@ pub struct TargetRecord {
     model: String,
     created_at: u64,
     updated_at: u64,
+    #[serde(default)]
+    flash_analysis: Option<FlashAnalysis>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlashAnalysis {
+    total_bytes: u32,
+    programmed_bytes: u32,
+    free_bytes: u32,
+    duration_ms: u32,
+    #[serde(default)]
+    analyzed_at: u64,
+}
+
+fn validate_analysis(value: &FlashAnalysis) -> Result<(), String> {
+    if value.total_bytes == 0 || value.total_bytes > 16 * 1024 * 1024 ||
+        value.programmed_bytes.checked_add(value.free_bytes) != Some(value.total_bytes) {
+        return Err("Flash analiz verisi geçersiz.".into());
+    }
+    Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -35,9 +56,10 @@ fn read_registry(path: &Path) -> Result<Registry, String> {
     let registry: Registry = serde_json::from_slice(&bytes).map_err(|_| "Kart kayıt dosyası bozuk; mevcut dosya korunuyor.")?;
     if registry.version != 1 { return Err("Kart kayıt sürümü desteklenmiyor.".into()); }
     for (uid, record) in &registry.targets {
-        if normalize_uid(uid)? != *uid || record.uid != *uid || record.label.trim().is_empty() || record.label.chars().count() > 32 || record.label.chars().any(char::is_control) {
+        if normalize_uid(uid)? != *uid || record.uid != *uid || (record.label.trim().is_empty() && record.flash_analysis.is_none()) || record.label.chars().count() > 32 || record.label.chars().any(char::is_control) {
             return Err("Kart kaydı geçersiz; mevcut dosya korunuyor.".into());
         }
+        if let Some(analysis) = &record.flash_analysis { validate_analysis(analysis)?; }
     }
     Ok(registry)
 }
@@ -48,11 +70,17 @@ fn save_record(path: &Path, uid: &str, label: &str, model: &str, overwrite: bool
     if label.is_empty() || label.chars().count() > 32 || label.chars().any(char::is_control) { return Err("Kart adı 1–32 karakter olmalı.".into()); }
     if model.chars().count() > 80 || model.chars().any(char::is_control) { return Err("Kart modeli geçersiz.".into()); }
     let mut registry = read_registry(path)?;
-    if !overwrite && registry.targets.contains_key(&uid) { return Ok(registry.targets); }
+    if !overwrite && registry.targets.get(&uid).is_some_and(|record| !record.label.is_empty()) { return Ok(registry.targets); }
     if registry.targets.len() >= 10000 && !registry.targets.contains_key(&uid) { return Err("Yerel kart kayıt sınırına ulaşıldı.".into()); }
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_millis() as u64;
     let created_at = registry.targets.get(&uid).map(|record| record.created_at).unwrap_or(now);
-    registry.targets.insert(uid.clone(), TargetRecord { uid, label: label.into(), model: model.into(), created_at, updated_at: now });
+    let flash_analysis = registry.targets.get(&uid).and_then(|record| record.flash_analysis.clone());
+    registry.targets.insert(uid.clone(), TargetRecord { uid, label: label.into(), model: model.into(), created_at, updated_at: now, flash_analysis });
+    persist_registry(path, &registry)?;
+    Ok(registry.targets)
+}
+
+fn persist_registry(path: &Path, registry: &Registry) -> Result<(), String> {
     let parent = path.parent().ok_or("Kart kayıt dizini bulunamadı.")?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     let bytes = serde_json::to_vec_pretty(&registry).map_err(|error| error.to_string())?;
@@ -61,7 +89,28 @@ fn save_record(path: &Path, uid: &str, label: &str, model: &str, overwrite: bool
     temporary.write_all(&bytes).map_err(|error| error.to_string())?;
     temporary.as_file().sync_all().map_err(|error| error.to_string())?;
     temporary.persist(path).map_err(|error| format!("Kart kaydı yazılamadı: {error}"))?;
+    Ok(())
+}
+
+fn save_analysis(path: &Path, uid: &str, model: &str, mut analysis: FlashAnalysis) -> Result<BTreeMap<String, TargetRecord>, String> {
+    let uid = normalize_uid(uid)?;
+    validate_analysis(&analysis)?;
+    if model.chars().count() > 80 || model.chars().any(char::is_control) { return Err("Kart modeli geçersiz.".into()); }
+    let mut registry = read_registry(path)?;
+    if registry.targets.len() >= 10000 && !registry.targets.contains_key(&uid) { return Err("Yerel kart kayıt sınırına ulaşıldı.".into()); }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|error| error.to_string())?.as_millis() as u64;
+    analysis.analyzed_at = now;
+    let record = registry.targets.entry(uid.clone()).or_insert(TargetRecord { uid, label: String::new(), model: model.into(), created_at: now, updated_at: now, flash_analysis: None });
+    record.flash_analysis = Some(analysis);
+    record.updated_at = now;
+    persist_registry(path, &registry)?;
     Ok(registry.targets)
+}
+
+#[tauri::command]
+pub fn target_registry_analysis_save(app: tauri::AppHandle, uid: String, model: String, analysis: FlashAnalysis) -> Result<BTreeMap<String, TargetRecord>, String> {
+    let _lock = REGISTRY_LOCK.lock().map_err(|error| error.to_string())?;
+    save_analysis(&app.path().app_data_dir().map_err(|error| error.to_string())?.join("targets.json"), &uid, &model, analysis)
 }
 
 #[tauri::command]

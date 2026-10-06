@@ -7,14 +7,32 @@ export function targetUid(value) {
 
 export function namedTarget(target, records) {
   const record = target?.connected && records[targetUid(target.uid)];
-  return record ? { ...target, label: record.label } : target;
+  return record ? { ...target, label: record.label || target.label, flashAnalysis: record.flashAnalysis, recordUpdatedAt: record.updatedAt } : target;
 }
 
-export function createTargetRegistry({ load, save, onChange }) {
+export function validateFlashAnalysis(value) {
+  if (!value || !['totalBytes', 'programmedBytes', 'freeBytes', 'durationMs'].every(key => Number.isSafeInteger(value[key]) && value[key] >= 0) ||
+    !value.totalBytes || value.totalBytes > 16 * 1024 * 1024 || value.programmedBytes + value.freeBytes !== value.totalBytes) throw new Error('Flash analiz verisi geçersiz.');
+  return Object.fromEntries(['totalBytes', 'programmedBytes', 'freeBytes', 'durationMs'].map(key => [key, value[key]]));
+}
+
+export function createTargetRegistry({ load, save, saveAnalysis, onChange }) {
   const ready = Promise.resolve().then(load).then(records => { onChange(records || {}); });
   let pending = ready;
   return {
     ready,
+    saveAnalysis(uid, model, analysis) {
+      const write = async () => {
+        await ready;
+        const normalized = targetUid(uid);
+        if (!normalized) throw new Error('Geçerli STM32 UID’si gerekli.');
+        const records = await saveAnalysis({ uid: normalized, model, analysis: validateFlashAnalysis(analysis) });
+        if (!records?.[normalized]?.flashAnalysis?.analyzedAt) throw new Error('Yerel flash kaydı doğrulanamadı.');
+        onChange(records); return records[normalized].flashAnalysis;
+      };
+      pending = pending.then(write, write);
+      return pending;
+    },
     save(uid, label, model = '', overwrite = true) {
       const normalized = targetUid(uid);
       const name = String(label || '').trim();
@@ -34,7 +52,7 @@ export function createTargetRegistry({ load, save, onChange }) {
 export function targetRegistryStorage() {
   if (window.__TAURI_INTERNALS__) {
     const command = async (name, args) => (await import('@tauri-apps/api/core')).invoke(name, args);
-    return { load: () => command('target_registry_load'), save: args => command('target_registry_save', args) };
+    return { load: () => command('target_registry_load'), save: args => command('target_registry_save', args), saveAnalysis: args => command('target_registry_analysis_save', args) };
   }
   const load = () => {
     const raw = localStorage.getItem(PREVIEW_KEY);
@@ -45,7 +63,13 @@ export function targetRegistryStorage() {
   };
   return { load, save: ({ uid, label, model, overwrite }) => {
     const targets = load();
-    if (overwrite || !targets[uid]) targets[uid] = { uid, label, model, createdAt: targets[uid]?.createdAt || Date.now(), updatedAt: Date.now() };
+    if (overwrite || !targets[uid]?.label) targets[uid] = { ...targets[uid], uid, label, model, createdAt: targets[uid]?.createdAt || Date.now(), updatedAt: Date.now() };
+    localStorage.setItem(PREVIEW_KEY, JSON.stringify({ version: 1, targets }));
+    return targets;
+  }, saveAnalysis: ({ uid, model, analysis }) => {
+    const targets = load(); const now = Date.now();
+    targets[uid] = { uid, label: '', model, createdAt: now, ...targets[uid], updatedAt: now,
+      flashAnalysis: { ...validateFlashAnalysis(analysis), analyzedAt: now } };
     localStorage.setItem(PREVIEW_KEY, JSON.stringify({ version: 1, targets }));
     return targets;
   } };
