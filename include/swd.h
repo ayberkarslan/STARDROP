@@ -276,11 +276,11 @@ public:
         }
     }
 
-    bool connect(uint32_t* idcode_out = nullptr) {
+    bool connect(uint32_t* idcode_out = nullptr, bool passive = false) {
         lastAck = 0;
         lastIdcode = 0;
 
-        for (int attempt = 1; attempt <= 6; attempt++) {
+        for (int attempt = 1; attempt <= (passive ? 1 : 6); attempt++) {
             // İlk 2 deneme Sıcak Bağlantı (En Hızlı Yol)
             // Sonraki denemeler reset HALA aktifken DAP'a bağlanır. Reset
             // bırakıldıktan sonra bağlanmak, uygulama PA13/PA14'ü çok erken
@@ -386,13 +386,13 @@ public:
 
     // Bu sorgu yalnız DAP/MEM-AP üzerinden okuma yapar; CPU'yu durdurmaz,
     // resetlemez ve kullanıcı yazılımına müdahale etmez.
-    bool probe(TargetProbeInfo* info) {
+    bool probe(TargetProbeInfo* info, bool passive = false) {
         if (!info) return false;
         memset(info, 0, sizeof(*info));
         lastProbeDpIdcode = 0;
         lastProbeStage = "DAP";
         uint32_t idcode = 0;
-        if (!connect(&idcode)) return false;
+        if (!connect(&idcode, passive)) return false;
         lastProbeDpIdcode = idcode;
 
         uint32_t dbgId = 0;

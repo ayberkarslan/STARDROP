@@ -62,6 +62,10 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
 
   useEffect(() => { if (drawer === 'settings' && base) loadSettings(); }, [drawer, base]);
   useEffect(() => { if (devicesOnly && base) loadSettings(); }, [devicesOnly, base]);
+  useEffect(() => {
+    if (esp?.programmer) setProgrammer(esp.programmer);
+    if (esp?.wifi) setWifi(esp.wifi);
+  }, [esp?.programmer, esp?.wifi]);
   useEffect(() => { setLabel(target?.label || ''); setUsage(null); setUsageError(''); }, [target?.uid, target?.label, base]);
   useEffect(() => { if (flashBusy) { setUsage(null); setUsageError(''); } }, [flashBusy]);
   useEffect(() => { if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight; }, [flashLog]);

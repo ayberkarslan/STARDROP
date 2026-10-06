@@ -311,13 +311,41 @@ void initDiscoveryService() {
     }
 }
 
+struct StatusSubscriber { IPAddress ip; uint16_t port = 0; uint32_t seen = 0; };
+StatusSubscriber statusSubscribers[4];
+String watchedTarget = "{\"connected\":false}";
+String previousStatusPacket;
+uint32_t lastPassiveProbe = 0, lastStatusHeartbeat = 0;
+String buildTargetStatus(bool passive = false);
+String statusJsonEscape(String value) {
+    value.replace("\\", "\\\\"); value.replace("\"", "\\\"");
+    value.replace("\n", "\\n"); value.replace("\r", "\\r"); value.replace("\t", "\\t");
+    return value;
+}
+
 void handleDiscoveryService() {
     int packetSize = discoveryUdp.parsePacket();
     if (packetSize <= 0) return;
 
     char request[64] = {0};
     int readLen = discoveryUdp.read(request, sizeof(request) - 1);
-    if (readLen <= 0 || strcmp(request, DISCOVERY_REQUEST) != 0) return;
+    if (readLen <= 0) return;
+    if (!strcmp(request, "STARDROP_WATCH_V1") || !strcmp(request, "STARDROP_UNWATCH_V1")) {
+        int slot = -1;
+        for (int i = 0; i < 4; i++) {
+            if (statusSubscribers[i].port && statusSubscribers[i].ip == discoveryUdp.remoteIP() && statusSubscribers[i].port == discoveryUdp.remotePort()) { slot = i; break; }
+        }
+        const bool stop = !strcmp(request, "STARDROP_UNWATCH_V1");
+        if (slot < 0 && !stop) for (int i = 0; i < 4; i++) if (!statusSubscribers[i].port || millis() - statusSubscribers[i].seen > 30000) { slot = i; break; }
+        if (slot >= 0) {
+            statusSubscribers[slot].ip = discoveryUdp.remoteIP();
+            statusSubscribers[slot].port = stop ? 0 : discoveryUdp.remotePort();
+            statusSubscribers[slot].seen = millis();
+            if (!stop) lastStatusHeartbeat = millis() - 3000;
+        }
+        return;
+    }
+    if (strcmp(request, DISCOVERY_REQUEST) != 0) return;
 
     bool staConnected = WiFi.status() == WL_CONNECTED;
     String response = "{\"protocol\":\"stardrop-discovery-v1\",";
@@ -556,6 +584,7 @@ void handleProgrammerStatus() {
     json += "\"verifyRequired\":true,";
     json += "\"maintenanceAvailable\":true,";
     json += "\"maintenanceStreamAvailable\":true,";
+    json += "\"statusEventsAvailable\":true,";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
     json += "\"psramBytes\":" + String(ESP.getPsramSize()) + ",";
@@ -611,19 +640,19 @@ String formatTargetUid(const TargetProbeInfo& target) {
     return String(uid);
 }
 
-void handleTargetStatus() {
+String buildTargetStatus(bool passive) {
     // Durum taraması, seçili flash hızından bağımsız olarak FAST'te yapılır:
     // ekranın "hedef yok" demesi Turbo temas marjına bağlı kalmasın.
     swd.setSpeedProfile(SwdSpeedProfile::FAST);
-    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, passive ? -1 : STM32_RST_PIN);
     TargetProbeInfo target;
-    if (!swd.probe(&target)) {
+    if (!swd.probe(&target, passive)) {
         const uint32_t fastDpIdcode = swd.lastProbeDpIdcode;
         const String fastStage = swd.lastProbeStage;
         const uint8_t fastAck = swd.lastAck;
         swd.setSpeedProfile(SwdSpeedProfile::SAFE);
-        swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
-        if (!swd.probe(&target)) {
+        swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, passive ? -1 : STM32_RST_PIN);
+        if (!swd.probe(&target, passive)) {
             const bool fastGotFurther = fastDpIdcode != 0 && swd.lastProbeDpIdcode == 0;
             const uint32_t dpIdcode = fastGotFurther ? fastDpIdcode : swd.lastProbeDpIdcode;
             const String stage = fastGotFurther ? fastStage : String(swd.lastProbeStage);
@@ -632,8 +661,7 @@ void handleTargetStatus() {
             snprintf(dpHex, sizeof(dpHex), "0x%08lX", (unsigned long)dpIdcode);
             String json = "{\"connected\":false,\"dpConnected\":" + String(dpIdcode ? "true" : "false");
             json += ",\"dpIdcode\":\"" + String(dpHex) + "\",\"stage\":\"" + stage + "\",\"ack\":" + String(ack) + "}";
-            server.send(200, "application/json", json);
-            return;
+            return json;
         }
     }
 
@@ -651,7 +679,40 @@ void handleTargetStatus() {
     json += "\"uid\":\"" + uid + "\",";
     json += "\"label\":\"" + label + "\"";
     json += "}";
-    server.send(200, "application/json", json);
+    return json;
+}
+
+void handleTargetStatus() {
+    watchedTarget = buildTargetStatus();
+    server.send(200, "application/json", watchedTarget);
+}
+
+void handleStatusEvents() {
+    bool subscribed = false;
+    for (auto& subscriber : statusSubscribers) {
+        if (subscriber.port && millis() - subscriber.seen > 30000) subscriber.port = 0;
+        subscribed |= subscriber.port != 0;
+    }
+    if (!subscribed) return;
+    // Runs only between synchronous HTTP operations. Never resets or halts the CPU.
+    if (millis() - lastPassiveProbe >= 1500) {
+        lastPassiveProbe = millis();
+        static uint8_t misses = 0;
+        String next = buildTargetStatus(true);
+        pinMode(SWD_CLK_PIN, INPUT); pinMode(SWD_DIO_PIN, INPUT);
+        if (next.indexOf("\"connected\":true") >= 0) { misses = 0; watchedTarget = next; }
+        else if (++misses >= 2) { misses = 2; watchedTarget = next; }
+    }
+    const bool online = WiFi.status() == WL_CONNECTED;
+    String packet = "{\"protocol\":\"stardrop-status-v1\",\"target\":" + watchedTarget +
+        ",\"wifi\":{\"connected\":" + String(online ? "true" : "false") +
+        ",\"ssid\":\"" + statusJsonEscape(online ? WiFi.SSID() : String("")) +
+        "\",\"ip\":\"" + (online ? WiFi.localIP().toString() : WiFi.softAPIP().toString()) + "\"}}";
+    if (packet == previousStatusPacket && millis() - lastStatusHeartbeat < 3000) return;
+    previousStatusPacket = packet; lastStatusHeartbeat = millis();
+    for (const auto& subscriber : statusSubscribers) if (subscriber.port) {
+        discoveryUdp.beginPacket(subscriber.ip, subscriber.port); discoveryUdp.print(packet); discoveryUdp.endPacket();
+    }
 }
 
 void handleTargetLabel() {
@@ -1098,6 +1159,7 @@ void loop() {
     }
     server.handleClient();
     handleDiscoveryService();
+    handleStatusEvents();
 
     // Dinamik Ağ Geçiş Durum Makinesi
     if (doWifiSwitch) {

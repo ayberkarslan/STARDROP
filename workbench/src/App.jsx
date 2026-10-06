@@ -20,6 +20,7 @@ import useWorkspaceDrag from './useWorkspaceDrag.js';
 import DragPreview from './DragPreview.jsx';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { espJson } from './lib/espTransport.js';
+import { watchEspStatus } from './lib/espStatusEvents.js';
 import { validateTestCatalog } from './lib/testCatalog.js';
 import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type: 'json' };
 
@@ -139,6 +140,9 @@ export default function App() {
       localStorage.setItem('stardrop.bridge', result.base);
       setEsp({ status: 'online', ...result });
       healthMisses.current = 0;
+      const capabilities = await espJson(result.base, '/api/programmer/status');
+      if (run !== discoveryRun.current) return;
+      setEsp(current => ({ ...current, programmer: capabilities, statusEvents: capabilities.statusEventsAvailable === true }));
       await refreshTargetAt(result.base);
     } catch (error) {
       if (run !== discoveryRun.current) return;
@@ -166,6 +170,9 @@ export default function App() {
         localStorage.setItem('stardrop.bridge', result.base);
         setEsp({ status: 'online', ...result });
         healthMisses.current = 0;
+        const capabilities = await espJson(result.base, '/api/programmer/status');
+        if (run !== discoveryRun.current) return;
+        setEsp(current => ({ ...current, programmer: capabilities, statusEvents: capabilities.statusEventsAvailable === true }));
         await refreshTargetAt(result.base);
         return;
       } catch (_) { /* Sonraki adresi dene. */ }
@@ -185,24 +192,51 @@ export default function App() {
   };
 
   useEffect(() => { autoConnect(); return () => { discoveryRun.current++; }; }, []);
+  const canWatchStatus = esp.statusEvents && Boolean(window.__TAURI_INTERNALS__);
   useEffect(() => {
-    if (hardwareBusy || esp.status === 'searching') return;
+    if (!canWatchStatus || esp.status !== 'online' || hardwareBusy) return;
+    let cancelled = false; let stop;
+    watchEspStatus(esp.base, event => {
+      if (cancelled || hardware.current) return;
+      if (event.status === 'offline') {
+        setEsp(current => ({ ...current, status: 'offline', wifi: null })); setTarget(null);
+        setNotice('ESP32 bağlantısı kesildi; yeniden aranıyor.');
+        return;
+      }
+      setEsp(current => ({ ...current, wifi: { ...current.wifi, ...event.wifi } }));
+      setTarget(event.target);
+    }, error => {
+      if (cancelled) return;
+      setEsp(current => ({ ...current, statusEvents: false }));
+      setNotice(`Cihaz bildirimleri alınamadı: ${String(error)}`);
+    }).then(cleanup => { if (cancelled) cleanup(); else stop = cleanup; });
+    return () => { cancelled = true; stop?.(); };
+  }, [canWatchStatus, esp.status, esp.base, hardwareBusy]);
+  useEffect(() => {
+    if (hardwareBusy || esp.status === 'searching' || canWatchStatus && esp.status === 'online') return;
+    let pending = false;
     const timer = window.setInterval(async () => {
-      if (hardware.current) return;
+      if (hardware.current || pending) return;
       if (esp.status !== 'online') { autoConnect(); return; }
+      pending = true;
       try {
         const live = await probeEsp(esp.base, 4000);
         healthMisses.current = 0;
-        setEsp({ status: 'online', ...live });
+        setEsp(current => ({ ...current, status: 'online', ...live }));
+        // Legacy firmware fallback, only while idle; never overlaps a write.
+        if (!hardware.current) {
+          const next = await espJson(esp.base, '/api/target/status', { timeoutMs: 6000 });
+          if (!hardware.current) setTarget(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+        }
       } catch (_) {
         if (++healthMisses.current >= 2) {
           setEsp({ status: 'offline', wifi: null, base: null }); setTarget(null);
           setNotice('ESP32 bağlantısı kesildi; yeniden aranıyor.');
         }
-      }
+      } finally { pending = false; }
     }, esp.status === 'online' ? 10000 : 15000);
     return () => window.clearInterval(timer);
-  }, [esp.status, esp.base, hardwareBusy]);
+  }, [esp.status, esp.base, hardwareBusy, canWatchStatus]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
   useEffect(() => { loadSecret('github_repo_token').then((value) => setRepoTokenSaved(Boolean(value))).catch(() => {}); }, []);
