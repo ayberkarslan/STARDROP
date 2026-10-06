@@ -3,6 +3,7 @@
 body{font-size:13px;-webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto}
 .start-content{width:100%}
 .start-wordmark{display:block;color:#fff;font-size:clamp(22px,2.3vw,34px);font-weight:400;letter-spacing:.24em;line-height:1.5;margin-bottom:38px}
+.start-brand{font-size:clamp(22px,2.3vw,34px);margin-bottom:38px}.start-brand .start-wordmark{margin-bottom:0}.start-brand-logo{display:block;position:relative;overflow:hidden;width:clamp(100px,10vw,140px);height:1em;margin-bottom:12px;pointer-events:none}.start-brand-logo img{position:absolute;top:50%;left:0;width:100%;height:auto;transform:translateY(-50%);user-select:none}
 .start-content .eyebrow{display:block;font-size:11px;letter-spacing:.12em;color:#bcbcbc}
 .start-content h1{font-size:26px;font-weight:400;letter-spacing:0;line-height:1.5;margin:12px 0}
 .start-content>p{color:#c8c8c8;font-size:13px;line-height:1.8;margin:0}

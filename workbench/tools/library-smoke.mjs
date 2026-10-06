@@ -31,6 +31,13 @@ try {
   });
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
   await page.locator('.welcome-screen:visible').waitFor();
+  const logo = page.locator('.welcome-screen:visible .start-brand-logo');
+  await logo.locator('img').evaluate(image => image.decode());
+  const logoBounds = await logo.boundingBox();
+  const wordmarkBounds = await page.locator('.welcome-screen:visible .start-wordmark').boundingBox();
+  assert.ok(logoBounds.width < wordmarkBounds.width && logoBounds.height < wordmarkBounds.height);
+  assert.ok(logoBounds.y + logoBounds.height <= wordmarkBounds.y);
+  assert.ok(Math.abs(logoBounds.x - wordmarkBounds.x) < 1);
   const sky = page.locator('.welcome-screen:visible .welcome-stars');
   assert.equal(await sky.getAttribute('aria-hidden'), 'true');
   assert.equal(await sky.evaluate(el => getComputedStyle(el).pointerEvents), 'none');

@@ -18,6 +18,7 @@ import { createHardwareGate } from './lib/hardwareGate.js';
 import TestSession from './TestSession.jsx';
 import FlashSession from './FlashSession.jsx';
 import LiveMonitor from './LiveMonitor.jsx';
+import stardustWordmark from './assets/stardust-wordmark.png';
 import useWorkspaceDrag from './useWorkspaceDrag.js';
 import DragPreview from './DragPreview.jsx';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
@@ -38,7 +39,7 @@ function Section({ title, children, action }) {
 
 function StartContent({ user, busy, onGithub, onGuest, error, preparing }) {
   return <div className="start-content">
-    <span className="start-wordmark">STARDROP</span>
+    <div className="start-brand"><span className="start-brand-logo"><img src={stardustWordmark} alt="Yıldız Roket Takımı · Stardust" draggable="false"/></span><span className="start-wordmark">STARDROP</span></div>
     <span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p>
     <div className="welcome-actions">
       <button className="welcome-primary" disabled={busy} onClick={onGithub}><Github size={18}/><span><strong>{user ? `@${user.login} ile devam et` : busy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button>
