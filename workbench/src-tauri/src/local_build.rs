@@ -568,7 +568,8 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
     let mcu_part = profile["mcu"]["part"].as_str().unwrap_or("");
     let mut header = String::from("#ifndef STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_CONFIGURATIONS_H\n#define STARDROP_PIN_SCHEMA_VERSION 1\n");
     let bus = profile["connections"].as_array().and_then(|connections| connections.iter()
-        .find(|connection| connection["componentRef"] == component_ref))
+        .find(|connection| connection["componentRef"] == component_ref
+            && (protocol != "I2C" || connection["role"] == "SCL")))
         .and_then(|connection| connection["peripheral"].as_str()).unwrap_or("");
     match (protocol, bus) {
         ("I2C", value) if value.starts_with("SOFT_I2C_") => header.push_str("#define STARDROP_I2C_BUS_SOFTWARE 1\n"),
@@ -696,7 +697,12 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
     }
     let elf = work.path().join("test.elf");
     let bin = work.path().join("test.bin");
-    let mut link = Command::new(gcc);
+    let cpp_linker = gcc.with_file_name(if gcc.extension().is_some_and(|ext| ext == "exe") {
+        "arm-none-eabi-g++.exe"
+    } else { "arm-none-eabi-g++" });
+    let mut link = Command::new(if manifest.sources.iter().any(|source| source.ends_with(".cpp")) {
+        &cpp_linker
+    } else { gcc });
     link.args(["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-specs=nano.specs"]);
     for object in &objects { link.arg(object); }
     let linked = link.arg("-T").arg(manifest_path(&project, &repo_root, &manifest.linker_script)?)

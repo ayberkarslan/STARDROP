@@ -16,21 +16,26 @@ BMP180::BMP180(I2C_HandleTypeDef* hi2c) : i2c(hi2c), temperature_c(0.0f), pressu
 
 bool BMP180::init() {
     initialized = false;
-    uint8_t chipId = 0;
+    error = Error::BUS;
+    chip_id = 0;
     // Check chip ID
-    if (stardrop_i2c_read(i2c, I2C_ADDR, BMP180_REG_ID, &chipId, 1) != HAL_OK) {
+    if (stardrop_i2c_read(i2c, I2C_ADDR, BMP180_REG_ID, &chip_id, 1) != HAL_OK) {
         return false;
     }
-    if (chipId != 0x55) {
+    if (chip_id != 0x55) {
+        error = Error::IDENTITY;
         return false;
     }
 
-    initialized = readCalibrationData() && ac4 != 0 && ac4 != 0xffff && ac5 != 0 && ac5 != 0xffff;
+    if (!readCalibrationData()) return false;
+    initialized = ac4 != 0 && ac4 != 0xffff && ac5 != 0 && ac5 != 0xffff;
+    error = initialized ? Error::NONE : Error::CALIBRATION;
     return initialized;
 }
 
 BMP180::Status BMP180::read() {
     if (!initialized) return Status::NOT_READY;
+    error = Error::BUS;
     uint16_t ut_raw = 0;
     uint32_t up_raw = 0;
 
@@ -62,7 +67,9 @@ BMP180::Status BMP180::read() {
     up_raw >>= (8 - oss);
 
     // 3. Calculate true values
-    return calculateTrueValues(ut_raw, up_raw) ? Status::SUCCESS : Status::ERROR;
+    bool valid = calculateTrueValues(ut_raw, up_raw);
+    error = valid ? Error::NONE : Error::RANGE;
+    return valid ? Status::SUCCESS : Status::ERROR;
 }
 
 bool BMP180::readCalibrationData() {

@@ -116,7 +116,10 @@ int main(void)
   stardrop_channel_t channels[2] = {{"temperature", "degC", 0, 0}, {"pressure", "Pa", 0, 0}};
   stardrop_telemetry_publish(0, 0, sensor_status, channels, 2);
   if (!sensor_ready) {
-      stardrop_report_finish_at(report, STARDROP_REPORT_FAIL, bus_ready ? STARDROP_ERROR_DEVICE_NOT_FOUND : STARDROP_ERROR_BUS_TIMEOUT);
+      report->expected_device_id = 0x55; report->observed_device_id = bmp.getChipId();
+      stardrop_error_t error = !bus_ready || bmp.getError() == BMP180::Error::BUS ? STARDROP_ERROR_BUS_TIMEOUT
+          : bmp.getError() == BMP180::Error::IDENTITY ? STARDROP_ERROR_ID_MISMATCH : STARDROP_ERROR_CONFIGURATION;
+      stardrop_report_finish_at(report, STARDROP_REPORT_FAIL, error);
       first_result = true;
   }
 
@@ -152,7 +155,8 @@ int main(void)
             report->secondary_measurement_milli = (int32_t)(pressure_pa * 1000);
             report->elapsed_ms = HAL_GetTick();
             stardrop_report_finish_at(report, sensor_status == 1 ? STARDROP_REPORT_PASS : STARDROP_REPORT_FAIL,
-                sensor_status == 1 ? STARDROP_ERROR_NONE : STARDROP_ERROR_MEASUREMENT_RANGE);
+                sensor_status == 1 ? STARDROP_ERROR_NONE
+                    : bmp.getError() == BMP180::Error::BUS ? STARDROP_ERROR_BUS_TIMEOUT : STARDROP_ERROR_MEASUREMENT_RANGE);
             first_result = true;
         }
     }
@@ -202,18 +206,6 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 }
-
-/**
-  * @brief I2C1 Initialization Function
-  * @param None
-  * @retval None
-  */
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
 
 /* USER CODE BEGIN 4 */
 

@@ -57,13 +57,16 @@ int main(void) {
     assert(std::fabs(fresh.getTemperatureC() - 15.0f) < 0.01f);
     assert(fresh.getPressurePa() == 69964.0f);
     broken = true; assert(fresh.read() == BMP180::Status::ERROR);
+    assert(fresh.getError() == BMP180::Error::BUS);
     assert(fresh.getPressurePa() == 69964.0f);
     calibration(); registers[0xd0] = 0x60; BMP180 wrong_chip(&bus);
     assert(!wrong_chip.init()); unsigned before = calls;
+    assert(wrong_chip.getError() == BMP180::Error::IDENTITY && wrong_chip.getChipId() == 0x60);
     assert(wrong_chip.read() == BMP180::Status::NOT_READY && calls == before);
     calibration(); reg16(0xb0, 0); BMP180 zero_calibration(&bus); assert(!zero_calibration.init());
     calibration(); reg16(0xbe, -4743); BMP180 zero_divisor(&bus); assert(zero_divisor.init());
     assert(zero_divisor.read() == BMP180::Status::ERROR);
+    assert(zero_divisor.getError() == BMP180::Error::RANGE);
     calibration(); BMP180 invalid_range(&bus); assert(invalid_range.init()); raw_pressure = 0;
     assert(invalid_range.read() == BMP180::Status::ERROR);
     stardrop_telemetry_init();

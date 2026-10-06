@@ -11,6 +11,7 @@ public:
         SUCCESS = 1,
         ERROR = 2
     };
+    enum class Error { NONE, BUS, IDENTITY, CALIBRATION, RANGE };
 
     BMP180(I2C_HandleTypeDef* hi2c);
     
@@ -23,6 +24,8 @@ public:
 
     float getTemperatureC() const { return temperature_c; }
     float getPressurePa() const { return pressure_pa; }
+    Error getError() const { return error; }
+    uint8_t getChipId() const { return chip_id; }
 
 private:
     I2C_HandleTypeDef* i2c;
@@ -34,6 +37,8 @@ private:
     int16_t b1 = 0, b2 = 0;
     int16_t mb = 0, mc = 0, md = 0;
     bool initialized = false;
+    Error error = Error::NONE;
+    uint8_t chip_id = 0;
     
     // Oversampling setting (0 to 3)
     // 0: Ultra low power, 1: Standard, 2: High res, 3: Ultra high res
