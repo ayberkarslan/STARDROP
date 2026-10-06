@@ -563,6 +563,7 @@ void handleProgrammerStatus() {
     json += "\"cpuMhz\":" + String(ESP.getCpuFreqMHz()) + ",";
     json += "\"swclkPin\":" + String(SWD_CLK_PIN) + ",";
     json += "\"swdioPin\":" + String(SWD_DIO_PIN) + ",";
+    json += "\"resetPin\":" + String(STM32_RST_PIN) + ",";
     json += "\"resetAvailable\":" + String(STM32_RST_PIN >= 0 ? "true" : "false") + ",";
     json += "\"lastResult\":\"" + lastFlashResult + "\",";
     json += "\"lastProfile\":\"" + lastFlashProfile + "\",";

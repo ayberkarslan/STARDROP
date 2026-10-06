@@ -1,0 +1,34 @@
+import { useState } from 'react';
+import { X } from 'lucide-react';
+import Popup from './Popup.jsx';
+import SelectMenu from './SelectMenu.jsx';
+import { ESP_WIRING_PROFILES, WIRING_BOARDS, WIRING_MCUS, guideMcu, wiringRows } from './lib/wiringGuide.js';
+
+export default function WiringGuide({ programmer, online, target, onClose }) {
+  const live = online && Number.isInteger(programmer?.swdioPin) && Number.isInteger(programmer?.swclkPin);
+  const [espProfile, setEspProfile] = useState(live ? 'live' : 's3');
+  const [board, setBoard] = useState('custom');
+  const [mcu, setMcu] = useState(guideMcu(target?.model));
+  const rows = wiringRows({ programmer, espProfile, board, mcu });
+  return <Popup className="wiring-guide" ariaLabel="SWD bağlantı rehberi" onClose={onClose}>
+    <div className="wiring-title"><div><small>ESP32 → STM32</small><h2>Bağlantı rehberi</h2></div><button className="icon-button" aria-label="Rehberi kapat" onClick={onClose}><X size={18}/></button></div>
+    <div className="wiring-selectors">
+      <label>ESP32<SelectMenu ariaLabel="Rehber ESP32 profili" value={espProfile} options={[...(live ? [{ value: 'live', label: 'Bağlı ESP32 · firmware pinleri' }] : []), ...ESP_WIRING_PROFILES]} onChange={setEspProfile}/></label>
+      <label>Hedef kart<SelectMenu ariaLabel="Rehber hedef kartı" value={board} options={WIRING_BOARDS} onChange={value => { setBoard(value); if (value === 'blackpill' && !mcu.startsWith('STM32F401')) setMcu('STM32F401CCU6'); }}/></label>
+      {board !== 'nucleo' && <label>STM32 modeli<SelectMenu ariaLabel="Rehber STM32 modeli" value={mcu} options={board === 'blackpill' ? WIRING_MCUS.filter(item => item.value.startsWith('STM32F401')) : WIRING_MCUS} onChange={setMcu}/></label>}
+    </div>
+    <p className="wiring-profile-note">{espProfile === 'live' ? 'ESP pinleri bağlı cihazdan okunuyor.' : 'ESP pinleri bu projenin seçili firmware profiline göre. Farklı firmware kullanıyorsan kontrol et.'} Kart tipi otomatik belirlenmez.</p>
+    <div className="wiring-map" role="table" aria-label="ESP32 ile STM32 kablo eşleştirmeleri">
+      <div className="wiring-map-heading" role="row"><span role="columnheader">ESP32</span><span role="columnheader">Kablo</span><span role="columnheader">STM32</span></div>
+      {rows.map(row => <div className={'wiring-row' + (row.optional ? ' wiring-optional' : '')} role="row" key={row.signal}>
+        <strong role="cell">{row.esp}</strong><span className="wiring-wire" role="cell"><i/>{row.signal}<i/>{row.optional && <small>isteğe bağlı</small>}</span><span role="cell"><strong>{row.stm}</strong><small>{row.location}</small></span>
+      </div>)}
+    </div>
+    <div className="wiring-safety"><strong>Önce güç, sonra bağlantı</strong><p>Kabloları güç kapalıyken tak. İki kartı kendi uygun kaynağından besle; GND ortak olsun. Bu rehberde 3V3 veya 5V güç uçlarını birbirine bağlamıyoruz. SWD hatları 3,3 V seviyesinde olmalı.</p></div>
+    {board === 'nucleo' && <p className="wiring-board-note">CN2 üzerindeki iki ST-LINK jumper’ını çıkar; iki programlayıcı aynı hattı sürmesin. CN7 numaralarını kart üzerindeki pin 1 işaretinden doğrula; çizim fiziksel başlık sırası değildir. <a href="https://www.st.com/resource/en/user_manual/dm00105823.pdf" target="_blank" rel="noreferrer">ST · UM1724, tablo 29</a></p>}
+    {board === 'blackpill' && <p className="wiring-board-note">Klonlarda başlık yönü değişebilir. DIO / IO ve CLK baskılarını kontrol et; çizimdeki sıra fiziksel başlık sırası değildir. NRST için karttaki reset noktasını kullan.</p>}
+    {board === 'custom' && <p className="wiring-board-note">Bacak numarası seçili MCU paketine aittir; PCB konektörünün pin numarası değildir. Şemanda PA13, PA14 ve NRST hatlarının çıktığı test noktalarını bul.</p>}
+    {rows[3].available && rows[3].esp === 'GPIO bildirilmedi' && <p className="wiring-board-note">Reset GPIO’su firmware tarafından bildirilmedi. NRST bağlamadan önce platformio.ini içindeki STM32_RST_PIN değerini kontrol et.</p>}
+    <details className="wiring-troubleshooting"><summary>Hedef görünmüyorsa</summary><p>Önce ortak GND ve kartın beslemesini kontrol et. IO ile CLK yer değiştirmiş olmasın; kablolar kısa ve temas sağlam olsun. Nucleo’da CN2 jumper’larını çıkar. Gerekirse SAFE hızını seç; kilitli hedefte NRST gerekebilir.</p></details>
+  </Popup>;
+}

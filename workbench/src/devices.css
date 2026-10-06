@@ -16,7 +16,7 @@
 .device-hero{height:270px;position:relative;display:flex;align-items:center;justify-content:center;background:#000}
 .device-hero>span{position:absolute;bottom:18px;left:26px;right:26px;font-size:13px;color:#fff;line-height:1.6;overflow-wrap:anywhere}
 .device-hero>span small{display:block;color:#bcbcbc;font:11px/1.7 var(--font-mono);margin-top:3px}
-.device-esp-hero img{width:100%;height:100%;object-fit:contain;object-position:center 30%;padding-bottom:38px;mask-image:linear-gradient(#000 75%,transparent 94%)}
+.device-hero img{width:100%;height:100%;object-fit:contain;object-position:center 30%;padding-bottom:38px;mask-image:linear-gradient(#000 75%,transparent 94%)}
 .device-chip-symbol{display:grid;place-items:center;width:120px;height:120px;border:1px solid #333;border-radius:20px;background:#000;box-shadow:0 0 0 14px #000,0 0 0 15px #171717;color:#ddd;margin-bottom:50px}
 .device-card-content{border-top:1px solid #242424;padding:12px 26px 24px}
 .device-card-content .detail-row{gap:18px}
@@ -33,3 +33,30 @@
 .device-maintenance p,.device-maintenance small{font-size:11px}
 @media(max-width:1050px){.device-columns{grid-template-columns:1fr}.device-hero{height:250px}.device-esp-hero img{max-width:460px}.device-route{gap:10px}.device-route-line{gap:7px}.device-route-line::before,.device-route-line::after{width:18px}}
 @media(prefers-reduced-motion:no-preference){.device-section{transition:border-color .2s}.device-section:hover{border-color:#555}}
+.device-wiring-button{padding:7px 0;border:0;background:#000;color:#ddd;cursor:pointer;font:inherit;font-size:9px}
+.device-wiring-button:hover{color:#fff}.device-wiring-button:focus-visible{outline:1px solid #fff;outline-offset:5px}
+.ui-popup-backdrop .wiring-guide{width:min(750px,100%);padding:28px;background:#000}
+.wiring-title{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.wiring-title small{font-size:9px;letter-spacing:.13em}.wiring-title h2{margin:10px 0 24px}
+.wiring-selectors{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.wiring-selectors>label{display:grid;gap:8px;font-size:10px;color:#ddd;min-width:0}
+.wiring-selectors>label:last-child:nth-child(3){grid-column:1/-1}
+.wiring-selectors .select-trigger{font-size:10px;line-height:1.6;white-space:normal}
+.wiring-profile-note,.wiring-board-note{font-size:10px!important;line-height:1.8!important;margin:18px 0;color:#bcbcbc!important}
+.wiring-board-note a{color:#eee;display:inline-block;text-underline-offset:3px}
+.wiring-map{margin:22px 0;border-top:1px solid #333;border-bottom:1px solid #333}
+.wiring-map-heading,.wiring-row{display:grid;grid-template-columns:minmax(0,1fr) 130px minmax(0,1.4fr);align-items:center;gap:14px}
+.wiring-map-heading{padding:14px 0;font-size:10px;color:#bcbcbc}.wiring-map-heading>span:nth-child(2){text-align:center}
+.wiring-row{padding:18px 0;border-top:1px solid #222;min-height:77px;font-size:12px}
+.wiring-row strong{font-weight:400;color:#fff;overflow-wrap:anywhere;line-height:1.6}
+.wiring-row>span:last-child small{display:block;font-size:10px;margin-top:5px;color:#bbb!important}
+.wiring-wire{display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;position:relative;white-space:nowrap;color:#eee}
+.wiring-wire i{flex:1;height:1px;background:#bbb;min-width:7px}
+.wiring-wire i:first-child:before,.wiring-wire i:last-of-type:after{content:'';display:block;width:5px;height:5px;border:1px solid #bbb;border-radius:50%;background:#000;transform:translateY(-3px)}
+.wiring-wire i:last-of-type:after{margin-left:auto}.wiring-wire>small{position:absolute;top:17px;font-size:8px!important}
+.wiring-optional .wiring-wire i{background:repeating-linear-gradient(to right,#aaa 0 3px,#000 3px 6px)}
+.wiring-safety{border-left:2px solid #eee;padding:0 0 0 14px;margin-top:22px}
+.wiring-safety>strong{font-size:11px;font-weight:400}.wiring-safety>p{font-size:10px;margin-bottom:0}
+.wiring-troubleshooting{border-top:1px solid #222;padding-top:16px;margin-top:20px;font-size:11px}
+.wiring-troubleshooting summary{cursor:pointer;color:#eee}.wiring-troubleshooting p{font-size:10px}
+@media(max-width:700px){.wiring-selectors{grid-template-columns:1fr}.wiring-selectors>label:last-child:nth-child(3){grid-column:auto}.wiring-map-heading,.wiring-row{grid-template-columns:minmax(0,1fr) 76px minmax(0,1.4fr);gap:8px}.wiring-row{font-size:10px}.ui-popup-backdrop .wiring-guide{padding:20px}}
