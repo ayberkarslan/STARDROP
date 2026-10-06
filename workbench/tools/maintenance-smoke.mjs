@@ -14,7 +14,7 @@ try {
         if (command === 'plugin:event|listen') { handler = args.handler; return 1; }
         if (command === 'plugin:event|unlisten') return;
         if (command === 'esp_http') return JSON.stringify(args.path === '/api/programmer/status'
-          ? { maintenanceAvailable: true, maintenanceStreamAvailable: true } : args.path === '/api/target/status'
+          ? { maintenanceAvailable: true, maintenanceStreamAvailable: true, swdioPin: 5, swclkPin: 4, resetAvailable: true, resetPin: 6 } : args.path === '/api/target/status'
             ? { connected: true, uid: 'mock-uid' } : {});
         if (command === 'esp_stream') {
           if (args.method !== 'POST' || JSON.parse(args.body).confirmation !== 'FLASH SIL') throw new Error('Invalid erase request');
@@ -48,6 +48,18 @@ try {
   assert.ok(programmerBounds.x + programmerBounds.width < targetBounds.x);
   assert.equal(await page.getByRole('button', { name: 'ESP ayarları', exact: true }).count(), 1);
   await page.screenshot({ path: '/tmp/stardrop-devices.png' });
+  await page.getByRole('button', { name: 'SWD bağlantı rehberini aç' }).click();
+  const guide = page.getByRole('dialog', { name: 'SWD bağlantı rehberi' });
+  await guide.waitFor();
+  await page.getByRole('combobox', { name: 'Rehber hedef kartı' }).click();
+  await page.getByRole('option', { name: 'Nucleo F446RE · MB1136' }).click();
+  assert.equal(await guide.getByText('GPIO 5', { exact: true }).count(), 1);
+  assert.equal(await guide.getByText('CN7 · 13', { exact: true }).count(), 1);
+  assert.equal(await guide.getByText('CN7 · 15', { exact: true }).count(), 1);
+  assert.equal(await guide.getByText('GPIO 6', { exact: true }).count(), 1);
+  await page.screenshot({ path: '/tmp/stardrop-wiring-guide.png' });
+  await page.mouse.click(5, 5);
+  assert.equal(await guide.count(), 0);
   await page.locator('.device-maintenance summary').click();
   await page.getByRole('button', { name: 'Flash’ı sil', exact: true }).click();
   assert.equal(await page.getByText('Onay için FLASH SIL yaz').count(), 0);

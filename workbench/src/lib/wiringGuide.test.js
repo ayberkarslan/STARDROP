@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import { guideMcu, wiringRows } from './wiringGuide.js';
+
+const s3 = wiringRows({ espProfile: 's3', board: 'nucleo' });
+assert.deepEqual(s3.map(row => row.esp), ['GPIO 5', 'GPIO 4', 'GND', 'GPIO 6']);
+assert.deepEqual(s3.map(row => row.location), ['CN7 · 13', 'CN7 · 15', 'CN7 · 19', 'CN7 · 14']);
+assert.equal(guideMcu('STM32F446RE'), 'STM32F446RET6');
+assert.equal(guideMcu('STM32F999'), 'unknown');
+const custom = wiringRows({ mcu: 'STM32F446RET6' });
+assert.match(custom[0].location, /MCU bacağı 46/);
+assert.match(custom[1].location, /MCU bacağı 49/);
+assert.match(custom[3].location, /MCU bacağı 7/);
+assert.match(wiringRows({ mcu: 'STM32F401CCU6' })[0].location, /MCU bacağı 34/);
+const unknown = wiringRows({ mcu: 'unknown' });
+assert.equal(unknown[0].stm, 'Şemadaki SWDIO');
+assert.equal(unknown[0].location, 'Kart şemasından kontrol et');
+const live = wiringRows({ espProfile: 'live', programmer: { swdioPin: 12, swclkPin: 11, resetAvailable: true } });
+assert.equal(live[0].esp, 'GPIO 12');
+assert.equal(live[1].esp, 'GPIO 11');
+assert.equal(live[3].esp, 'GPIO bildirilmedi');
+assert.equal(wiringRows({ espProfile: 'devkit' })[3].available, false);
+assert.equal(wiringRows({ espProfile: 'live', programmer: { resetAvailable: false, resetPin: -1 } })[3].available, false);
+assert.equal(wiringRows({ espProfile: 'live', programmer: { resetAvailable: true, resetPin: 27 } })[3].esp, 'GPIO 27');
+console.log('Wiring guide: live pins, package pins, board headers and unknown targets passed.');

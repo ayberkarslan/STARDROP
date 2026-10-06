@@ -17,7 +17,7 @@ export default function WiringGuide({ programmer, online, target, onClose }) {
       <label>Hedef kart<SelectMenu ariaLabel="Rehber hedef kartı" value={board} options={WIRING_BOARDS} onChange={value => { setBoard(value); if (value === 'blackpill' && !mcu.startsWith('STM32F401')) setMcu('STM32F401CCU6'); }}/></label>
       {board !== 'nucleo' && <label>STM32 modeli<SelectMenu ariaLabel="Rehber STM32 modeli" value={mcu} options={board === 'blackpill' ? WIRING_MCUS.filter(item => item.value.startsWith('STM32F401')) : WIRING_MCUS} onChange={setMcu}/></label>}
     </div>
-    <p className="wiring-profile-note">{espProfile === 'live' ? 'ESP pinleri bağlı cihazdan okunuyor.' : 'ESP pinleri bu projenin seçili firmware profiline göre. Farklı firmware kullanıyorsan kontrol et.'} Kart tipi otomatik belirlenmez.</p>
+    <p className="wiring-profile-note">{espProfile === 'live' ? online ? 'ESP pinleri bağlı cihazdan okunuyor.' : 'Bağlantı kesildi; son bildirilen ESP pinleri gösteriliyor.' : 'ESP pinleri bu projenin seçili firmware profiline göre. Farklı firmware kullanıyorsan kontrol et.'} Kart tipi otomatik belirlenmez.</p>
     <div className="wiring-map" role="table" aria-label="ESP32 ile STM32 kablo eşleştirmeleri">
       <div className="wiring-map-heading" role="row"><span role="columnheader">ESP32</span><span role="columnheader">Kablo</span><span role="columnheader">STM32</span></div>
       {rows.map(row => <div className={'wiring-row' + (row.optional ? ' wiring-optional' : '')} role="row" key={row.signal}>
