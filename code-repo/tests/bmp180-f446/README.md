@@ -19,14 +19,17 @@ hesaplama hataları geçerli ölçüm olarak yayınlanmaz.
 - `0x20000100`: mevcut ESP `/api/diagnostic/report` için 128 bayt ilk ölçüm raporu.
   PASS yalnız kimlik/kalibrasyon ve ilk makul ölçümün alınmasıdır; sensörün
   doğruluğunu veya roket sisteminin uçuşa uygunluğunu kanıtlamaz.
-- `0x20000200`: 384 bayt `stardrop_telemetry_t`, ABI v1. İlk sekiz uint32:
-  magic (0x53544c4d), version (1), size (384), sequence, timestamp_ms,
-  sample_counter, status, channel_count. Sonra en fazla sekiz kanal:
+- `0x20000200`: 400 bayt `stardrop_telemetry_t`, ABI v1. İlk sekiz uint32:
+  magic (0x53544c4d), version (1), size (400), sequence, timestamp_ms,
+  sample_counter, status, channel_count. Sonraki üç uint32 test_id_hash,
+  profile_hash, run_hash. Sonra en fazla sekiz kanal:
   name[24], unit[12], float32 value, uint32 valid (kanal başına 44 bayt).
 - Tüm sayılar little endian; status 0=başlatılıyor, 1=ölçüm başarılı, 2=hata.
   Kanal adları `temperature` / `pressure`, birimleri `degC` / `Pa`.
 - Host önce sequence okur, çift ise frame'i ve sonra sequence'i tekrar okur.
   İki sequence ve frame içindeki sequence aynı ve çift değilse örneği atar.
+  En sondaki uint32 CRC32, önceki 396 baytın IEEE CRC32'sidir (0xedb88320,
+  başlangıç 0xffffffff, sonda tümleme). CRC uyuşmazsa frame reddedilir.
   Magic/version/size/channel_count doğrulanmadan veri kullanılmaz.
 - Başarısız okumada son değerler kalır ama valid=0 olur. timestamp ve sayaç
   yalnız başarılı okumada ilerler. Host ayrıca zaman aşımını izlemelidir;

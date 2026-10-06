@@ -14,10 +14,10 @@ Bu dosya geliştirme sırasında alınan kararların ve sıradaki işlerin ortak
 
 Karar: IDE'ye ait Live Expressions sistemini ürünün temeli yapmayacağız. STM32 test yazılımı ölçümleri ortak bir RAM alanına yazacak; ESP32 bu alanı yalnız SWDIO ve SWCLK üzerinden okuyup masaüstü uygulamasına aktaracak.
 
-- [ ] Mevcut 128 baytlık tek sonuç raporunu koru; geriye dönük uyumluluğu bozma.
-- [ ] Canlı ölçümler için sürümlü bir `STARDROP Telemetry ABI` tanımla.
-- [ ] RAM alanında magic, ABI sürümü, sıra numarası, zaman, durum, kanal sayısı ve CRC bulundur.
-- [ ] Okuma sırasında değişen veriyi algılamak için başlangıç/bitiş sıra numarası kullan.
+- [x] BMP180 kaynağında mevcut 128 baytlık tek sonuç raporunu koru.
+- [x] Canlı ölçümler için sürümlü bir `STARDROP Telemetry ABI` tanımla (`code-repo/tests/bmp180-f446/README.md`).
+- [x] RAM alanında magic, ABI sürümü, sıra numarası, zaman, durum, kanal sayısı ve CRC bulundur.
+- [x] Snapshot seqlock sözleşmesini tanımla: host sequence'i frame'den önce ve sonra okur; farklı/tek sıra numarası veya CRC uyuşmazlığını reddeder. ESP tarafında uygulama ve sahada doğrulama bekliyor.
 - [ ] Sabit boyutlu örnek tamponu veya çift tampon tasarla; STM32 çalışırken güvenli okunabilsin.
 - [ ] ESP32'ye işlemciyi durdurmadan ve reset atmadan salt-okunur SWD telemetri endpoint'i ekle.
 - [ ] Telemetri okumasında kullanılan SWD bağlantı yolunu flash/kurtarma yolundan ayır; canlı okumada NRST kullanma.

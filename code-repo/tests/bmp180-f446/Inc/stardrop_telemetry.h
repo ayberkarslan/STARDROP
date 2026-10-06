@@ -16,14 +16,16 @@ typedef struct {
 typedef struct {
     uint32_t magic, version, size, sequence;
     uint32_t timestamp_ms, sample_counter, status, channel_count;
+    uint32_t test_id_hash, profile_hash, run_hash;
     stardrop_channel_t channels[STARDROP_TELEMETRY_CHANNELS];
+    uint32_t crc32;
 } stardrop_telemetry_t;
 extern volatile stardrop_telemetry_t stardrop_telemetry;
 void stardrop_telemetry_init(void);
 void stardrop_telemetry_publish(uint32_t timestamp, uint32_t count, uint32_t status, const stardrop_channel_t *channels, uint32_t length);
 #ifdef __cplusplus
 }
-static_assert(sizeof(stardrop_telemetry_t) == 384, "telemetry ABI changed");
+static_assert(sizeof(stardrop_telemetry_t) == 400, "telemetry ABI changed");
 #else
-_Static_assert(sizeof(stardrop_telemetry_t) == 384, "telemetry ABI changed");
+_Static_assert(sizeof(stardrop_telemetry_t) == 400, "telemetry ABI changed");
 #endif
