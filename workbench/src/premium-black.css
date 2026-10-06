@@ -14,8 +14,11 @@
   color:#f5f5f5;
 }
 .app-shell>main,.guest-layout main{background:#000}
-.app-shell .rail,.app-shell main>header,.guest-header,.guest-layout .guest-header{background:#050505;border-color:#242424}
-.app-shell .rail nav button.active,.app-shell .rail nav button:hover{background:#171717;border-color:#4a4a4a;color:#fff}
+.app-shell .rail,.app-shell main>header,.guest-header,.guest-layout .guest-header{background:#000;border-color:#242424}
+.app-shell .rail nav button{background:#000}
+.app-shell .rail nav button.active{background:#000;border-color:#505050;color:#fff;box-shadow:inset 2px 0 0 #fff}
+.app-shell .rail nav button:hover{background:#000;border-color:#777;color:#fff}
+.app-shell .rail nav button:focus-visible{outline:1px solid #fff;outline-offset:2px}
 .app-shell .rail-status{background:transparent;border-color:#292929;color:#a0a0a0}
 .app-shell .rail-footer{border-color:#292929}
 .app-shell .brand small,.app-shell main>header p,.app-shell .eyebrow{color:#929292}
