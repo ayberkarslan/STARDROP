@@ -1,7 +1,7 @@
 export const SETTINGS_KEY = 'stardrop.preferences.v1';
 export const DEFAULT_SETTINGS = Object.freeze({ rememberRepo: false, intervalMs: 500, recordLimit: 2000,
   exportDirectory: '', temperatureUnit: 'C', pressureUnit: 'Pa', fontScale: 1, uiScale: 1,
-  reducedMotion: false, startPage: 'workbench', trustedRepository: '', });
+  reducedMotion: false, startPage: 'workbench', trustedRepository: 'ayberkarslan/stardrop-code-repo', });
 export function validateSettings(input = {}) {
   const result = { ...DEFAULT_SETTINGS };
   for (const key of ['rememberRepo', 'reducedMotion']) if (typeof input[key] === 'boolean') result[key] = input[key];
@@ -45,4 +45,41 @@ export function readiness({ compiler, sourceStatus, repositoryOk, esp, target })
     { label: 'GitHub paylaşımı', ready: Boolean(repositoryOk), detail: repositoryOk ? 'Depo erişilebilir; yayın için yazma izni de gerekli' : 'Depo erişimini kontrol et' },
   ];
   return rows;
+}
+
+export function makeBackup({ preferences, githubConfig, records, profiles }) {
+  return redact({ format: 'stardrop-workshop', version: 1, createdAt: new Date().toISOString(),
+    preferences: { ...validateSettings(preferences), rememberRepo: false, exportDirectory: '' },
+    githubConfig: { repository: githubConfig.repository, ref: githubConfig.ref }, records,
+    profiles: profiles.filter(Boolean).map(profile => ({ ...profile, targetUid: null,
+      connections: profile.connections.map(connection => ({ ...connection, approved: false })) })) });
+}
+export function parseBackup(text) {
+  if (text.length > 4 * 1024 * 1024) throw new Error('Yedek 4 MB sınırını aşıyor.');
+  const data = JSON.parse(text);
+  if (data?.format !== 'stardrop-workshop' || data.version !== 1 || !Array.isArray(data.profiles) || data.profiles.length > 100
+    || !data.records || typeof data.records !== 'object' || Array.isArray(data.records)
+    || Object.keys(data.records).length > 10000) throw new Error('Desteklenen atölye yedeği değil.');
+  for (const [uid, record] of Object.entries(data.records)) {
+    if (!/^[0-9a-f]{24}$/.test(uid) || /^(0{24}|f{24})$/.test(uid) || record.uid !== uid
+      || typeof record.label !== 'string' || record.label.length > 64 || /[\x00-\x1f]/.test(record.label)
+      || typeof record.model !== 'string' || record.model.length > 80
+      || !Number.isSafeInteger(record.createdAt) || !Number.isSafeInteger(record.updatedAt)) throw new Error('Yedekteki kart kaydı geçersiz.');
+    const a = record.flashAnalysis;
+    if (a && (!['totalBytes', 'programmedBytes', 'freeBytes', 'durationMs', 'analyzedAt'].every(key => Number.isSafeInteger(a[key]) && a[key] >= 0)
+      || a.totalBytes <= 0 || a.totalBytes > 16 * 1024 * 1024 || a.programmedBytes + a.freeBytes !== a.totalBytes)) throw new Error('Yedekteki flash analizi geçersiz.');
+    if (!record.label.trim() && !a) throw new Error('Kart kaydı boş.');
+  }
+  const repo = data.githubConfig;
+  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo.repository) || !/^[\w.-]{1,100}$/.test(repo.ref)) throw new Error('Yedekte depo ayarı geçersiz.');
+  const profiles = data.profiles.map(profile => {
+    if (profile.schemaVersion !== 1 || typeof profile.name !== 'string' || !profile.name.trim() || profile.name.length > 200
+      || !profile.mcu || typeof profile.mcu.part !== 'string' || !Array.isArray(profile.components)
+      || profile.components.length > 100 || !Array.isArray(profile.connections) || profile.connections.length > 1000
+      || profile.components.some(c => typeof c.ref !== 'string' || typeof c.part !== 'string')
+      || profile.connections.some(c => typeof c.componentRef !== 'string' || typeof c.role !== 'string' || typeof c.mcuPin !== 'string')) throw new Error('Yedekteki bağlantı profili geçersiz.');
+    return { ...redact(profile), id: crypto.randomUUID(), targetUid: null,
+      connections: profile.connections.map(c => ({ ...redact(c), approved: false })) };
+  });
+  return { ...data, profiles, records: redact(data.records), githubConfig: { repository: repo.repository, ref: repo.ref }, preferences: validateSettings(data.preferences) };
 }

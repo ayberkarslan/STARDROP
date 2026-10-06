@@ -15,7 +15,7 @@ import useFirmwareJob from './useFirmwareJob.js';
 export default function TestSession({ documentId, initialData, services, onDraftChange }) {
   const { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
     refreshSource, activateSource, activeBridge, bridge, refreshTarget, setNotice,
-    aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy } = services;
+    aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy, preferences } = services;
   const [profile, setProfile] = useState(initialData?.profile || null);
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState(initialData?.sources || { netlist: null, schematic: null, bom: null, boardImage: null });
@@ -47,6 +47,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
     : !profile?.targetUid || profile.targetUid !== target.uid ? 'Bu kart profilini bağlı STM32 UID’siyle eşleştir.'
     : !githubUser ? 'Ayarlar ekranından GitHub girişi yap.'
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu MCU için yerel HAL derleme desteği henüz yok.'
+    : preferences && preferences.trustedRepository !== githubConfig.repository ? 'Bu depoyu Ayarlar → Güvenlik bölümünde güvenilir olarak seç.'
     : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
     : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
     : sourceBusy ? 'Kod kaynağı güncelleniyor; indirme bitince testi başlat.'

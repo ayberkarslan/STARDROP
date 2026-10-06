@@ -5,7 +5,7 @@ use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 mod local_build;
 mod esp_watch;
 mod target_registry;
@@ -355,13 +355,13 @@ fn save_secret(key: String, value: String) -> Result<&'static str, String> {
 }
 
 #[tauri::command]
-fn save_repo_secret(value: String, remember: bool) -> Result<&'static str, String> {
+fn save_repo_secret(value: String, remember: bool, forget_persistent: Option<bool>) -> Result<&'static str, String> {
     let value = value.trim().to_string();
     if value.is_empty() || value.len() > 512 || value.chars().any(char::is_whitespace) { return Err("Depo anahtarı boş veya geçersiz".into()); }
     if remember { return save_secret("github_repo_token".into(), value); }
     if let Ok(entry) = entry_for("github_repo_token") {
-        match entry.delete_credential() { Ok(()) | Err(keyring::Error::NoEntry) => {}, Err(error) => return Err(format!("Kalıcı anahtar silinemedi: {error}")) }
-    } else if memory_secret("github_repo_token")?.is_none() {
+        match entry.delete_credential() { Ok(()) | Err(keyring::Error::NoEntry) => {}, Err(error) if forget_persistent.unwrap_or(false) => return Err(format!("Kalıcı anahtar silinemedi: {error}")), Err(_) => {} }
+    } else if forget_persistent.unwrap_or(false) {
         // A locked/unavailable persistent store cannot be silently forgotten.
         return Err("Güvenli anahtar kasasına erişilemiyor; kalıcı kaydı silmek için kasayı aç.".into());
     }
@@ -376,12 +376,17 @@ fn load_secret(key: String) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn delete_secret(key: String) -> Result<(), String> {
-    volatile_secrets().lock().map_err(|error| error.to_string())?.remove(&key);
-    match entry_for(&key)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry)
-            | Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_)) => Ok(()),
-        Err(error) => Err(error.to_string()),
-    }
+    let memory = memory_secret(&key)?.is_some();
+    match entry_for(&key) {
+        Ok(entry) => match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {},
+            Err(_) if memory => {},
+            Err(error) => return Err(error.to_string()),
+        },
+        Err(_) if memory => {},
+        Err(error) => return Err(error),
+    };
+    volatile_secrets().lock().map_err(|error| error.to_string())?.remove(&key); Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -531,7 +536,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![telemetry_export_csv, save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, esp_watch::esp_watch, esp_watch::esp_watch_stop, target_registry::target_registry_load, target_registry::target_registry_save, target_registry::target_registry_analysis_save, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
+        .invoke_handler(tauri::generate_handler![save_repo_secret, settings::settings_export, settings::settings_system_info, local_build::toolchain_status, local_build::code_cache_info, local_build::code_cache_retire, target_registry::target_registry_import, telemetry_export_csv, save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, esp_watch::esp_watch, esp_watch::esp_watch_stop, target_registry::target_registry_load, target_registry::target_registry_save, target_registry::target_registry_analysis_save, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }

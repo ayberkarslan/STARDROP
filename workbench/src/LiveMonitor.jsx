@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import SelectMenu from './SelectMenu.jsx';
 import { espJson } from './lib/espTransport.js';
 import { createTelemetrySession, telemetryCsv } from './lib/telemetry.js';
+import { DEFAULT_SETTINGS, measurement } from './lib/settings.js';
 
 const labels = { temperature: 'Sıcaklık', pressure: 'Basınç' };
 const stateLabels = { idle: 'Hazır', connecting: 'Bağlanıyor', live: 'Canlı', paused: 'Durduruldu', stale: 'Veri durmuş',
@@ -48,11 +49,13 @@ function Trace({ samples, channel }) {
 
 export default function LiveMonitor({ documentId, initialData, active, services }) {
   const { esp, target, activeBridge, hardware, hardwareBusy, setNotice } = services;
+  const preferences = services.preferences || DEFAULT_SETTINGS;
+  const recordLimit = useRef(preferences.recordLimit);
   const [state, setState] = useState({ status: 'idle', message: 'Telemetri destekli STM32 yazılımını yükle, ardından izlemeyi başlat.' });
   const [latest, setLatest] = useState(null);
   const [samples, setSamples] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [interval, setIntervalMs] = useState('500');
+  const [interval, setIntervalMs] = useState(String(preferences.intervalMs));
   const [recording, setRecording] = useState(false);
   const [recordCount, setRecordCount] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -84,6 +87,7 @@ export default function LiveMonitor({ documentId, initialData, active, services 
       if (!activeBridge || esp.status !== 'online') throw new Error('Önce ESP32’ye bağlan.');
       if (target?.uid && initialData?.uid && target.uid.toUpperCase() !== initialData.uid.toUpperCase()) throw new Error('Bu test başka STM32 için hazırlandı. Doğru kartı bağla.');
       lastFrame.current = null; setLatest(null); setSamples([]);
+      recordLimit.current = preferences.recordLimit;
       controller.current = createTelemetrySession({ hardware, ownerId: documentId, uid: expectedUid,
         expected: initialData?.expected, expectedModel: initialData?.model || target?.model, intervalMs: Number(interval),
         fetchSample: () => espJson(activeBridge, '/api/telemetry', { timeoutMs: 3000 }),
@@ -95,8 +99,8 @@ export default function LiveMonitor({ documentId, initialData, active, services 
           if (frame.newSample || changed) {
             setSamples(current => [...current.slice(-239), frame]);
             if (recordOn.current) {
-              if (records.current.length >= 2000) {
-                recordOn.current = false; setRecording(false); addLog('Kayıt 2000 örnek sınırına ulaştı; kayıt durdu. CSV’yi dışa aktar.');
+              if (records.current.length >= recordLimit.current) {
+                recordOn.current = false; setRecording(false); addLog(`Kayıt ${recordLimit.current} örnek sınırına ulaştı; kayıt durdu. CSV’yi dışa aktar.`);
               } else { records.current.push(frame); setRecordCount(records.current.length); }
             }
           }
@@ -111,7 +115,7 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     try {
       const csv = telemetryCsv(records.current);
       if (window.__TAURI_INTERNALS__) {
-        const path = await invoke('telemetry_export_csv', { csv }); setNotice(`Ölçüm kaydı kaydedildi: ${path}`); addLog(`CSV: ${path}`);
+        const path = await invoke('telemetry_export_csv', { csv, directory: preferences.exportDirectory || null }); setNotice(`Ölçüm kaydı kaydedildi: ${path}`); addLog(`CSV: ${path}`);
       } else {
         const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
         const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'stardrop-telemetry.csv'; anchor.click();
@@ -136,11 +140,11 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     <p className={`live-message ${status === 'error' || status === 'sensor-error' ? 'is-error' : ''}`} role="status">{status === 'stale' ? 'Yeni örnek bekleniyor; ekrandaki değerler son ölçümdür.' : state.message}</p>
     {!esp.programmer?.telemetryAvailable && <p className="live-update-note">Eski ESP yazılımında bu özellik yok. ESP32-S3 firmware’ini güncelledikten sonra kullanabilirsin.</p>}
     <div className="live-facts"><div><small>HEDEF UID</small><span title={expectedUid}>{expectedUid || 'Bağlı STM32 yok'}</span></div><div><small>ÖRNEK</small><span>{latest?.sampleCounter ?? '—'}</span></div><div><small>MCU ZAMANI</small><span>{latest ? `${(latest.timestampMs / 1000).toFixed(2)} s` : '—'}</span></div><div><small>ATLANAN ÖRNEK</small><span>{latest?.skipped ?? '—'}</span></div></div>
-    <div className="live-channels">{latest?.channels.map(channel => <article className={`live-channel ${status === 'live' && channel.valid ? 'channel-live' : 'channel-inactive'}`} key={channel.name}>
+    <div className="live-channels">{latest?.channels.map(raw => measurement(raw, preferences)).map(channel => <article className={`live-channel ${status === 'live' && channel.valid ? 'channel-live' : 'channel-inactive'}`} key={channel.name}>
       <div className="live-channel-heading"><div><h2>{labels[channel.name] || channel.name}</h2><small>{channel.name}</small></div><Activity size={16}/></div>
       <div className="live-value"><strong>{channel.valid && latest.sensorStatus === 1 ? number(channel.value) : '—'}</strong><span>{channel.unit === 'degC' ? '°C' : channel.unit}</span>
         <small>{status === 'live' && channel.valid ? 'CANLI' : !channel.valid || latest.sensorStatus === 2 ? 'GEÇERSİZ ÖRNEK' : 'SON ÖLÇÜM'}</small></div>
-      <Trace samples={samples} channel={channel}/>
+      <Trace samples={samples.map(sample => ({ ...sample, channels: sample.channels.map(c => measurement(c, preferences)) }))} channel={channel}/>
     </article>)}{!latest?.channels.length && <div className="live-empty"><Activity size={28}/><h2>Ölçüm bekleniyor</h2><p>Kanallar firmware’den otomatik okunur.<br/>UART veya ek sensör kablosu gerekmez.</p></div>}</div>
     <details className="live-details"><summary>Oturum ve veri bütünlüğü</summary><div className="live-integrity"><span>ABI {latest?.abi || '—'} · CRC ESP32’de doğrulanır</span><span>Test {hex(latest?.testIdHash)}</span><span>Profil {hex(latest?.profileHash)}</span><span>Çalıştırma {hex(latest?.runHash)}</span><span>RAM 0x20000200 · 400 bayt</span><span>SWD okuma {latest?.readMs ?? '—'} ms</span><span>Son örnek {latest?.ageMs === null || !latest ? '—' : `${latest.ageMs} ms önce`}</span><span>Grafik: son 240 okunan örnek · CSV: en fazla 2000 örnek</span></div></details>
     <div className="live-log" role="log" aria-label="Canlı izleme günlüğü"><h2>Olay günlüğü</h2>{logs.length ? logs.map((entry, index) => <p key={index}><time>{entry.at}</time><span>{entry.message}</span></p>) : <p>İzleme başlatılmadı.</p>}</div>

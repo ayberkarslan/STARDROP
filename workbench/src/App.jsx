@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Activity, BookOpen, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
-import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
+import { deleteSecret, loadSecret, saveSecret, saveRepoSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, fetchLibraryProject, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
 import TestLibrary from './TestLibrary.jsx';
@@ -19,6 +19,8 @@ import TestSession from './TestSession.jsx';
 import FlashSession from './FlashSession.jsx';
 import LiveMonitor from './LiveMonitor.jsx';
 import stardustWordmark from './assets/stardust-wordmark.png';
+import SettingsPage from './SettingsPage.jsx';
+import { loadSettings, SETTINGS_KEY, validateSettings } from './lib/settings.js';
 import useWorkspaceDrag from './useWorkspaceDrag.js';
 import DragPreview from './DragPreview.jsx';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
@@ -63,6 +65,18 @@ function RailTool({ tool, Icon, workspace, drag, onOpen }) {
 }
 
 export default function App() {
+  const [preferences, setPreferences] = useState(loadSettings);
+  const updatePreferences = updates => {
+    try { const next = validateSettings({ ...preferences, ...updates }); localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); setPreferences(next); }
+    catch (error) { setNotice(error.message); throw error; }
+  };
+  useEffect(() => {
+    document.body.dataset.reducedMotion = String(preferences.reducedMotion);
+    document.body.dataset.fontSize = preferences.fontScale === 1 ? 'standard' : 'large';
+    document.body.style.setProperty('--font-scale', String(preferences.fontScale));
+    if (window.__TAURI_INTERNALS__) import('@tauri-apps/api/webview').then(({ getCurrentWebview }) => getCurrentWebview().setZoom(preferences.uiScale)).catch(error => setNotice(`Arayüz ölçeği uygulanamadı: ${String(error)}`));
+    else document.documentElement.style.zoom = String(preferences.uiScale);
+  }, [preferences.reducedMotion, preferences.fontScale, preferences.uiScale]);
   const [session, setSession] = useState('welcome');
   useEffect(() => { document.dispatchEvent(new Event('stardrop-tab-change')); }, [session]);
   const workspace = useWorkspaceTabs();
@@ -85,7 +99,7 @@ export default function App() {
   const healthMisses = useRef(0);
   const [rawTarget, setTarget] = useState(null);
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
-  const { records: targetRecords, saveTargetName, saveTargetAnalysis } = useTargetRegistry(rawTarget, setNotice);
+  const { records: targetRecords, saveTargetName, saveTargetAnalysis, reloadRecords } = useTargetRegistry(rawTarget, setNotice);
   const target = namedTarget(rawTarget, targetRecords);
   const noticeHistory = useNoticeHistory(notice);
   const [libraryEntries, setLibraryEntries] = useState([]);
@@ -102,6 +116,7 @@ export default function App() {
   });
   const [repoToken, setRepoToken] = useState('');
   const [repoTokenSaved, setRepoTokenSaved] = useState(false);
+  const [repoStorageMode, setRepoStorageMode] = useState('os');
   const [secretStorageMode, setSecretStorageMode] = useState('os');
   const [repoCredentialRevision, setRepoCredentialRevision] = useState(0);
   const [repoDiagnostic, setRepoDiagnostic] = useState(null);
@@ -245,7 +260,10 @@ export default function App() {
   }, [esp.status, esp.base, hardwareBusy, canWatchStatus]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
-  useEffect(() => { loadSecret('github_repo_token').then((value) => setRepoTokenSaved(Boolean(value))).catch(() => {}); }, []);
+  useEffect(() => { loadSecret('github_repo_token').then((value) => {
+    setRepoTokenSaved(Boolean(value));
+    if (value && !localStorage.getItem(SETTINGS_KEY)) { const next = { ...loadSettings(), rememberRepo: true }; localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); setPreferences(next); }
+  }).catch(() => {}); }, []);
   useEffect(() => { validGitHubToken().then(async (token) => { if (!token) return; try { setGithubUser(await currentGitHubUser(token)); } catch (_) {} }).catch(() => {}); }, []);
 
   const validRepoToken = async () => (await loadSecret('github_repo_token')) || validGitHubToken();
@@ -324,7 +342,9 @@ export default function App() {
   const saveRepoAccess = async () => {
     try {
       if (!repoToken.trim()) throw new Error('Depo anahtarı boş.');
-      setSecretStorageMode(await saveSecret('github_repo_token', repoToken.trim()));
+      const mode = await saveRepoSecret(repoToken.trim(), preferences.rememberRepo, repoTokenSaved && repoStorageMode === 'os');
+      setRepoStorageMode(mode);
+      if (preferences.rememberRepo && mode !== 'os') setNotice('Kalıcı güvenli kasa kullanılamadı; anahtar yalnız bu oturumda bellekte tutuluyor.');
       setRepoToken(''); setRepoTokenSaved(true); setRepoCredentialRevision((value) => value + 1);
       const result = await invoke('github_repo_diagnostic', { repository: githubConfig.repository });
       setRepoDiagnostic(result);
@@ -336,6 +356,16 @@ export default function App() {
   const removeRepoAccess = async () => {
     try { await deleteSecret('github_repo_token'); setRepoTokenSaved(false); setRepoDiagnostic(null); setRepoCredentialRevision((value) => value + 1); setNotice('Depo erişim anahtarı silindi.'); }
     catch (error) { setNotice(`Anahtar silinemedi: ${error.message}`); }
+  };
+
+  const changeRememberRepo = async rememberRepo => {
+    if (hardware.current) throw new Error('Donanım işlemi bitmeden anahtar saklama tercihi değiştirilemez.');
+    const value = await loadSecret('github_repo_token');
+    if (value) {
+      const mode = await saveRepoSecret(value, rememberRepo, repoStorageMode === 'os'); setRepoStorageMode(mode);
+      if (rememberRepo && mode !== 'os') setNotice('Kalıcı kasa kullanılamadı; anahtar yalnız bu oturumda.');
+    }
+    updatePreferences({ rememberRepo });
   };
 
   const runRepoDiagnostic = async () => {
@@ -380,7 +410,8 @@ export default function App() {
       if (attempt !== loginAttempt.current) return;
       await saveGitHubSession(result);
       setSecretStorageMode(result.storage_mode);
-      setGithubUser(user); setSession('github'); setMode('workbench');
+      setGithubUser(user); setSession('github');
+      if (preferences.startPage === 'empty') workspace.create(); else setMode(preferences.startPage);
       setNotice(result.storage_mode === 'memory'
         ? `GitHub girişi tamamlandı: ${user.login}. OS anahtar kasası bulunamadı; oturum yalnız uygulama kapanana kadar bellekte.`
         : `GitHub girişi tamamlandı: ${user.login}`);
@@ -407,8 +438,7 @@ export default function App() {
     try {
       if (githubUser?.login) await invoke('clear_source_cache', { account: githubUser.login });
       await clearGitHubSession();
-      await deleteSecret('github_repo_token');
-      setRepoTokenSaved(false);
+      if (!preferences.rememberRepo) { await deleteSecret('github_repo_token'); setRepoTokenSaved(false); }
       setGithubUser(null);
       setSourceStatus(null);
       setCatalog(CODE_REPO_CATALOG);
@@ -534,12 +564,27 @@ export default function App() {
     setNotice(entry.name + ' ayrı test sekmesinde açıldı. Canlı hedefi eşleştirip pinleri yeniden onayla.');
   };
 
-  const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
+  const restoreWorkshop = async data => {
+    const lease = hardware.acquire('settings-restore', 'Atölye yedeği');
+    try {
+      if (window.__TAURI_INTERNALS__) await invoke('target_registry_import', { records: data.records });
+      else localStorage.setItem('stardrop.targets.v1', JSON.stringify({ version: 1, targets: { ...targetRecords, ...data.records } }));
+      await reloadRecords();
+      updatePreferences({ ...data.preferences, rememberRepo: preferences.rememberRepo, exportDirectory: preferences.exportDirectory, trustedRepository: preferences.trustedRepository });
+      const nextConfig = data.githubConfig; localStorage.setItem('stardrop.code.config', JSON.stringify(nextConfig)); setGithubConfig(nextConfig);
+      for (const profile of data.profiles) workspace.open('workbench', { fresh: true, data: { profile } });
+    } finally { hardware.release(lease); }
+  };
+  const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy, preferences,
     openTelemetry: data => workspace.open('monitor', { fresh: true, data }),
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,
     aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy,
     espBase: activeBridge, devices: discoveredDevices, onConnect: connectBridge, onDiscover: autoConnect, notice };
+  const settingsServices = { ...services, updatePreferences, updateGithubConfig, targetRecords, testDrafts, restoreWorkshop,
+    repoToken, setRepoToken, repoTokenSaved, repoStorageMode, saveRepoAccess, removeRepoAccess, changeRememberRepo,
+    repoDiagnostic, repoDiagnosticBusy, runRepoDiagnostic, startGithubLogin, githubLoginBusy, installTestCatalog, catalogSha, noticeHistory,
+    invalidateSource: () => { setSourceStatus(null); setSourceError('Önbellek temizlendi. Test kaynağını yeniden indir.'); } };
   const titles = Object.fromEntries(Object.entries(testDrafts).filter(([, draft]) => draft.profile).map(([id, draft]) => [id, draft.profile.name + ' · ' + (draft.selectedTest?.name || 'Yeni Test')]));
   const renderDocument = (doc, activeId, currentWorkspace) => {
     const mode = doc.type;
@@ -550,9 +595,6 @@ export default function App() {
     return <section className={'workspace-panel' + (preview?.overId === tab?.id ? ' panel-drop-target' : '')} key={doc.id}
       id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
       {visible && <WelcomeStars subtle />}
-      {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
-      {mode === 'settings' && repoDiagnostic?.repositoryStatus === 404 && <p className="repo-help">Hesap tanınsa bile özel depo bu kimlikle görünmüyor. GitHub App’i bu depoya Contents izniyle kur veya yalnız bu depoya erişen fine-grained token kaydet. App iznini değiştirirsen yeniden giriş yap.</p>}
-      {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
         mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
@@ -560,7 +602,7 @@ export default function App() {
           drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
           startNewTest={() => workspace.open('workbench', { fresh: true })}/> :
         mode === 'admin' ? (catalogAdmin ? <div className="workspace settings-page"><Section title="SENSÖR → TEST KAYNAĞI" action={<Badge tone={catalogAdmin ? 'good' : 'bad'}>{catalogAdmin ? 'YAZMA YETKİSİ VAR' : 'YETKİ YOK'}</Badge>}><p>Test listesi GitHub kataloğundan gelir. Şu an yerel derleyici LED için hazır; yeni testlerin kaynakları ve derleyicisi doğrulanmadan “hazır” yapılmamalı.</p><div className="admin-grid"><SelectMenu ariaLabel="Yönetilecek test" value={adminTestId} options={catalog.tests.map((item) => ({ value: item.id, label: item.name }))} onChange={setAdminTestId}/><input value={adminTest?.sourcePath || ''} placeholder="tests/bmp180/stardrop-project.json" onChange={(event) => updateAdminTest('sourcePath', event.target.value)} /><input value={adminTest?.matchParts?.join(', ') || ''} placeholder="BMP180, BMP085" onChange={(event) => updateAdminTest('matchParts', event.target.value.split(',').map((part) => part.trim()).filter(Boolean))} /></div><p>Pinler kart profilinden derleme sırasında üretilir.</p><button className="primary settings-login" disabled={!catalogAdmin || catalogLoading} onClick={saveAdminCatalog}><Save />GITHUB KATALOĞUNA KAYDET</button></Section></div> : <p className="workspace">Bu ekran için yönetim yetkisi gerekli.</p>) :
-        <div className="workspace settings-page"><Section title="GITHUB TEST DEPOSU" action={githubUser ? <Badge tone="good">@{githubUser.login}</Badge> : <Badge tone="warn">GİRİŞ YOK</Badge>}><p>Hızlı Yükleme giriş gerektirmez. Test kodları bu depodan indirilir ve bilgisayarında derlenir.</p><div className="settings-grid"><input value={githubConfig.repository || ''} placeholder="owner/repo" onChange={(event) => updateGithubConfig('repository', event.target.value)} /><input value={githubConfig.ref || ''} placeholder="main" onChange={(event) => updateGithubConfig('ref', event.target.value)} /></div><button className="primary settings-login" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}><Github />{githubUser ? `GİRİŞ YAPILDI: ${githubUser.login}` : githubLoginBusy ? 'GİRİŞ BEKLENİYOR…' : 'GITHUB İLE GİRİŞ YAP'}</button><p>Özel depodaki testleri okumak için Contents: Read, Test Kütüphanesi’ne kayıt eklemek için Contents: Read and write gerekir. GitHub App tokeni kullanıyorsan uygulamanın da bu izinle depoya kurulmuş olması gerekir. Alternatif olarak yalnız bu depoya erişen fine-grained token gir; anahtar proje dosyasına yazılmaz.</p><div className="settings-grid"><input type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Depo anahtarı kayıtlı' : 'Fine-grained repo token'} onChange={(event) => setRepoToken(event.target.value)} /><button className="secondary" onClick={saveRepoAccess} disabled={!repoToken.trim()}>ANAHTARI KAYDET</button></div>{repoTokenSaved && <button className="secondary" onClick={removeRepoAccess}>KAYITLI ANAHTARI SİL</button>}</Section><Section title="GÜVENLİK DURUMU"><div className="security-list"><span><ShieldCheck />AI anahtarı: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />GitHub token: {secretStorageMode === 'memory' ? 'bu oturumun belleği' : 'OS credential store'}</span><span><ShieldCheck />.stardrop export: anahtar ve token içermez</span></div></Section></div>}
+        <SettingsPage services={settingsServices} account={githubUser?.login}/>}
     </section>;
   };
   const notificationCenter = <NotificationCenter esp={esp} notice={notice} entries={noticeHistory} onRetry={autoConnect} disabled={Boolean(hardwareBusy)}
@@ -568,7 +610,7 @@ export default function App() {
     onRecover={() => { (session === 'guest' ? guestWorkspace : workspace).undo(); setNotice('Önceki çalışma ayrı sekmede geri açıldı.'); }}/>;
 
   const startContent = <StartContent user={githubUser} busy={githubLoginBusy}
-    onGithub={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}
+    onGithub={() => { if (githubUser) { setSession('github'); if (preferences.startPage === 'empty') workspace.create(); else setMode(preferences.startPage); } else startGithubLogin(); }}
     onGuest={() => { setSession('guest'); guestWorkspace.open('flash'); }}
     error={githubLoginError} preparing={githubLoginBusy && !deviceLogin}/>;
   const welcomeView = <div className="welcome-screen"><WelcomeStars /><aside className="welcome-sidebar">
