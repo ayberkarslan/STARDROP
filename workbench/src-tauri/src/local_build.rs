@@ -732,6 +732,56 @@ pub fn clear_source_cache(app: tauri::AppHandle, account: String) -> Result<(), 
 mod tests {
     use super::*;
 
+    fn bmp_request(bus: &str, scl: &str, sda: &str) -> CodeBuildRequest {
+        let profile = serde_json::json!({
+            "mcu": {"part": "STM32F446RET6"}, "targetUid": "001300155231501920323239",
+            "components": [{"ref": "U1", "part": "BMP180", "protocol": "I2C"}],
+            "connections": [
+                {"componentRef":"U1", "role":"SCL", "mcuPin":scl, "peripheral":bus, "approved":true},
+                {"componentRef":"U1", "role":"SDA", "mcuPin":sda, "peripheral":bus, "approved":true}
+            ]
+        });
+        CodeBuildRequest { repository: String::new(), test_id: "bmp180-f446".into(),
+            profile_json: profile.to_string(), component_ref: "U1".into(), request_id: "bmp-test".into(),
+            mcu_part: "STM32F446RET6".into(), target_uid: "001300155231501920323239".into() }
+    }
+
+    #[test]
+    fn i2c_header_rejects_wrong_af_and_mixed_buses() {
+        assert!(role_pin_header(&bmp_request("I2C1", "PA0", "PA1").profile_json, "U1").is_err());
+        assert!(role_pin_header(&bmp_request("I2C1", "PB6", "PB7").profile_json, "U1").is_ok());
+        let request = bmp_request("I2C1", "PB6", "PB7");
+        let mut profile: serde_json::Value = serde_json::from_str(&request.profile_json).unwrap();
+        profile["connections"][1]["peripheral"] = serde_json::json!("I2C3");
+        assert!(role_pin_header(&profile.to_string(), "U1").is_err());
+    }
+
+    #[test]
+    fn bmp180_cpp_catalog_builds_hardware_and_software_pin_variants() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../code-repo");
+        let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("toolchain/bin/arm-none-eabi-gcc");
+        let gcc = if bundled.is_file() { bundled } else { PathBuf::from("/usr/bin/arm-none-eabi-gcc") };
+        let objcopy = gcc.with_file_name("arm-none-eabi-objcopy");
+        let original = fs::read(repo.join("tests/bmp180-f446/Inc/pin_configurations.h")).unwrap();
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive_test_tree(&repo, &repo, &mut zip, "stardrop/");
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        extract_code_archive(zip.finish().unwrap().into_inner(), root.path(), &source).unwrap();
+        assert!(code_source_valid(&source));
+        let mut hashes = std::collections::HashSet::new();
+        for (bus, scl, sda) in [("I2C1", "PB6", "PB7"), ("I2C1", "PB8", "PB9"),
+            ("I2C3", "PA8", "PC9"), ("SOFT_I2C_1", "PA0", "PA1")] {
+            let result = compile_code_test_at(&source, &gcc, &objcopy, bmp_request(bus, scl, sda), "bmp-source".into()).unwrap();
+            assert!(result.bytes.len() > 64 && result.bytes.len() < 512 * 1024);
+            assert_eq!(u32::from_le_bytes(result.bytes[..4].try_into().unwrap()), 0x20020000);
+            assert!(hashes.insert(result.sha256), "I2C seçimi BIN'e yansımadı");
+            assert_eq!(result.source_sha, "bmp-source");
+        }
+        assert!(compile_code_test_at(&source, &gcc, &objcopy, bmp_request("I2C1", "PA0", "PA1"), "bmp-source".into()).is_err());
+        assert_eq!(original, fs::read(repo.join("tests/bmp180-f446/Inc/pin_configurations.h")).unwrap());
+    }
+
     #[test]
     fn package_data_rejects_absent_pins_in_native_builds() {
         assert!(package_pin_present("STM32F401CDU6", "PC13"));

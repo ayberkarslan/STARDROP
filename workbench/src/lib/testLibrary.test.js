@@ -7,7 +7,7 @@ import catalog from '../../../code-repo/catalog/catalog.json' with { type: 'json
 
 test('ready catalog templates are searchable without fake pins or successful runs', () => {
   const entries = catalogLibraryEntries(catalog);
-  assert.equal(entries.length, 2);
+  assert.equal(entries.length, 3);
   assert.ok(entries.every(entry => entry.kind === 'template' && entry.pins.length === 0 && entry.result.status === 'NOT_RUN'));
   assert.ok(entries.every(entry => !entry.profile && !entry.publishedAt && !validateLibraryEntry(entry)));
   assert.equal(searchLibrary(entries, 'F446 LED')[0].test.id, 'led-blink-f446');
