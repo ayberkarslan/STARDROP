@@ -76,6 +76,10 @@ try {
   await upload.click();
   await station.locator('.flash-failure').getByText('STM32’ye yazma başlatılmadı.', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.uploads), 2);
+  await station.getByLabel('Firmware dosyası', { exact: true }).setInputFiles({ name: 'next.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(256) });
+  await station.getByText('Yüklemeye hazır', { exact: true }).waitFor();
+  assert.equal(await station.locator('.flash-failure').count(), 0);
+  assert.match(await station.getByRole('log').innerText(), /STM32 hedefi değişti/);
   await page.setViewportSize({ width: 960, height: 900 });
   const narrowControls = await station.locator('.flash-controls').boundingBox(), narrowRuntime = await station.locator('.flash-runtime').boundingBox();
   assert.ok(narrowControls.y + narrowControls.height <= narrowRuntime.y);
