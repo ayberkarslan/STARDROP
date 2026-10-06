@@ -21,6 +21,8 @@ import DragPreview from './DragPreview.jsx';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
 import { espJson } from './lib/espTransport.js';
 import { watchEspStatus } from './lib/espStatusEvents.js';
+import { namedTarget } from './lib/targetRegistry.js';
+import useTargetRegistry from './useTargetRegistry.js';
 import { validateTestCatalog } from './lib/testCatalog.js';
 import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type: 'json' };
 
@@ -78,8 +80,10 @@ export default function App() {
   const [discoveredDevices, setDiscoveredDevices] = useState([]);
   const discoveryRun = useRef(0);
   const healthMisses = useRef(0);
-  const [target, setTarget] = useState(null);
+  const [rawTarget, setTarget] = useState(null);
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
+  const { records: targetRecords, saveTargetName } = useTargetRegistry(rawTarget, setNotice);
+  const target = namedTarget(rawTarget, targetRecords);
   const noticeHistory = useNoticeHistory(notice);
   const [libraryEntries, setLibraryEntries] = useState([]);
   const [libraryBusy, setLibraryBusy] = useState(false);
@@ -529,7 +533,7 @@ export default function App() {
 
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
-    refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, setNotice,
+    refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, setNotice,
     aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy,
     espBase: activeBridge, devices: discoveredDevices, onConnect: connectBridge, onDiscover: autoConnect, notice };
   const titles = Object.fromEntries(Object.entries(testDrafts).filter(([, draft]) => draft.profile).map(([id, draft]) => [id, draft.profile.name + ' · ' + (draft.selectedTest?.name || 'Yeni Test')]));

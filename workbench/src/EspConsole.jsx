@@ -15,7 +15,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice, hardware, hardwareBusy, documentId }) {
+export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice, hardware, hardwareBusy, documentId }) {
   const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [wiringOpen, setWiringOpen] = useState(false);
@@ -73,6 +73,11 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
   const action = async (path, payload, success) => {
     setBusy(true);
     try {
+      if (path === '/api/target/label' && saveTargetName) {
+        await saveTargetName(target, payload.label);
+        setNotice('Kart adı bu bilgisayarda UID ile kaydedildi.');
+        return;
+      }
       if ((path === '/api/target/label' && (!payload.label.trim() || /["\\]/.test(payload.label))) ||
           (path === '/api/wifi/add' && /["\\]/.test(payload.ssid))) {
         throw new Error('Ad tırnak veya ters eğik çizgi içeremez.');
@@ -176,7 +181,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     <div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div>
     <div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div>
     <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
-    <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>Ad, bu STM32’nin UID’siyle eşleştirilir.</small></div>
+    <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>
   </div>;
 
   const chooseFile = (file) => {
