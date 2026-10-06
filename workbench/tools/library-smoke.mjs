@@ -30,7 +30,17 @@ try {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
+  await page.locator('.welcome-screen:visible').waitFor();
+  for (const selector of ['.window-chrome', '.welcome-screen:visible', '.welcome-sidebar:visible']) {
+    assert.equal(await page.locator(selector).evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
+  }
+  const loginChoice = page.getByRole('button', { name: /GitHub ile devam et/ });
+  await loginChoice.hover();
+  assert.equal(await loginChoice.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
+  await page.screenshot({ path: '/tmp/stardrop-black-welcome.png' });
   await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
+  await page.locator('.device-login-card:visible').waitFor();
+  assert.equal(await page.locator('.device-login-card:visible').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   await page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' }).waitFor({ timeout: 15000 });
   const manualChoice = page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' });
   assert.equal(await manualChoice.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
