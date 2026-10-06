@@ -50,6 +50,9 @@ try {
   const hub = page.locator('.settings-hub:visible');
   assert.equal(await hub.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   assert.equal(await hub.locator('.settings-sections button').count(), 7);
+  await hub.getByLabel('Ayarlarda ara').click();
+  assert.equal(await hub.getByLabel('Ayarlarda ara').evaluate(el => getComputedStyle(el).caretColor), 'rgb(255, 255, 255)');
+  assert.equal(await hub.locator('.settings-search').evaluate(el => getComputedStyle(el).borderTopColor), 'rgb(255, 255, 255)');
   await hub.getByLabel('Ayarlarda ara').fill('anahtar');
   assert.equal(await hub.locator('.settings-sections button').count(), 1);
   await hub.getByLabel('Ayarlarda ara').fill('');
