@@ -7,6 +7,16 @@ use tauri::Emitter;
 static WATCHES: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 fn watches() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> { WATCHES.get_or_init(|| Mutex::new(HashMap::new())) }
 
+fn status_packet(bytes: &[u8]) -> Option<(String, serde_json::Value)> {
+    let value: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    if value["protocol"] != "stardrop-status-v1" || !value["target"]["connected"].is_boolean() { return None; }
+    let target = &value["target"];
+    let identity = if target["connected"] == true { target.clone() }
+        else { serde_json::json!({ "connected": false, "dpConnected": target["dpConnected"] }) };
+    let fingerprint = serde_json::json!([identity, value["wifi"]["connected"], value["wifi"]["ip"], value["wifi"]["ssid"]]).to_string();
+    Some((fingerprint, serde_json::json!({ "status": "online", "target": target, "wifi": value["wifi"] })))
+}
+
 #[tauri::command]
 pub fn esp_watch_stop(watch_id: String) {
     if let Ok(mut entries) = watches().lock() {
@@ -44,14 +54,11 @@ pub async fn esp_watch(app: tauri::AppHandle, base: String, watch_id: String) ->
                 }
                 match socket.recv_from(&mut bytes) {
                     Ok((size, sender)) if sender.ip() == address && sender.port() == 4210 => {
-                        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes[..size]) else { continue; };
-                        if value["protocol"] != "stardrop-status-v1" || !value["target"]["connected"].is_boolean() { continue; }
+                        let Some((fingerprint, status)) = status_packet(&bytes[..size]) else { continue; };
                         received = Instant::now();
-                        let target = &value["target"];
-                        let fingerprint = serde_json::json!([target["connected"], target["dpConnected"], target["uid"], target["label"], value["wifi"]["connected"], value["wifi"]["ip"], value["wifi"]["ssid"]]).to_string();
                         if fingerprint != previous {
                             previous = fingerprint;
-                            emit(serde_json::json!({ "status": "online", "target": target, "wifi": value["wifi"] }))?;
+                            emit(status)?;
                         }
                     }
                     Ok(_) => {}
@@ -70,4 +77,39 @@ pub async fn esp_watch(app: tauri::AppHandle, base: String, watch_id: String) ->
     }).await.map_err(|error| error.to_string());
     if let Ok(mut entries) = watches().lock() { entries.remove(&cleanup_id); }
     result?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn packet(target: serde_json::Value) -> (String, serde_json::Value) {
+        status_packet(&serde_json::to_vec(&serde_json::json!({ "protocol": "stardrop-status-v1", "target": target,
+            "wifi": { "connected": true, "ip": "192.168.1.3", "ssid": "Atölye" } })).unwrap()).unwrap()
+    }
+    #[test]
+    fn heartbeat_and_transient_ack_do_not_change_identity() {
+        let first = packet(serde_json::json!({ "connected": false, "dpConnected": false, "ack": 2 }));
+        let second = packet(serde_json::json!({ "connected": false, "dpConnected": false, "ack": 7 }));
+        assert_eq!(first.0, second.0);
+        let attached = packet(serde_json::json!({ "connected": true, "uid": "one", "model": "STM32F446" }));
+        assert_ne!(first.0, attached.0);
+        assert_eq!(attached.1["target"]["uid"], "one");
+        assert_ne!(attached.0, packet(serde_json::json!({ "connected": true, "uid": "two", "model": "STM32F446" })).0);
+    }
+    #[test]
+    fn malformed_and_foreign_packets_are_rejected() {
+        assert!(status_packet(b"garbage").is_none());
+        assert!(status_packet(br#"{"protocol":"stardrop-discovery-v1","target":{"connected":true}}"#).is_none());
+        assert!(status_packet(br#"{"protocol":"stardrop-status-v1","target":{"connected":"true"}}"#).is_none());
+    }
+    #[test]
+    fn stopping_a_watch_releases_its_lease() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let active = Arc::new(AtomicBool::new(true));
+        watches().lock().unwrap().insert(id.clone(), active.clone());
+        esp_watch_stop(id.clone());
+        assert!(!active.load(Ordering::Relaxed));
+        assert!(!watches().lock().unwrap().contains_key(&id));
+        esp_watch_stop(id);
+    }
 }

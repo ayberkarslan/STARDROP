@@ -325,7 +325,7 @@ public:
                 idcode == confirmIdcode && isArmSwDpId(idcode)) {
                 if (idcode_out) *idcode_out = idcode;
                 lastProbeDpIdcode = idcode;
-                Serial.printf("[SWD] ARM Cortex-M DAP IDCODE doğrulandı (Deneme %d, 0x%08X)\n", attempt, idcode);
+                if (!passive) Serial.printf("[SWD] ARM Cortex-M DAP IDCODE doğrulandı (Deneme %d, 0x%08X)\n", attempt, idcode);
 
                 // 6. DAP Hata Temizleme (DP ABORT = 0x1E)
                 uint32_t abortCmd = 0x0000001E;
@@ -380,12 +380,12 @@ public:
             delay(20);
         }
 
-        Serial.printf("Bağlantı başarısız, son ACK: %d, IDCODE: 0x%08X\n", lastAck, lastIdcode);
+        if (!passive) Serial.printf("Bağlantı başarısız, son ACK: %d, IDCODE: 0x%08X\n", lastAck, lastIdcode);
         return false;
     }
 
-    // Bu sorgu yalnız DAP/MEM-AP üzerinden okuma yapar; CPU'yu durdurmaz,
-    // resetlemez ve kullanıcı yazılımına müdahale etmez.
+    // Pasif sorgu reset/halt yapmaz. Normal bağlantı başarısızsa connect()
+    // NRST üzerinden kurtarma deneyebilir; otomatik izleme yalnız pasif kullanır.
     bool probe(TargetProbeInfo* info, bool passive = false) {
         if (!info) return false;
         memset(info, 0, sizeof(*info));

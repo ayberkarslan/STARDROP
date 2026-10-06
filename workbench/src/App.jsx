@@ -143,7 +143,7 @@ export default function App() {
       const capabilities = await espJson(result.base, '/api/programmer/status');
       if (run !== discoveryRun.current) return;
       setEsp(current => ({ ...current, programmer: capabilities, statusEvents: capabilities.statusEventsAvailable === true }));
-      await refreshTargetAt(result.base);
+      if (!capabilities.statusEventsAvailable) await refreshTargetAt(result.base);
     } catch (error) {
       if (run !== discoveryRun.current) return;
       setEsp({ status: 'offline', wifi: null, base: null }); setTarget(null);
@@ -173,7 +173,7 @@ export default function App() {
         const capabilities = await espJson(result.base, '/api/programmer/status');
         if (run !== discoveryRun.current) return;
         setEsp(current => ({ ...current, programmer: capabilities, statusEvents: capabilities.statusEventsAvailable === true }));
-        await refreshTargetAt(result.base);
+        if (!capabilities.statusEventsAvailable) await refreshTargetAt(result.base);
         return;
       } catch (_) { /* Sonraki adresi dene. */ }
     }
@@ -196,6 +196,11 @@ export default function App() {
   useEffect(() => {
     if (!canWatchStatus || esp.status !== 'online' || hardwareBusy) return;
     let cancelled = false; let stop;
+    const watchError = error => {
+      if (cancelled) return;
+      setEsp(current => ({ ...current, statusEvents: false }));
+      setNotice(`Cihaz bildirimleri alınamadı: ${String(error)}`);
+    };
     watchEspStatus(esp.base, event => {
       if (cancelled || hardware.current) return;
       if (event.status === 'offline') {
@@ -205,37 +210,31 @@ export default function App() {
       }
       setEsp(current => ({ ...current, wifi: { ...current.wifi, ...event.wifi } }));
       setTarget(event.target);
-    }, error => {
-      if (cancelled) return;
-      setEsp(current => ({ ...current, statusEvents: false }));
-      setNotice(`Cihaz bildirimleri alınamadı: ${String(error)}`);
-    }).then(cleanup => { if (cancelled) cleanup(); else stop = cleanup; });
+    }, watchError).then(cleanup => { if (cancelled) cleanup(); else stop = cleanup; }).catch(watchError);
     return () => { cancelled = true; stop?.(); };
   }, [canWatchStatus, esp.status, esp.base, hardwareBusy]);
   useEffect(() => {
     if (hardwareBusy || esp.status === 'searching' || canWatchStatus && esp.status === 'online') return;
-    let pending = false;
+    let pending = false; let cancelled = false;
     const timer = window.setInterval(async () => {
       if (hardware.current || pending) return;
       if (esp.status !== 'online') { autoConnect(); return; }
       pending = true;
       try {
         const live = await probeEsp(esp.base, 4000);
+        if (cancelled) return;
         healthMisses.current = 0;
         setEsp(current => ({ ...current, status: 'online', ...live }));
-        // Legacy firmware fallback, only while idle; never overlaps a write.
-        if (!hardware.current) {
-          const next = await espJson(esp.base, '/api/target/status', { timeoutMs: 6000 });
-          if (!hardware.current) setTarget(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
-        }
+        // Legacy firmware gets network health checks only, never automatic SWD/reset probes.
       } catch (_) {
+        if (cancelled) return;
         if (++healthMisses.current >= 2) {
           setEsp({ status: 'offline', wifi: null, base: null }); setTarget(null);
           setNotice('ESP32 bağlantısı kesildi; yeniden aranıyor.');
         }
       } finally { pending = false; }
     }, esp.status === 'online' ? 10000 : 15000);
-    return () => window.clearInterval(timer);
+    return () => { cancelled = true; window.clearInterval(timer); };
   }, [esp.status, esp.base, hardwareBusy, canWatchStatus]);
 
   useEffect(() => { loadSecret('ai_api_key').then((value) => value && setAiKey(value)).catch(() => {}); }, []);
