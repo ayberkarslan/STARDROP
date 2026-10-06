@@ -39,8 +39,16 @@ try {
   assert.deepEqual(await page.evaluate(() => {
     const surface = document.querySelector('.welcome-screen');
     const cancelled = (type, options) => !surface.dispatchEvent(new (type === 'keydown' ? KeyboardEvent : MouseEvent)(type, { bubbles: true, cancelable: true, ...options }));
-    return [cancelled('contextmenu', {}), cancelled('keydown', { key: 'Tab' }), cancelled('keydown', { key: 'F12' }), cancelled('keydown', { key: 'I', ctrlKey: true, shiftKey: true })];
-  }), [true, true, true, true]);
+    return [cancelled('contextmenu', {}), cancelled('keydown', { key: 'Tab' }), cancelled('keydown', { key: 'F12' }), cancelled('keydown', { key: 'I', ctrlKey: true, shiftKey: true }), cancelled('keydown', { key: 'a', ctrlKey: true }), cancelled('keydown', { key: 'a', metaKey: true })];
+  }), [true, true, true, true, true, true]);
+  const welcomeTitle = page.locator('.welcome-content h1');
+  assert.equal(await welcomeTitle.evaluate(el => getComputedStyle(el).userSelect), 'none');
+  const titleBounds = await welcomeTitle.boundingBox();
+  await page.mouse.move(titleBounds.x + 3, titleBounds.y + titleBounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(titleBounds.x + titleBounds.width - 3, titleBounds.y + titleBounds.height / 2, { steps: 8 });
+  await page.mouse.up();
+  assert.equal(await page.evaluate(() => window.getSelection().toString()), '');
   for (const selector of ['.window-chrome', '.welcome-screen:visible', '.welcome-sidebar:visible']) {
     assert.equal(await page.locator(selector).evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   }
@@ -85,6 +93,11 @@ try {
   await page.getByRole('button', { name: 'DEVAM ET' }).click();
   assert.equal(await page.getByRole('textbox', { name: 'Şemadaki adı' }).count(), 0);
   assert.equal(await page.getByRole('textbox', { name: 'Parça adı' }).inputValue(), 'LED');
+  const partInput = page.getByRole('textbox', { name: 'Parça adı' });
+  assert.equal(await partInput.evaluate(el => getComputedStyle(el).userSelect), 'text');
+  await partInput.focus();
+  await page.keyboard.press('Control+a');
+  assert.equal(await partInput.evaluate(el => el.selectionEnd - el.selectionStart), 3);
   await page.getByRole('button', { name: 'TESTLERİ GÖR' }).click();
   await page.getByRole('heading', { name: 'LED için neyi deneyeceğiz?' }).waitFor();
   assert.ok(await page.getByText('LED Blink · F446RE', { exact: true }).count());
