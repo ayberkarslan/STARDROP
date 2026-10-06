@@ -32,6 +32,13 @@ try {
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
   await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
   await page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' }).waitFor({ timeout: 15000 });
+  const manualChoice = page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' });
+  assert.equal(await manualChoice.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
+  await manualChoice.hover();
+  assert.equal(await manualChoice.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
+  const activeMenu = page.locator('[data-rail-tool="workbench"]:visible');
+  assert.equal(await activeMenu.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
+  assert.notEqual(await activeMenu.evaluate(el => getComputedStyle(el).boxShadow), 'none');
   await page.locator('[data-rail-tool="library"]:visible').click();
   await page.locator('.library-card').filter({ hasText: 'LED Blink · F446RE' }).waitFor();
   assert.equal(await page.locator('.library-card').count(), 2);

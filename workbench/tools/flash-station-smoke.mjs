@@ -52,6 +52,14 @@ try {
   assert.equal(await station.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   const controls = await station.locator('.flash-controls').boundingBox(), runtime = await station.locator('.flash-runtime').boundingBox();
   assert.ok(controls.x + controls.width < runtime.x);
+  await station.getByRole('button', { name: 'ESP32 ayarları', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'ESP32 ayarları' });
+  await settings.waitFor();
+  const titleBounds = await settings.locator('.drawer-title').boundingBox();
+  const discoveryBounds = await settings.locator('.discovered-list-head').boundingBox();
+  assert.ok(discoveryBounds.y - (titleBounds.y + titleBounds.height) >= 17);
+  assert.equal(await settings.locator('.discovered-list-head').evaluate(el => getComputedStyle(el).alignItems), 'center');
+  await settings.getByRole('button', { name: 'Kapat', exact: true }).click();
   const upload = page.getByRole('button', { name: 'YAZILIMI YÜKLE (SWD)', exact: true });
   assert.equal(await upload.isEnabled(), false);
   await station.getByLabel('Firmware dosyası', { exact: true }).setInputFiles({ name: 'blink.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(512) });
