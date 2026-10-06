@@ -1,0 +1,52 @@
+/* Quick upload is a workspace, not a floating card. */
+.app-shell .flash-station,.guest-layout .flash-station,.flash-station{
+  width:100%;max-width:none;margin:0;padding:clamp(24px,3vw,46px);border:0;border-radius:0;background:#000;box-shadow:none;min-height:100%;box-sizing:border-box
+}
+.flash-station .flash-heading{margin:0 0 25px;padding:0 0 24px;align-items:center;border-bottom:1px solid #242424}
+.flash-station .flash-heading h1{font-size:clamp(19px,2vw,26px);font-weight:400;letter-spacing:-.035em;line-height:1.4}
+.flash-station .flash-heading p{margin:10px 0 0;color:#c1c1c1;font-size:11px;line-height:1.7}
+.flash-station .flash-heading .icon-link{width:36px;height:36px;background:#000;border-color:#333}
+.flash-station .target-line{background:#000;border:0;border-bottom:1px solid #242424;border-radius:0;padding:0 0 22px;margin:0}
+.flash-station .target-label small{color:#b8b8b8;overflow-wrap:anywhere}
+.flash-station-grid{display:grid;grid-template-columns:minmax(300px,.85fr) minmax(0,1.3fr);gap:clamp(30px,4vw,72px);padding-top:32px;align-items:start}
+.flash-controls,.flash-runtime{min-width:0}
+.flash-station .firmware-select{display:flex;min-height:210px;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:30px 20px;background:#000;border:1px dashed #414141;border-radius:8px;transition:border-color .18s ease;box-sizing:border-box}
+.flash-station .firmware-select:hover:not(.is-disabled),.flash-station .firmware-select:focus-within{border-color:#fff;background:#000}
+.flash-station .firmware-select strong{font-size:13px;font-weight:400;line-height:1.6;text-align:center}
+.flash-station .firmware-select small{font-size:10px;line-height:1.8;color:#b8b8b8;text-align:center}
+.flash-station .firmware-select.is-disabled{cursor:default;opacity:.55}
+.flash-station .firmware-file-card{background:#000;padding:16px 0;border:0;border-bottom:1px solid #292929;border-radius:0;gap:12px}
+.flash-station .firmware-file-card strong{overflow-wrap:anywhere;white-space:normal;font-size:12px;line-height:1.6}
+.flash-station .firmware-file-card span,.flash-station .firmware-file-card small{color:#b8b8b8;font-size:10px;line-height:1.7}
+.flash-station .flash-submit{margin-top:22px;min-height:49px;font-size:11px;line-height:1.6;letter-spacing:.025em;transform:none}
+.flash-station .flash-submit:hover:not(:disabled){transform:none}
+.flash-station .flash-blocker{min-height:18px;margin:12px 0;color:#dedede;font-size:10px;line-height:1.7}
+.flash-station .flash-footnote{margin:18px 0 0;text-align:left;color:#b8b8b8;font-size:10px;line-height:1.9}
+.flash-progress-panel{padding:0 0 24px;border-bottom:1px solid #292929}
+.flash-progress-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;color:#f5f5f5;min-height:34px;font-size:12px;line-height:1.8}
+.flash-progress-heading strong{font-size:23px;font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums}
+.flash-progress-track{height:3px;position:relative;overflow:hidden;background:#242424;margin:18px 0 22px}
+.flash-progress-track>i{height:100%;display:block;background:#fff;transition:width .25s ease}
+.flash-progress-track.is-indeterminate>i{position:absolute;width:30%;animation:flash-transfer 1.5s cubic-bezier(.4,0,.2,1) infinite}
+.flash-stage-list{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0;margin:0}
+.flash-stage-list li{display:flex;flex-direction:column;gap:10px;color:#a4a4a4;font-size:9px;line-height:1.7}
+.flash-stage-list li>i{width:5px;height:5px;border-radius:50%;border:1px solid #646464;background:#000}
+.flash-stage-list li.is-active,.flash-stage-list li.is-done{color:#fff}
+.flash-stage-list li.is-active>i,.flash-stage-list li.is-done>i{border-color:#fff;background:#fff}
+.flash-progress-panel[aria-busy=true] .flash-stage-list li.is-active>i{animation:flash-active 1.7s ease-in-out infinite}
+.flash-stage-list li.is-error{color:#ffb4b4}.flash-stage-list li.is-error>i{border-color:#ffb4b4}
+.flash-elapsed{display:block;color:#bbb;font-size:10px;line-height:1.8;margin-top:18px;font-variant-numeric:tabular-nums}
+.flash-failure{margin-top:22px;border-left:2px solid #ffb4b4;padding:2px 0 2px 16px;overflow-wrap:anywhere}
+.flash-failure strong{color:#fff;font-size:11px;font-weight:400;line-height:1.9}
+.flash-failure p{color:#ffb4b4;font-size:11px;line-height:1.9;margin:10px 0}
+.flash-failure small{display:block;color:#d0d0d0;font-size:10px;line-height:1.9}
+.flash-terminal-heading{display:flex;justify-content:space-between;gap:12px;margin-top:25px;color:#ddd;font-size:10px;line-height:1.8}
+.flash-terminal-heading small{color:#b0b0b0;font-size:9px}
+.app-shell .flash-station .flash-terminal,.guest-layout .flash-station .flash-terminal{height:clamp(180px,28vh,320px);margin-top:12px;padding:18px 0;border:0;border-top:1px solid #242424;border-bottom:1px solid #242424;border-radius:0;background:#000;font-size:10px;line-height:1.9}
+.flash-station .flash-terminal .log-info,.flash-station .flash-terminal .log-chunk{color:#c1c1c1}
+.flash-station .flash-terminal .log-success{color:#fff;font-weight:400}
+.flash-station .flash-terminal p{margin:0 0 8px}
+@keyframes flash-transfer{from{transform:translateX(-110%)}to{transform:translateX(440%)}}
+@keyframes flash-active{50%{opacity:.35}}
+@media(max-width:1050px){.flash-station-grid{grid-template-columns:minmax(0,1fr);gap:32px}.flash-station .firmware-select{min-height:160px}.flash-station .flash-terminal{height:200px}}
+@media(prefers-reduced-motion:reduce){.flash-station *{animation:none!important;transition:none!important}.flash-progress-track.is-indeterminate>i{position:static;width:100%;opacity:.5}}

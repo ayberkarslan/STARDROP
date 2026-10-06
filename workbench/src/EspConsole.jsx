@@ -6,6 +6,7 @@ import Popup from './Popup.jsx';
 import espModuleImage from './assets/esp32-s3.png';
 import stmModuleImage from './assets/stm32.png';
 import WiringGuide from './WiringGuide.jsx';
+import FlashProgress from './FlashProgress.jsx';
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 const speedOptions = [
@@ -15,7 +16,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, setNotice, hardware, hardwareBusy, documentId }) {
+export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId }) {
   const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [wiringOpen, setWiringOpen] = useState(false);
@@ -185,6 +186,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
   </div>;
 
   const chooseFile = (file) => {
+    if (deviceBusy) { setNotice('İşlem bitmeden firmware dosyası değiştirilemez.'); return; }
     if (!file) return;
     if (!/\.(bin|elf)$/i.test(file.name)) { setNotice('Yalnızca .bin veya .elf dosyası seçebilirsin.'); return; }
     setFirmware(file);
@@ -253,22 +255,28 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     </Popup>}
   </div>;
 
-  return <main className="flash-workspace">
-    <div className="flash-heading"><div><h1>STARDROP</h1><p>Yıldız Roket Takımı • Aviyonik OTA</p></div><button className="icon-link" onClick={() => setDrawer('settings')} title="ESP32 ayarları"><Settings size={17} /><span>Ayarlar</span></button></div>
+  const blocker = deviceBusy ? 'Donanım işleminin bitmesi bekleniyor.' : esp?.status !== 'online' ? 'ESP32 bağlantısı bekleniyor.' : !target?.connected ? 'STM32 bağlantısı bekleniyor.' : !firmware ? 'Bir .bin veya .elf dosyası seç.' : '';
+  return <main className="flash-workspace flash-station">
+    <div className="flash-heading"><div><h1>Firmware yükle</h1><p>Dosyayı seç, hedefi kontrol et, yükle.</p></div><button className="icon-link" onClick={() => setDrawer('settings')} title="ESP32 ayarları" aria-label="ESP32 ayarları"><Settings size={17} /><span>Ayarlar</span></button></div>
 
     <div className={`target-line ${target?.connected ? 'connected' : ''}`}><button className="target-open" onClick={() => setDrawer('target')} disabled={!target?.connected || deviceBusy} title={target?.connected ? 'Kart ayrıntıları ve flash analizi' : undefined}><span className="target-indicator"/><span className="target-label"><strong>{target?.connected ? target.label || target.model : target?.dpConnected ? 'SWD bağlı · STM32 okunamıyor' : 'STM32 hedefi bekleniyor'}</strong><small>{target?.connected ? target.model : notice}</small></span>{target?.connected && <ChevronRight className="target-chevron" size={15}/>}</button><button className="icon-link refresh" onClick={refreshTarget} disabled={deviceBusy} aria-label="Hedefi yenile" title="Hedefi yenile"><RefreshCw size={15}/></button></div>
     {target?.connected && /başarısız|hata|erişilemedi|okunamadı|zaman aşımı|geçersiz/i.test(notice) && <p className="flash-error" role="alert">{notice}</p>}
 
-    <label className="firmware-select" onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }} onDragOver={(event) => event.preventDefault()}><FileUp size={23}/><strong>Firmware dosyası seç</strong><small>.ELF VEYA .BIN SÜRÜKLE</small><input type="file" accept=".bin,.elf" onChange={(event) => chooseFile(event.target.files?.[0])}/></label>
+    <div className="flash-station-grid"><section className="flash-controls" aria-label="Firmware dosyası ve yükleme">
+    <label className={`firmware-select${deviceBusy ? ' is-disabled' : ''}`} onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }} onDragOver={(event) => event.preventDefault()}><FileUp size={28} strokeWidth={1.3}/><strong>Firmware dosyası seç</strong><small>.BIN veya .ELF · buraya sürükle</small><input aria-label="Firmware dosyası" type="file" accept=".bin,.elf" disabled={deviceBusy} onChange={(event) => chooseFile(event.target.files?.[0])}/></label>
     {firmware && <div className="firmware-file-card"><div><strong title={firmware.name}>{firmware.name}</strong><span>{firmware.name.toLowerCase().endsWith('.elf') ? 'ELF → BIN' : 'RAW BIN'}</span></div><small>{kb(firmware.size)}</small></div>}
 
-    <button className="flash-submit" disabled={!firmware || !target?.connected || deviceBusy} onClick={() => flashFirmware()}>{flashBusy ? 'YÜKLENİYOR…' : hardwareBusy ? 'DONANIM İŞLEMİ BEKLENİYOR…' : 'YAZILIMI YÜKLE (SWD)'}</button>
-    {(flashBusy || flashLog.length > 0) && <div className="flash-feedback"><div className="flash-feedback-top"><span>{flashBusy ? 'İŞLEM SÜRÜYOR' : flashProgress === 100 ? 'DOĞRULANDI' : 'SON İŞLEM'}</span><strong>{flashProgress}%</strong></div><div className="progress"><i style={{ width: `${flashProgress}%` }}/></div></div>}
-    {!flashBusy && !flashLog.length && <p className="flash-footnote">Yükleme mevcut firmware’i siler; yazılan veriler geri okunarak doğrulanır.</p>}
+    <button className="flash-submit" disabled={Boolean(blocker)} title={blocker || 'Seçili firmware’i STM32’ye yükle'} onClick={() => flashFirmware()}>{flashBusy ? 'YÜKLENİYOR…' : hardwareBusy ? 'DONANIM İŞLEMİ BEKLENİYOR…' : 'YAZILIMI YÜKLE (SWD)'}</button>
+    <p className="flash-blocker">{blocker || `${target?.label || target?.model} · yüklemeye hazır`}</p>
+    <p className="flash-footnote">Yükleme mevcut firmware’i değiştirir. Yazılan veriler geri okunarak doğrulanır.</p>
+    </section><section className="flash-runtime" aria-label="Yükleme durumu ve terminal">
+    <FlashProgress stage={flashStage || (flashBusy ? 'programming' : flashLog.some(entry => entry.type === 'error') ? 'error' : flashProgress === 100 ? 'done' : 'idle')} error={flashError} progress={flashProgress} busy={flashBusy} startedAt={flashStartedAt}/>
+    <div className="flash-terminal-heading"><span>İşlem terminali</span><small>{flashBusy ? 'Canlı' : flashLog.length ? 'Son işlem' : 'Beklemede'}</small></div>
     <div className="flash-terminal" ref={terminalRef} role="log" aria-label="SWD işlem terminali" aria-live="off">
       {flashLog.length ? flashLog.map((entry, index) => <p key={index} className={`log-${['info', 'success', 'warn', 'error', 'chunk'].includes(entry.type) ? entry.type : 'info'}`}>[{entry.time}] {entry.msg}</p>)
         : <p className="log-info">[STARDROP] YRT Aviyonik SWD İstasyonu Hazır. Yazılım bekleniyor...</p>}
     </div>
+    </section></div>
 
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel={drawer === 'target' ? 'Kart bilgileri' : 'ESP32 ayarları'} onClose={() => setDrawer(null)}><div className="drawer-title"><div><span className="eyebrow">{drawer === 'target' ? 'SWD HEDEFİ' : 'ESP32'}</span><h2>{drawer === 'target' ? 'Kart bilgileri' : 'Ayarlar'}</h2></div><button className="icon-link" onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>
       {drawer === 'settings' && <div className="discovered-list"><div className="discovered-list-head"><span>BULUNAN ESP32</span><button onClick={onDiscover} disabled={deviceBusy}>Yeniden tara</button></div>{devices.map((device) => <button key={`${device.mac}-${device.replyAddress}`} onClick={() => onConnect(device.replyAddress)} disabled={deviceBusy}>{device.name || 'STARDROP'} · {device.replyAddress}<small>{device.rssi ? `${device.rssi} dBm` : 'AP'}</small></button>)}</div>}
