@@ -1,6 +1,8 @@
-/* One neutral palette for every authenticated and guest workspace. The welcome
-   screen intentionally keeps its existing design. Colour signals are reserved
+/* Pure-black entry and workspace surfaces. Colour signals are reserved
    for connection, success, warning and failure states. */
+.window-chrome,.welcome-screen,.welcome-sidebar{background:#000}
+.welcome-auth-feedback,.welcome-auth-error,.welcome-setup,
+.welcome-setup input,.device-login-card,.device-login-actions .welcome-guest{background:#000}
 .app-shell,.guest-layout{
   --surface-1:#050505;
   --surface-2:#0b0b0b;
