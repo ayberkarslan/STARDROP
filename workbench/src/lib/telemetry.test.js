@@ -37,3 +37,23 @@ test('CSV preserves units, validity and neutralizes spreadsheet formulas', () =>
   const csv = telemetryCsv([{ ...frame(), receivedAt: 1000, channels: [{ name: '=cmd', unit: '', value: 3, valid: false }] }]);
   assert.match(csv, /"'=cmd"/); assert.match(csv, /"false"/); assert.match(csv, /sample_counter/);
 });
+test('counter wrap is accepted, MCU reset is not', async () => {
+  const gate = createHardwareGate(); let next, current = { ...frame(), sampleCounter: 0xffffffff, timestampMs: 0xfffffff0 };
+  const frames = [], states = [];
+  const session = createTelemetrySession({ hardware: gate, ownerId: 'live', uid,
+    fetchSample: async () => current, schedule: fn => { next = fn; return 1; }, cancel: () => {},
+    onFrame: f => frames.push(f), onState: s => states.push(s) });
+  session.start(); await settle(); current = { ...frame(), sampleCounter: 0, timestampMs: 10 };
+  await next(); assert.equal(frames.at(-1).newSample, true);
+  current = { ...frame(), sampleCounter: 10, timestampMs: 100 }; await next();
+  current = { ...frame(), sampleCounter: 1, timestampMs: 20 }; await next();
+  assert.equal(states.at(-1).status, 'error'); assert.equal(gate.current, null);
+});
+test('persistent transport failures stop and release SWD', async () => {
+  const gate = createHardwareGate(); let next, calls = 0; const states = [];
+  const session = createTelemetrySession({ hardware: gate, ownerId: 'live', uid,
+    fetchSample: async () => { calls++; throw new Error('timeout'); },
+    schedule: fn => { next = fn; return 1; }, cancel: () => {}, onState: s => states.push(s) });
+  session.start(); await settle(); await next(); await next();
+  assert.equal(calls, 3); assert.equal(states.at(-1).status, 'error'); assert.equal(gate.current, null);
+});

@@ -1,6 +1,7 @@
 #include "bmp180.h"
 #include "stardrop_i2c.h"
 #include "stardrop_telemetry.h"
+#include "telemetry_protocol.h"
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -77,7 +78,23 @@ int main(void) {
     assert(frame.sequence == 2 && frame.sample_counter == 1 && frame.timestamp_ms == 100);
     assert(frame.channel_count == 2 && frame.channels[1].value == 69964);
     assert(frame.crc32 == crc32(frame));
+    const auto decode = [](stardrop_telemetry_t &f, uint32_t before, uint32_t after) {
+        return Telemetry::validate(reinterpret_cast<const uint8_t *>(&f), before, after);
+    };
+    assert(decode(frame, 2, 2) == nullptr);
+    assert(std::strcmp(decode(frame, 2, 4), "SNAPSHOT_CHANGED") == 0);
+    assert(std::strcmp(decode(frame, 3, 3), "SNAPSHOT_CHANGED") == 0);
+    auto malformed = frame;
+    malformed.channels[0].value = std::nanf(""); malformed.crc32 = crc32(malformed);
+    assert(std::strcmp(decode(malformed, 2, 2), "CHANNEL_INVALID") == 0);
+    malformed = frame; std::strcpy(malformed.channels[1].name, "temperature"); malformed.crc32 = crc32(malformed);
+    assert(std::strcmp(decode(malformed, 2, 2), "CHANNEL_DUPLICATE") == 0);
+    malformed = frame; std::memset(malformed.channels[0].name, 'x', 24); malformed.crc32 = crc32(malformed);
+    assert(std::strcmp(decode(malformed, 2, 2), "CHANNEL_INVALID") == 0);
+    malformed = frame; malformed.channel_count = 9; malformed.crc32 = crc32(malformed);
+    assert(std::strcmp(decode(malformed, 2, 2), "FRAME_INVALID") == 0);
     frame.channels[0].value = 100; assert(frame.crc32 != crc32(frame));
+    assert(std::strcmp(decode(frame, 2, 2), "CRC_INVALID") == 0);
     channels[0].valid = channels[1].valid = 0;
     stardrop_telemetry_publish(100, 1, 2, channels, 2); frame = snapshot();
     assert(frame.sequence == 4 && frame.status == 2 && frame.channels[0].valid == 0);

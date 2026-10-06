@@ -5,7 +5,7 @@ use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 mod local_build;
 mod esp_watch;
 mod target_registry;

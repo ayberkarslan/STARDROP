@@ -37,9 +37,14 @@ hesaplama hataları geçerli ölçüm olarak yayınlanmaz.
 - Linker ilk 1 KB RAM'i ayırır; telemetry/rapor .data/.bss/heap ile çakışmaz.
   RAM içeriği resetten sonra init ile temizlenir. Flash veya USART'a veri yazılmaz.
 
-Canlı ESP veri akışı ve grafik ekranı henüz eklenmedi. Format bunlara hazırdır;
-mevcut ekran yalnız ilk ölçüm raporunu okuyabilir. Sonraki sensörler aynı kanal
-yapısıyla isim/birim/değer yayınlayabilir; sensöre özel parser gerekmez.
+Workbench sol menüsünden **Canlı İzleme** açılır; test yüklendikten sonra aynı
+ekrana geçiş düğmesi de gösterilir. ESP firmware'inde `/api/telemetry` gerekir.
+İzleme başlatıldığında UID, ABI, CRC ve çalıştırma kimliği doğrulanır. Her istek
+tek RAM görüntüsü okur; çekirdek durdurulmaz veya resetlenmez. Örnekler grafik,
+anlık değer ve CSV olarak izlenir. Sekme arka plana geçince okuma durur.
+Donanım bağlantısı koparsa veya MCU örnek üretmezse eski ölçüm canlı gösterilmez.
+Sonraki sensörler aynı kanal yapısıyla isim/birim/değer yayınlayabilir;
+sensöre özel parser gerekmez. Bu ekran breakpoint/step debugger değildir.
 
 Bu klasörü tek başına yükleme: manifest ortak HAL kaynaklarını
 `@repo/tests/led-blink-f446/Drivers` yolundan kullanır. GitHub'a `code-repo`

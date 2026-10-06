@@ -46,6 +46,9 @@ export function createTelemetrySession({ hardware, ownerId, uid, expected, fetch
     try {
       const raw = await fetchSample();
       if (stopped) return;
+      if (raw?.uid && raw.uid.toUpperCase() !== uid.toUpperCase()) {
+        stop('Bağlı STM32 değişti; başka kartın ölçümleri kullanılmadı.', 'error'); return;
+      }
       if (raw?.reason === 'SNAPSHOT_CHANGED' || raw?.reason === 'CRC_INVALID') {
         failures++;
         if (failures >= 5) stop(TELEMETRY_REASONS[raw.reason], 'error');
