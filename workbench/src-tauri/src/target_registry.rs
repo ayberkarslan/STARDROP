@@ -55,8 +55,10 @@ fn save_record(path: &Path, uid: &str, label: &str, model: &str, overwrite: bool
     registry.targets.insert(uid.clone(), TargetRecord { uid, label: label.into(), model: model.into(), created_at, updated_at: now });
     let parent = path.parent().ok_or("Kart kayıt dizini bulunamadı.")?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let bytes = serde_json::to_vec_pretty(&registry).map_err(|error| error.to_string())?;
+    if bytes.len() > 2 * 1024 * 1024 { return Err("Yerel kart kayıt kapasitesine ulaşıldı.".into()); }
     let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
-    temporary.write_all(&serde_json::to_vec_pretty(&registry).map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+    temporary.write_all(&bytes).map_err(|error| error.to_string())?;
     temporary.as_file().sync_all().map_err(|error| error.to_string())?;
     temporary.persist(path).map_err(|error| format!("Kart kaydı yazılamadı: {error}"))?;
     Ok(registry.targets)

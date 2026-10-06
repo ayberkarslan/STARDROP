@@ -22,6 +22,7 @@ export function createTargetRegistry({ load, save, onChange }) {
       const write = async () => {
         await ready;
         const records = await save({ uid: normalized, label: name, model, overwrite });
+        if (!records?.[normalized]?.label) throw new Error('Yerel kart kaydı doğrulanamadı.');
         onChange(records); return records[normalized];
       };
       pending = pending.then(write, write);

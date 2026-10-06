@@ -6,6 +6,15 @@ Tauri gerekir.
 
 ## Canlı cihaz bağlantısı
 
+Hızlı Yükleme ekranı tüm çalışma alanını kullanır: dosya/hedef kontrolleri
+ve işlem terminali ayrı bölgelerde kalır. Hazırlık ve ESP aktarımı sırasında
+yüzde uydurulmaz; belirsiz ilerleme animasyonu gösterilir. SWD yazma/doğrulama
+yüzdesi ESP olaylarından gelir. Başarı yalnız akışın tamamlandı onayından
+sonra gösterilir; hatada son gerçek yüzde, başarısız aşama ve ham hata metni
+korunur. Yeni dosya seçilince ilerleme sıfırlanır ama önceki terminal kaydı
+kalır. Hareket azaltma tercihi animasyonları kapatır. Simülasyon testi:
+`tools/flash-station-smoke.mjs`; bu test gerçek karta yükleme yapmaz.
+
 Kart adları bilgisayarın uygulama veri dizinindeki `targets.json` dosyasına
 UID anahtarıyla kaydedilir (Linux: `~/.local/share/com.yildizroket.stardrop-workbench/targets.json`).
 Aynı model iki farklı kartın adı birbirine karışmaz. Uygulamayı yeniden açmak,

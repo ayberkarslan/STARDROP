@@ -48,5 +48,9 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
     } catch (error) { const detail = error?.message || String(error); setFlashStage('error'); setFlashError({ message: detail, stage }); appendFlashLog(`Hata: ${detail}`, 'error'); setNotice(`Flash başarısız: ${detail}`); return false; }
     finally { setFlashBusy(false); if (!parentLease) hardware.release(lease); }
   };
-  return { firmware, setFirmware, flashLog, setFlashLog, flashProgress, flashBusy, flashFirmware, flashStage, flashError, flashStartedAt };
+  const selectFirmware = selected => {
+    if (flashBusy) return;
+    setFirmware(selected); setFlashStage('idle'); setFlashError(null); setFlashProgress(0); setFlashStartedAt(null);
+  };
+  return { firmware, setFirmware: selectFirmware, flashLog, setFlashLog, flashProgress, flashBusy, flashFirmware, flashStage, flashError, flashStartedAt };
 }
