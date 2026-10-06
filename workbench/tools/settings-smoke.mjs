@@ -66,7 +66,7 @@ try {
   assert.ok(!(await page.evaluate(() => JSON.stringify(localStorage))).includes(testKey));
   await hub.getByRole('button', { name: 'Atölye ve yedekleme', exact: true }).click();
   await hub.getByRole('button', { name: 'YEDEK AL' }).click();
-  await hub.getByText(/Kaydedildi:/).waitFor();
+  await hub.getByRole('status').filter({ hasText: 'Kaydedildi:' }).waitFor();
   assert.equal(exports.at(-1).format, 'stardrop-workshop');
   assert.ok(!JSON.stringify(exports.at(-1)).includes(testKey));
   const uid = '001300155231501920323239';
@@ -99,7 +99,7 @@ try {
   assert.equal(volatile.get('github_repo_token'), testKey);
   await hub.getByRole('button', { name: 'Tanılama', exact: true }).click();
   await hub.getByRole('button', { name: 'RAPORU KAYDET' }).click();
-  await hub.getByText(/Kaydedildi:/).waitFor();
+  await hub.getByRole('status').filter({ hasText: 'Kaydedildi:' }).waitFor();
   assert.equal(exports.at(-1).format, 'stardrop-diagnostic');
   assert.ok(!JSON.stringify(exports.at(-1)).includes(testKey));
   volatile.clear(); await page.reload();
