@@ -57,3 +57,11 @@ test('persistent transport failures stop and release SWD', async () => {
   session.start(); await settle(); await next(); await next();
   assert.equal(calls, 3); assert.equal(states.at(-1).status, 'error'); assert.equal(gate.current, null);
 });
+test('MCU model mismatch stops before presenting a sample', async () => {
+  const gate = createHardwareGate(), frames = [], states = [];
+  const session = createTelemetrySession({ hardware: gate, ownerId: 'live', uid, expectedModel: 'STM32F446',
+    fetchSample: async () => ({ ...frame(), model: 'STM32F401' }),
+    onFrame: value => frames.push(value), onState: value => states.push(value) });
+  session.start(); await settle();
+  assert.equal(frames.length, 0); assert.equal(states.at(-1).status, 'error'); assert.equal(gate.current, null);
+});
