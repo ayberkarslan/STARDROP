@@ -45,7 +45,7 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
       appendFlashLog('STM32 başarıyla programlandı ve çalıştırıldı!', 'success');
       await refreshTargetAt(base);
       return true;
-    } catch (error) { setFlashStage('error'); setFlashError({ message: error.message, stage }); appendFlashLog(`Hata: ${error.message}`, 'error'); setNotice(`Flash başarısız: ${error.message}`); return false; }
+    } catch (error) { const detail = error?.message || String(error); setFlashStage('error'); setFlashError({ message: detail, stage }); appendFlashLog(`Hata: ${detail}`, 'error'); setNotice(`Flash başarısız: ${detail}`); return false; }
     finally { setFlashBusy(false); if (!parentLease) hardware.release(lease); }
   };
   return { firmware, setFirmware, flashLog, setFlashLog, flashProgress, flashBusy, flashFirmware, flashStage, flashError, flashStartedAt };
