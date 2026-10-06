@@ -144,7 +144,7 @@ fn github_device_open() -> Result<(), String> {
 
 const ESP_GET_PATHS: &[&str] = &[
     "/ping", "/api/wifi/status", "/api/wifi/scan", "/api/programmer/status",
-    "/api/target/status", "/api/diagnostic/report",
+    "/api/target/status", "/api/diagnostic/report", "/api/telemetry",
 ];
 const ESP_POST_PATHS: &[&str] = &[
     "/api/wifi/switch", "/api/wifi/add", "/api/wifi/remove",

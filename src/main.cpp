@@ -11,6 +11,7 @@
 #include "soc/rtc_cntl_reg.h"
 #include "swd.h"
 #include "web_page.h"
+#include "telemetry_protocol.h"
 
 // ==============================================================================
 // 1. AYARLAR VE YAPILANDIRMA
@@ -585,6 +586,7 @@ void handleProgrammerStatus() {
     json += "\"maintenanceAvailable\":true,";
     json += "\"maintenanceStreamAvailable\":true,";
     json += "\"statusEventsAvailable\":true,";
+    json += "\"telemetryAvailable\":true,\"telemetryAbi\":1,\"telemetryMinIntervalMs\":200,";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
     json += "\"psramBytes\":" + String(ESP.getPsramSize()) + ",";
@@ -895,6 +897,67 @@ const char* diagnosticStateName(uint32_t state) {
 // Test firmware'i, diagnostics/runtime/stardrop_diagnostic_report.h içindeki
 // 128B ABI'yi SRAM'e yazar. Bu salt-okunur endpoint CPU'yu durdurmadan yalnız
 // SWCLK + SWDIO üzerinden sonucu alır.
+void handleTelemetry() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Cache-Control", "no-store");
+    // Single-threaded WebServer: one bounded snapshot, no persistent connection
+    // monopolising the server while flash/maintenance requests are waiting.
+    static uint32_t lastRead = 0;
+    static bool sampled = false;
+    if (sampled && (uint32_t)(millis() - lastRead) < 200) {
+        server.send(429, "application/json", "{\"message\":\"TELEMETRY_RATE_LIMIT\"}"); return;
+    }
+    sampled = true; lastRead = millis();
+    swd.setSpeedProfile(SwdSpeedProfile::FAST);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
+    TargetProbeInfo target;
+    if (!swd.probe(&target, true)) {
+        server.send(200, "application/json", "{\"connected\":false,\"valid\":false,\"reason\":\"TARGET_OFFLINE\"}"); return;
+    }
+    String uid = formatTargetUid(target);
+    auto fail = [&](const char *reason) {
+        server.send(200, "application/json", "{\"connected\":true,\"valid\":false,\"uid\":\"" + uid + "\",\"reason\":\"" + reason + "\"}");
+    };
+    alignas(4) uint8_t frame[Telemetry::size];
+    uint32_t before = 0, after = 0;
+    if (!swd.readMem32Checked(Telemetry::address + 12, &before)) { fail("SRAM_READ_FAILED"); return; }
+    if (before & 1U) { fail("SNAPSHOT_CHANGED"); return; }
+    // Re-address every <=256 bytes and never cross a MEM-AP 1KB TAR boundary.
+    for (unsigned offset = 0; offset < sizeof(frame);) {
+        unsigned boundary = 1024 - ((Telemetry::address + offset) & 1023);
+        unsigned chunk = std::min<unsigned>(256, std::min<unsigned>(boundary, sizeof(frame) - offset));
+        if (!swd.readBlock(Telemetry::address + offset, frame + offset, chunk)) { fail("SRAM_READ_FAILED"); return; }
+        offset += chunk;
+    }
+    if (!swd.readMem32Checked(Telemetry::address + 12, &after)) { fail("SRAM_READ_FAILED"); return; }
+    const char *reason = Telemetry::validate(frame, before, after);
+    if (reason) { fail(reason); return; }
+    TargetProbeInfo confirm;
+    if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { fail("TARGET_CHANGED"); return; }
+    auto escaped = [](const uint8_t *text) {
+        String out;
+        for (unsigned i = 0; text[i] && i < 24; ++i) {
+            if (text[i] == '\\' || text[i] == '"') out += '\\';
+            out += (char)text[i];
+        }
+        return out;
+    };
+    String json = "{\"connected\":true,\"valid\":true,\"uid\":\"" + uid + "\",\"model\":\"" + stm32ModelName(target.deviceId) + "\"";
+    json += ",\"abi\":1,\"sequence\":" + String(after) + ",\"timestampMs\":" + String(Telemetry::word(frame + 16));
+    json += ",\"sampleCounter\":" + String(Telemetry::word(frame + 20)) + ",\"sensorStatus\":" + String(Telemetry::word(frame + 24));
+    json += ",\"testIdHash\":" + String(Telemetry::word(frame + 32)) + ",\"profileHash\":" + String(Telemetry::word(frame + 36));
+    json += ",\"runHash\":" + String(Telemetry::word(frame + 40)) + ",\"readMs\":" + String(millis() - lastRead) + ",\"channels\":[";
+    for (unsigned i = 0; i < Telemetry::word(frame + 28); ++i) {
+        const uint8_t *channel = frame + Telemetry::headerSize + i * Telemetry::channelSize;
+        if (i) json += ',';
+        char number[48]; snprintf(number, sizeof(number), "%.9g", (double)Telemetry::value(channel));
+        json += "{\"name\":\"" + escaped(channel) + "\",\"unit\":\"" + escaped(channel + 24) + "\",\"value\":" + String(number);
+        json += ",\"valid\":" + String(Telemetry::word(channel + 40) ? "true" : "false") + "}";
+    }
+    json += "]}";
+    server.send(200, "application/json", json);
+}
+
 void handleDiagnosticReport() {
     swd.setSpeedProfile(SwdSpeedProfile::FAST);
     swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
@@ -1139,6 +1202,7 @@ void setup() {
     server.on("/api/target/flash-usage", HTTP_GET, handleTargetFlashUsage);
     server.on("/stream-target-flash-usage", HTTP_GET, handleStreamTargetFlashUsage);
     server.on("/api/diagnostic/report", HTTP_GET, handleDiagnosticReport);
+    server.on("/api/telemetry", HTTP_GET, handleTelemetry);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);
