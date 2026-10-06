@@ -31,6 +31,11 @@ try {
   });
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
   await page.locator('.welcome-screen:visible').waitFor();
+  assert.deepEqual(await page.evaluate(() => {
+    const surface = document.querySelector('.welcome-screen');
+    const cancelled = (type, options) => !surface.dispatchEvent(new (type === 'keydown' ? KeyboardEvent : MouseEvent)(type, { bubbles: true, cancelable: true, ...options }));
+    return [cancelled('contextmenu', {}), cancelled('keydown', { key: 'Tab' }), cancelled('keydown', { key: 'F12' }), cancelled('keydown', { key: 'I', ctrlKey: true, shiftKey: true })];
+  }), [true, true, true, true]);
   for (const selector of ['.window-chrome', '.welcome-screen:visible', '.welcome-sidebar:visible']) {
     assert.equal(await page.locator(selector).evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   }
@@ -40,6 +45,8 @@ try {
   await page.screenshot({ path: '/tmp/stardrop-black-welcome.png' });
   await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
   await page.locator('.device-login-card:visible').waitFor();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.locator('.device-login-card:visible').evaluate(el => el.contains(document.activeElement)), true);
   assert.equal(await page.locator('.device-login-card:visible').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   await page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' }).waitFor({ timeout: 15000 });
   const manualChoice = page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' });
@@ -74,6 +81,7 @@ try {
   assert.ok(await page.getByText('LED Blink · F446RE', { exact: true }).count());
   await page.getByRole('button', { name: 'BAĞLANTILARI GÖR' }).click();
   await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).fill('1');
+  assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).evaluate(el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))), true);
   await page.getByRole('spinbutton', { name: 'Sönük kalma süresi (s)', exact: true }).fill('2');
   assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).inputValue(), '1');
   assert.equal(await page.getByRole('spinbutton', { name: 'Sönük kalma süresi (s)', exact: true }).inputValue(), '2');
