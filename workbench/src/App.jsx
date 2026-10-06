@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { BookOpen, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
+import { Activity, BookOpen, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { deleteSecret, loadSecret, saveSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, fetchLibraryProject, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
@@ -17,6 +17,7 @@ import { exportStardropProject, importStardropProject } from './lib/projectArchi
 import { createHardwareGate } from './lib/hardwareGate.js';
 import TestSession from './TestSession.jsx';
 import FlashSession from './FlashSession.jsx';
+import LiveMonitor from './LiveMonitor.jsx';
 import useWorkspaceDrag from './useWorkspaceDrag.js';
 import DragPreview from './DragPreview.jsx';
 import { discoveryCandidates, discoverEspDevices, normalizeEspAddress, probeEsp } from './lib/espConnection.js';
@@ -533,6 +534,7 @@ export default function App() {
   };
 
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
+    openTelemetry: data => workspace.open('monitor', { fresh: true, data }),
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,
     aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy,
@@ -551,6 +553,7 @@ export default function App() {
       {mode === 'settings' && repoDiagnostic?.repositoryStatus === 404 && <p className="repo-help">Hesap tanınsa bile özel depo bu kimlikle görünmüyor. GitHub App’i bu depoya Contents izniyle kur veya yalnız bu depoya erişen fine-grained token kaydet. App iznini değiştirirsen yeniden giriş yap.</p>}
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
+        mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
         mode === 'library' ? <TestLibrary initialDraftId={doc.initialData?.draftId} entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
           drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
@@ -587,6 +590,7 @@ export default function App() {
         <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
         <RailTool tool="library" Icon={BookOpen} workspace={workspace} drag={drag} onOpen={refreshLibrary}/>
         <RailTool tool="devices" Icon={Cpu} workspace={workspace} drag={drag}/>
+        <RailTool tool="monitor" Icon={Activity} workspace={workspace} drag={drag}/>
         {catalogAdmin && <RailTool tool="admin" Icon={ShieldCheck} workspace={workspace} drag={drag}/>}
         <RailTool tool="settings" Icon={Settings} workspace={workspace} drag={drag}/>
       </nav>

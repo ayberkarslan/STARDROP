@@ -1,6 +1,6 @@
 export const workspaceLabels = {
   flash: 'Hızlı Yükleme', workbench: 'Yeni Test', library: 'Test Kütüphanesi',
-  devices: 'Cihazlar', admin: 'Test Yönetimi', settings: 'Ayarlar', empty: 'Yeni Sekme',
+  devices: 'Cihazlar', monitor: 'Canlı İzleme', admin: 'Test Yönetimi', settings: 'Ayarlar', empty: 'Yeni Sekme',
 };
 
 export const initialWorkspace = {

@@ -17,6 +17,7 @@ import './library-refined.css';
 import './devices.css';
 import './flash-station.css';
 import './welcome-stars.css';
+import './live-monitor.css';
 
 const removeDesktopInput = installDesktopInput(window);
 if (import.meta.hot) import.meta.hot.dispose(removeDesktopInput);
