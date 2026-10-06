@@ -36,6 +36,14 @@ test('catalog v2 refuses undefined device references and pin roles', () => {
   assert.equal(validateTestCatalog(bad).valid, false);
 });
 
+test('BMP180 template is only offered for its actual device and F446RE target', () => {
+  const bmp = { part: 'BMP180', protocol: 'I2C' };
+  assert.equal(testForComponent(CODE_REPO_CATALOG, bmp, 'STM32F446RET6')?.id, 'bmp180-f446');
+  assert.equal(testForComponent(CODE_REPO_CATALOG, bmp, 'STM32F401CDU6'), null);
+  assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'BME280', protocol: 'I2C' }, 'STM32F446RET6'), null);
+  assert.equal(testForComponent(CODE_REPO_CATALOG, { part: 'BMP180', protocol: 'SPI' }, 'STM32F446RET6'), null);
+});
+
 test('catalog v2 refuses a ready test with a foreign role or no result contract', () => {
   const bad = structuredClone(CODE_REPO_CATALOG);
   bad.tests[0].requiredRoles = ['SDA'];

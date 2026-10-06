@@ -108,6 +108,18 @@ try {
   assert.equal(await page.locator('.workspace-panel:visible .wizard-fields').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).inputValue(), '1');
   assert.equal(await page.getByRole('spinbutton', { name: 'Sönük kalma süresi (s)', exact: true }).inputValue(), '2');
+  await page.locator('[data-rail-tool="library"]:visible').click();
+  await page.locator('.library-card').filter({ hasText: 'BMP180 · sıcaklık ve basınç' }).click();
+  await page.getByRole('button', { name: 'YENİ TESTTE AÇ' }).click();
+  await page.getByRole('heading', { name: 'Hangi STM32?' }).waitFor();
+  assert.match(await page.getByRole('combobox', { name: 'STM32 modeli' }).innerText(), /STM32F446RET6/);
+  await page.getByRole('button', { name: 'DEVAM ET' }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'Parça adı' }).inputValue(), 'BMP180');
+  await page.getByRole('button', { name: 'TESTLERİ GÖR' }).click();
+  await page.getByRole('heading', { name: 'BMP180 için neyi deneyeceğiz?' }).waitFor();
+  assert.ok(await page.getByText('BMP180 · sıcaklık ve basınç', { exact: true }).count());
+  await page.getByRole('button', { name: 'BAĞLANTILARI GÖR' }).click();
+  assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).count(), 0);
   await page.locator('[data-rail-tool="devices"]:visible').click();
   await page.getByRole('heading', { name: 'Cihazlar', exact: true }).waitFor();
   assert.equal(await page.locator('.workspace-panel:visible .workspace-stars circle').count(), 70);
