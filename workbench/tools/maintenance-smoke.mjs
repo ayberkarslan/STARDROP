@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
+const browser = await chromium.launch({ headless: true, args: ['--disable-gpu'], ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 try {
-  const page = await browser.newPage();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
   await page.evaluate(async () => {
     const callbacks = new Map(); let nextId = 1; let handler;
@@ -41,6 +41,13 @@ try {
       hardware: { run: async (_, __, task) => task() }, documentId: 'mock', setNotice() {}, refreshTarget: async () => {},
     }));
   });
+  await page.locator('.device-programmer img').waitFor();
+  await page.waitForFunction(() => document.querySelector('.device-programmer img')?.naturalWidth > 0);
+  const programmerBounds = await page.locator('.device-programmer').boundingBox();
+  const targetBounds = await page.locator('.device-target').boundingBox();
+  assert.ok(programmerBounds.x + programmerBounds.width < targetBounds.x);
+  assert.equal(await page.getByRole('button', { name: 'ESP ayarları', exact: true }).count(), 1);
+  await page.screenshot({ path: '/tmp/stardrop-devices.png' });
   await page.locator('.device-maintenance summary').click();
   await page.getByRole('button', { name: 'Flash’ı sil', exact: true }).click();
   assert.equal(await page.getByText('Onay için FLASH SIL yaz').count(), 0);
@@ -55,5 +62,10 @@ try {
   assert.equal(await page.evaluate(() => window.eraseRequests), 1);
   await page.getByRole('button', { name: 'Kapat', exact: true }).click();
   assert.equal(await page.getByRole('dialog', { name: 'STM32 bakım onayı' }).count(), 0);
+  await page.setViewportSize({ width: 900, height: 900 });
+  const narrowEsp = await page.locator('.device-programmer').boundingBox();
+  const narrowStm = await page.locator('.device-target').boundingBox();
+  assert.ok(narrowEsp.y + narrowEsp.height <= narrowStm.y);
+  assert.equal(await page.getByRole('button', { name: 'FLASH\'I ANALİZ ET', exact: true }).count(), 1);
   console.log('Two-step erase confirmation and live progress passed; no real device used.');
 } finally { await browser.close(); }
