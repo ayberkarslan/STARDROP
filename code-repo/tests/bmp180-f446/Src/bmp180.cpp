@@ -44,7 +44,7 @@ BMP180::Status BMP180::read() {
         return Status::ERROR;
     }
     HAL_Delay(5); // Minimum 4.5ms
-    
+
     if (!readData16(BMP180_REG_DATA, ut_raw)) {
         return Status::ERROR;
     }
@@ -54,13 +54,13 @@ BMP180::Status BMP180::read() {
     if (!writeCommand(BMP180_REG_CONTROL, cmd_press)) {
         return Status::ERROR;
     }
-    
+
     // Wait based on oversampling
     if (oss == 0) HAL_Delay(5);
     else if (oss == 1) HAL_Delay(8);
     else if (oss == 2) HAL_Delay(14);
     else if (oss == 3) HAL_Delay(26);
-    
+
     if (!readData24(BMP180_REG_DATA, up_raw)) {
         return Status::ERROR;
     }

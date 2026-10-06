@@ -136,7 +136,7 @@ int main(void)
     uint32_t now = HAL_GetTick();
     if (now - last_attempt_ms >= STARDROP_SAMPLE_INTERVAL_MS) {
         last_attempt_ms = now;
-        
+
         if (sensor_ready && bmp.read() == BMP180::Status::SUCCESS) {
             temperature_c = bmp.getTemperatureC();
             pressure_pa = bmp.getPressurePa();

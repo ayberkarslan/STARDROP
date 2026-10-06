@@ -14,10 +14,10 @@ public:
     enum class Error { NONE, BUS, IDENTITY, CALIBRATION, RANGE };
 
     BMP180(I2C_HandleTypeDef* hi2c);
-    
+
     // Initialize and read calibration data
     bool init();
-    
+
     // Perform blocking reads and calculate results
     // Will wait inside for conversion times
     Status read();
@@ -39,12 +39,12 @@ private:
     bool initialized = false;
     Error error = Error::NONE;
     uint8_t chip_id = 0;
-    
+
     // Oversampling setting (0 to 3)
     // 0: Ultra low power, 1: Standard, 2: High res, 3: Ultra high res
     // 0 -> 4.5ms wait, 3 -> 25.5ms wait
     uint8_t oss = 0;
-    
+
     float temperature_c;
     float pressure_pa;
 
@@ -53,7 +53,7 @@ private:
     bool readData16(uint8_t reg, uint16_t& value);
     bool readData16_Signed(uint8_t reg, int16_t& value);
     bool readData24(uint8_t reg, uint32_t& value);
-    
+
     bool calculateTrueValues(int32_t ut, int32_t up);
 };
 
