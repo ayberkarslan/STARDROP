@@ -4,6 +4,27 @@
 yalnız web önizlemesidir; ESP32 UDP keşfi, GitHub oturumu ve yerel derleme için
 Tauri gerekir.
 
+## Canlı cihaz bağlantısı
+
+Yeni ESP firmware'i `statusEventsAvailable` özelliğiyle UDP 4210 üzerinden
+bağlantı değişikliklerini bildirir. Masaüstü uygulaması dinler; bağlıyken
+periyodik HTTP/SWD hedef sorgusu göndermez. ESP, yalnız izleyici varken ve
+boştayken 1,5 saniyede bir pasif SWD kimlik kontrolü yapar. CPU resetlenmez,
+halt edilmez; iki başarısız kontrol bağlantı kopması sayılır. Yükleme, flash
+analizi ve bakım sırasında izleyici kapatılır, işlemden sonra tekrar açılır.
+Üç saniyelik küçük UDP canlılık paketleri bağlantı kesilmesini belirler;
+aynı durum arayüze tekrar gönderilmez. ESP on saniye sessiz kalırsa çevrimdışı
+gösterilir ve yeniden keşfedilir. Eski firmware yalnız ağ sağlık kontrolünü
+destekler; otomatik STM bildirimi için firmware güncellemesi gerekir:
+
+```sh
+pio run -e esp32-s3-n16r8 -t upload
+```
+
+Bu komut ESP32-S3 N16R8 içindir; başka ESP modeli için kendi ortamını seç.
+Native izleme komutlarının kullanılabilmesi için Tauri uygulamasını da yeniden
+başlat. Simüle bağlantı testi `tools/status-events-smoke.mjs` içindedir.
+
 GitHub giriş Worker'ına normal HTTPS/TCP bağlantısı ağda sıfırlanırsa masaüstü
 uygulaması HTTP/3 yedek yolunu dener. Bunun için sistemde HTTP/3 destekli
 `curl` bulunmalıdır (`curl -V` çıktısında `HTTP3` veya `ngtcp2`/`nghttp3`).
