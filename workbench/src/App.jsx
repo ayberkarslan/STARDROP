@@ -42,7 +42,7 @@ function StartContent({ user, busy, onGithub, onGuest, error, preparing }) {
     <div className="start-brand"><span className="start-brand-logo"><img src={stardustWordmark} alt="Yıldız Roket Takımı · Stardust" draggable="false"/></span><span className="start-wordmark">STARDROP</span></div>
     <span className="eyebrow">BAŞLANGIÇ</span><h1>Çalışma alanı</h1><p>Nasıl devam etmek istersin?</p>
     <div className="welcome-actions">
-      <button className="welcome-primary" disabled={busy} onClick={onGithub}><Github size={18}/><span><strong>{user ? `@${user.login} ile devam et` : busy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Kart analizi ve yerel LED testi</small></span><b>→</b></button>
+      <button className="welcome-primary" disabled={busy} onClick={onGithub}><Github size={18}/><span><strong>{user ? `@${user.login} ile devam et` : busy ? 'GitHub girişi bekleniyor…' : 'GitHub ile devam et'}</strong><small>Gelişmiş test platformu</small></span><b>→</b></button>
       <button className="welcome-guest" onClick={onGuest}><Upload size={18}/><span><strong>Misafir olarak gir</strong><small>ESP32 üzerinden firmware yükle</small></span><b>→</b></button>
     </div>
     {preparing && <div className="welcome-auth-feedback" role="status">GitHub doğrulama kodu hazırlanıyor…</div>}
