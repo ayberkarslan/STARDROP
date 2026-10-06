@@ -6,7 +6,8 @@ body{position:fixed;inset:0}
 .app-shell,.welcome-screen{grid-template-rows:minmax(0,1fr)}
 .app-shell>main{height:100%;min-height:0;overflow:hidden}
 .rail,.welcome-sidebar{min-height:0;overflow:hidden;overscroll-behavior:none}
-.app-shell>.rail{position:relative;top:auto;align-self:stretch;height:100%}
+.app-shell>.rail{position:relative;top:auto;align-self:stretch;height:100%;padding-top:0}
+.app-shell>.rail .brand strong{height:42px;display:flex;align-items:center;line-height:1}
 .window-chrome{position:relative;top:auto}
 .rail nav{min-height:0;overflow:auto;overscroll-behavior:none}
 .brand,.rail-footer,.rail>.notification-center,.welcome-footer{flex-shrink:0}
