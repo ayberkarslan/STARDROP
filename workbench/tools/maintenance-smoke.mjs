@@ -51,6 +51,8 @@ try {
   await page.getByRole('button', { name: 'SWD bağlantı rehberini aç' }).click();
   const guide = page.getByRole('dialog', { name: 'SWD bağlantı rehberi' });
   await guide.waitFor();
+  assert.match(await page.getByRole('combobox', { name: 'Rehber hedef kartı' }).innerText(), /Nucleo F446RE/);
+  assert.equal(await guide.locator('.wiring-pinout img').isVisible(), false);
   await page.getByRole('combobox', { name: 'Rehber hedef kartı' }).click();
   await page.getByRole('option', { name: 'Nucleo F446RE · MB1136' }).click();
   assert.equal(await guide.getByText('GPIO 5', { exact: true }).count(), 1);
@@ -58,6 +60,14 @@ try {
   assert.equal(await guide.getByText('CN7 · 15', { exact: true }).count(), 1);
   assert.equal(await guide.getByText('GPIO 6', { exact: true }).count(), 1);
   await page.screenshot({ path: '/tmp/stardrop-wiring-guide.png' });
+  await guide.locator('.wiring-pinout summary').click();
+  await page.waitForFunction(() => document.querySelector('.wiring-pinout img')?.naturalWidth > 0);
+  assert.equal(await guide.locator('.wiring-pinout img').isVisible(), true);
+  await guide.getByRole('button', { name: 'Büyük göster' }).click();
+  await page.getByRole('dialog', { name: 'Nucleo F446RE pinout' }).waitFor();
+  await page.getByRole('button', { name: 'Rehbere dön' }).click();
+  await guide.waitFor();
+  assert.equal(await guide.locator('.wiring-pinout img').isVisible(), false);
   await page.mouse.click(5, 5);
   assert.equal(await guide.count(), 0);
   await page.locator('.device-maintenance summary').click();
