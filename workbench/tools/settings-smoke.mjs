@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import catalog from '../../code-repo/catalog/catalog.json' with { type: 'json' };
+import { createManualLedProfile } from '../src/lib/boardProfile.js';
+import { makeBackup } from '../src/lib/settings.js';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 const persisted = new Map(), volatile = new Map(), exports = [];
 const testKey = 'ghp_UI_TEST_ONLY_NOT_A_REAL_TOKEN';
 const sha = 'a'.repeat(40);
+let records = {};
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -20,7 +23,8 @@ try {
     if (command === 'github_device_poll') return JSON.stringify({ access_token: 'mock-not-a-token' });
     if (command === 'discover_esp') return [];
     if (command === 'esp_http') throw Error('Mock ESP offline');
-    if (command === 'target_registry_load') return {};
+    if (command === 'target_registry_load') return records;
+    if (command === 'target_registry_import') { records = { ...records, ...args.records }; return records; }
     if (command === 'toolchain_status') return { ready: true, tools: [{ name: 'arm-none-eabi-gcc', ready: true, version: 'Mock GCC 14' }] };
     if (command === 'settings_system_info') return { version: '0.1.0', os: 'linux', arch: 'x86_64', exportDirectory: '/tmp/exports' };
     if (command === 'code_cache_info') return { activeSha: sha, snapshots: [{ sha, verified: true, active: true }] };
@@ -62,6 +66,18 @@ try {
   await hub.getByText(/Kaydedildi:/).waitFor();
   assert.equal(exports.at(-1).format, 'stardrop-workshop');
   assert.ok(!JSON.stringify(exports.at(-1)).includes(testKey));
+  const uid = '001300155231501920323239';
+  const profile = createManualLedProfile({ name: 'Yedek LED', mcuPart: 'STM32F446RET6', pin: 'PA5' });
+  const backup = makeBackup({ preferences: {}, githubConfig: { repository: 'ayberkarslan/stardrop-code-repo', ref: 'main' },
+    profiles: [profile], records: { [uid]: { uid, label: 'Atölye kartı', model: 'STM32F446', createdAt: 1, updatedAt: 2 } } });
+  await hub.locator('input[type=file]').setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
+  await page.getByRole('heading', { name: 'Yedek geri yüklensin mi?' }).waitFor();
+  await page.getByRole('button', { name: 'ONAYLA', exact: true }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.workspace-tab')].some(el => el.textContent.includes('Yedek LED')));
+  assert.equal(records[uid].label, 'Atölye kartı');
+  await settings();
+  await hub.getByRole('button', { name: 'Atölye ve yedekleme', exact: true }).click();
+  await hub.getByText('Atölye kartı', { exact: true }).waitFor();
   await hub.getByRole('button', { name: 'Görünüm', exact: true }).click();
   await hub.getByLabel('Hareketi azalt').check();
   assert.equal(await page.locator('body').getAttribute('data-reduced-motion'), 'true');
@@ -90,5 +106,5 @@ try {
   await hub.getByPlaceholder('Fine-grained token').waitFor();
   assert.equal(await hub.getByLabel('Bu bilgisayarda hatırla').isChecked(), false);
   assert.deepEqual(errors, []);
-  console.log('Settings: black sections/search, remember across restart, session-only forget, safe backup/report and reduced motion passed (mock native storage).');
+  console.log('Settings: black sections/search, remember across restart, session-only forget, backup/restore, safe report and reduced motion passed (mock native storage).');
 } finally { await browser.close(); }
