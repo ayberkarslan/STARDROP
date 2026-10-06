@@ -9,10 +9,10 @@ const stars = Array.from({ length: 210 }, (_, index) => {
     opacity: (.12 + brightness * .66) * Math.pow(1 - y, 1.6) };
 });
 
-export default function WelcomeStars() {
-  return <svg className="welcome-stars" viewBox="0 0 1600 460" preserveAspectRatio="xMidYMin slice"
+export default function WelcomeStars({ subtle = false }) {
+  return <svg className={'welcome-stars' + (subtle ? ' workspace-stars' : '')} viewBox="0 0 1600 460" preserveAspectRatio="xMidYMin slice"
     aria-hidden="true" focusable="false">
-    {stars.map((star, index) => <circle key={index} cx={star.x} cy={star.y}
+    {stars.filter((_, index) => !subtle || index % 3 === 0).map((star, index) => <circle key={index} cx={star.x} cy={star.y}
       r={star.radius} fill="#fff" opacity={star.opacity} />)}
   </svg>;
 }

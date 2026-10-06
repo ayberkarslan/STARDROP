@@ -1,3 +1,10 @@
 .welcome-screen{position:relative;isolation:isolate}
 .welcome-stars{position:absolute;inset:0 0 auto;width:100%;height:min(46%,440px);pointer-events:none;user-select:none;z-index:-1}
 .welcome-sidebar,.welcome-content{position:relative}
+.workspace-panel,.workspace-empty{position:relative;isolation:isolate}
+.workspace-stars{height:340px;max-height:100%;opacity:.38}
+/* Only the outer canvas shows the sky; data and editing surfaces stay opaque. */
+.workspace-panel .flash-station{background:transparent}
+.workspace-panel :is(.wizard-fields,.wizard-pin-details,.pinout-layout,.board-map,
+  .panel,.library-detail,.library-publish-form,.flash-runtime,.flash-controls,
+  .flash-terminal,.wizard-terminal,.log,.device-card){background:#000}

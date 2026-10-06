@@ -49,7 +49,7 @@ function StartContent({ user, busy, onGithub, onGuest, error, preparing }) {
 }
 
 function EmptyWorkspace({ children }) {
-  return <div className="workspace-empty" data-drop-empty="true" role="tabpanel" aria-label="Boş çalışma alanı"><div className="empty-start-content">{children}</div></div>;
+  return <div className="workspace-empty" data-drop-empty="true" role="tabpanel" aria-label="Boş çalışma alanı"><WelcomeStars subtle /><div className="empty-start-content">{children}</div></div>;
 }
 
 function RailTool({ tool, Icon, workspace, drag, onOpen }) {
@@ -546,6 +546,7 @@ export default function App() {
     if (mode === 'empty') return null;
     return <section className={'workspace-panel' + (preview?.overId === tab?.id ? ' panel-drop-target' : '')} key={doc.id}
       id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
+      {visible && <WelcomeStars subtle />}
       {mode === 'settings' && <div className="repo-diagnostic"><button className="secondary" onClick={runRepoDiagnostic} disabled={repoDiagnosticBusy}>{repoDiagnosticBusy ? 'ERİŞİM SINANIYOR…' : 'GITHUB ERİŞİMİNİ TEST ET'}</button>{repoDiagnostic && <span>{repoDiagnostic.error || `${repoDiagnostic.credentialSource} · ${repoDiagnostic.tokenFormat} (${repoDiagnostic.tokenLength} karakter) · Hesap ${repoDiagnostic.userStatus} · Depo ${repoDiagnostic.repositoryStatus} · Katalog ${repoDiagnostic.catalogStatus}`}</span>}</div>}
       {mode === 'settings' && repoDiagnostic?.repositoryStatus === 404 && <p className="repo-help">Hesap tanınsa bile özel depo bu kimlikle görünmüyor. GitHub App’i bu depoya Contents izniyle kur veya yalnız bu depoya erişen fine-grained token kaydet. App iznini değiştirirsen yeniden giriş yap.</p>}
       {mode === 'settings' && githubUser && !catalogSha && <div className="catalog-setup"><span>Bu depoda henüz STARDROP test kataloğu okunamadı. Depoya ilk kez kurmak için yalnız bu repoda <b>Contents: Read and write</b> izni gerekir.</span><button className="secondary" onClick={installTestCatalog}>LED KATALOĞUNU KUR</button></div>}
