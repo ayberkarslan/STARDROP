@@ -6,7 +6,7 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
-    localStorage.setItem('stardrop.bridge', 'http://192.168.1.3');
+    if (!localStorage.getItem('stardrop.bridge')) localStorage.setItem('stardrop.bridge', 'http://192.168.1.3');
     const callbacks = new Map(), listeners = new Map(), watches = new Map();
     let next = 1;
     window.requests = [];
@@ -28,6 +28,13 @@ try {
         if (command === 'plugin:event|unlisten') { listeners.delete(args.eventId); return; }
         if (command === 'discover_esp') return [];
         if (command === 'load_secret') return args.key === 'github_access_token' ? 'mock-not-a-token' : null;
+        if (command === 'target_registry_load') return JSON.parse(localStorage.getItem('mock.target-registry') || '{}');
+        if (command === 'target_registry_save') {
+          const records = JSON.parse(localStorage.getItem('mock.target-registry') || '{}');
+          if (args.overwrite || !records[args.uid]) records[args.uid] = { uid: args.uid, label: args.label, model: args.model };
+          localStorage.setItem('mock.target-registry', JSON.stringify(records));
+          return records;
+        }
         if (command === 'esp_http') {
           window.requests.push(args.path);
           return JSON.stringify(args.path === '/ping' ? { status: 'ok' }
@@ -53,11 +60,15 @@ try {
   const esp = page.locator('.device-programmer:visible');
   await stm.getByText('Hedef bekleniyor', { exact: true }).waitFor();
   const attached = { status: 'online', wifi: { connected: true, ssid: 'Atölye', ip: '192.168.1.3' },
-    target: { connected: true, uid: 'test-target', model: 'STM32F446', label: 'Aviyonik kart', flashSizeKb: 512 } };
+    target: { connected: true, uid: '001300155231501920323239', model: 'STM32F446', label: 'Aviyonik kart', flashSizeKb: 512 } };
   await page.evaluate(data => window.emitStatus(data, 'different-watch'), attached);
   assert.equal(await stm.getByText('Hedef bekleniyor', { exact: true }).count(), 1);
   await page.evaluate(data => window.emitStatus(data), attached);
   await stm.getByText('Bağlı', { exact: true }).waitFor();
+  await stm.getByRole('textbox', { name: 'Kart adı', exact: true }).fill('Telemetri kartı');
+  await stm.getByRole('button', { name: 'Kaydet', exact: true }).click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('mock.target-registry') || '{}')['001300155231501920323239']?.label === 'Telemetri kartı');
+  await stm.locator('.device-hero > span').filter({ hasText: 'Telemetri kartı' }).waitFor();
   const starts = await page.evaluate(() => window.watchStarts);
   const stops = await page.evaluate(() => window.watchStops);
   const suspendedWatch = await page.evaluate(() => window.lastWatch);
@@ -69,7 +80,7 @@ try {
   await page.evaluate(() => window.finishStream());
   await page.waitForFunction(previous => window.watchStarts > previous, starts);
   await page.evaluate(data => window.emitStatus(data), attached);
-  assert.ok(await stm.getByText('Aviyonik kart', { exact: true }).count());
+  assert.ok(await stm.getByText('Telemetri kartı', { exact: true }).count());
   await page.evaluate(() => window.emitStatus({ status: 'online', target: { connected: false } }));
   await stm.getByText('Hedef bekleniyor', { exact: true }).waitFor();
   await page.evaluate(data => window.emitStatus(data), attached);
@@ -79,6 +90,7 @@ try {
   await page.waitForTimeout(11000);
   assert.deepEqual(await page.evaluate(() => window.requests), requests);
   assert.ok(!requests.includes('/api/target/status'));
+  assert.ok(!requests.includes('/api/target/label'));
   const oldWatch = await page.evaluate(() => window.lastWatch);
   const beforeDisconnect = await page.evaluate(() => ({ starts: window.watchStarts, stops: window.watchStops }));
   await page.evaluate(() => window.emitStatus({ status: 'offline' }));
@@ -91,6 +103,18 @@ try {
   await page.evaluate(data => window.emitStatus(data), attached);
   await esp.getByText('Bağlı', { exact: true }).waitFor();
   await stm.getByText('Bağlı', { exact: true }).waitFor();
+  assert.ok(await stm.getByText('Telemetri kartı', { exact: true }).count());
+  // A different ESP and an unnamed firmware target still recover the saved UID name.
+  await page.evaluate(() => localStorage.setItem('stardrop.bridge', 'http://192.168.1.9'));
+  await page.reload();
+  await page.waitForFunction(() => window.watchStarts >= 1);
+  await page.getByRole('button', { name: /@ui-test ile devam et/ }).click();
+  await page.locator('[data-rail-tool="devices"]:visible').click();
+  await page.evaluate(data => window.emitStatus(data), { ...attached, target: { ...attached.target, label: '' } });
+  await stm.locator('.device-hero > span').filter({ hasText: 'Telemetri kartı' }).waitFor();
+  await page.evaluate(data => window.emitStatus(data), { ...attached, target: { ...attached.target, uid: '001300155231501920323240', label: '' } });
+  await stm.getByRole('textbox', { name: 'Kart adı', exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector('.device-target input[aria-label="Kart adı"]')?.value === '');
   assert.deepEqual(errors, []);
-  console.log('Device events update both cards, ignore stale watches, pause during hardware operations, reconnect and avoid HTTP target polling.');
+  console.log('Connection events and local UID names survive unplug, restart and ESP changes; no target polling or remote rename requests.');
 } finally { await browser.close(); }

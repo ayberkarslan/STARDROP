@@ -6,6 +6,15 @@ Tauri gerekir.
 
 ## Canlı cihaz bağlantısı
 
+Kart adları bilgisayarın uygulama veri dizinindeki `targets.json` dosyasına
+UID anahtarıyla kaydedilir (Linux: `~/.local/share/com.yildizroket.stardrop-workbench/targets.json`).
+Aynı model iki farklı kartın adı birbirine karışmaz. Uygulamayı yeniden açmak,
+STM flashını silmek veya ESP'yi değiştirmek bu yerel kaydı silmez. Yerel ad
+ESP'den gelen ada göre önceliklidir; eski ESP adları ilk görülünce içeri
+alınır. Ad değiştirmek ESP'ye veya STM flashına yazmaz. Kayıt atomik dosya
+değişimiyle yapılır; bozuk kayıt sessizce boş veriyle ezilmez. Bu şimdilik
+dosya tabanlı yerel kayıttır, bulut/ekip senkronizasyonu değildir.
+
 Yeni ESP firmware'i `statusEventsAvailable` özelliğiyle UDP 4210 üzerinden
 bağlantı değişikliklerini bildirir. Masaüstü uygulaması dinler; bağlıyken
 periyodik HTTP/SWD hedef sorgusu göndermez. ESP, yalnız izleyici varken ve
