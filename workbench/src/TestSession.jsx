@@ -174,7 +174,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
         profile: hash32FromSha256(await sha256Hex(profileJson)),
         run: hash32FromSha256(await sha256Hex(requestId)),
       };
-      if (selectedTest.telemetryAbi === 1) setTelemetryContext({ uid: live.uid,
+      if (selectedTest.telemetryAbi === 1) setTelemetryContext({ uid: live.uid, model: live.model,
         label: target.label || profile.name, testName: selectedTest.name,
         expected: { testIdHash: hashes.test, profileHash: hashes.profile, runHash: hashes.run } });
       if (selectedTest.result === 'sram') {

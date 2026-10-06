@@ -31,7 +31,7 @@ export function validateTelemetry(frame, uid, expected) {
 
 /** Serial, bounded sampling. A stopped in-flight request retains the SWD lease. */
 export function createTelemetrySession({ hardware, ownerId, uid, expected, fetchSample, onFrame, onState,
-  intervalMs = 500, clock = () => Date.now(), schedule = setTimeout, cancel = clearTimeout }) {
+  expectedModel, intervalMs = 500, clock = () => Date.now(), schedule = setTimeout, cancel = clearTimeout }) {
   let lease = null, timer = null, stopped = true, inflight = false;
   let bound = expected || null, previous = null, lastAdvance = null, failures = 0, skipped = 0;
   const release = () => { if (lease) { hardware.release(lease); lease = null; } };
@@ -56,6 +56,9 @@ export function createTelemetrySession({ hardware, ownerId, uid, expected, fetch
         return;
       }
       const frame = validateTelemetry(raw, uid, bound);
+      if (expectedModel && frame.model !== expectedModel) {
+        stop('STM32 modeli değişti; başka hedefin ölçümleri kullanılmadı.', 'error'); return;
+      }
       bound ||= { testIdHash: frame.testIdHash, profileHash: frame.profileHash, runHash: frame.runHash };
       const delta = previous ? (frame.sampleCounter - previous.sampleCounter) >>> 0 : frame.sampleCounter ? 1 : 0;
       if (previous && (delta > 0x7fffffff || ((frame.timestampMs - previous.timestampMs) >>> 0) > 0x7fffffff)) {

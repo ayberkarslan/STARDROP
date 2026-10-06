@@ -85,7 +85,7 @@ export default function LiveMonitor({ documentId, initialData, active, services 
       if (target?.uid && initialData?.uid && target.uid.toUpperCase() !== initialData.uid.toUpperCase()) throw new Error('Bu test başka STM32 için hazırlandı. Doğru kartı bağla.');
       lastFrame.current = null; setLatest(null); setSamples([]);
       controller.current = createTelemetrySession({ hardware, ownerId: documentId, uid: expectedUid,
-        expected: initialData?.expected, intervalMs: Number(interval),
+        expected: initialData?.expected, expectedModel: initialData?.model || target?.model, intervalMs: Number(interval),
         fetchSample: () => espJson(activeBridge, '/api/telemetry', { timeoutMs: 3000 }),
         onState: next => { if (!mounted.current) return; setState(next); addLog(next.message); },
         onFrame: frame => {
@@ -126,8 +126,8 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     <div className="live-toolbar">
       <button className={running ? 'secondary' : 'primary'} onClick={running ? () => stop() : start}
         disabled={!running && (esp.status !== 'online' || !expectedUid || Boolean(hardwareBusy))}>{running ? <Pause size={16}/> : <Play size={16}/>} {running ? 'DURDUR' : 'İZLEMEYİ BAŞLAT'}</button>
-      <div className="live-rate"><SelectMenu ariaLabel="Okuma aralığı" value={interval} options={[{ value: '250', label: '250 ms' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]}
-        onChange={value => { if (!running) setIntervalMs(value); }}/></div>
+      <fieldset className="live-rate" disabled={running} title={running ? 'Okuma aralığını değiştirmek için izlemeyi durdur.' : 'Okuma aralığı'}><SelectMenu ariaLabel="Okuma aralığı" value={interval} options={[{ value: '250', label: '250 ms' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]}
+        onChange={value => { if (!running) setIntervalMs(value); }}/></fieldset>
       <button className={`secondary ${recording ? 'is-recording' : ''}`} onClick={() => { recordOn.current = !recordOn.current; setRecording(recordOn.current); addLog(recordOn.current ? 'Ölçüm kaydı başladı.' : 'Ölçüm kaydı durduruldu.'); }}><Circle size={13}/>{recording ? 'KAYDI DURDUR' : 'KAYDET'}</button>
       <button className="secondary" disabled={!recordCount || exporting} onClick={exportCsv}><Download size={15}/>{exporting ? 'KAYDEDİLİYOR…' : 'CSV'}</button>
       <button className="live-clear" aria-label="Ölçüm kaydını temizle" disabled={recording || !recordCount} onClick={() => { records.current = []; setRecordCount(0); }}><Trash2 size={15}/></button>

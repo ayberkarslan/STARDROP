@@ -17,15 +17,16 @@ Karar: IDE'ye ait Live Expressions sistemini ürünün temeli yapmayacağız. ST
 - [x] BMP180 kaynağında mevcut 128 baytlık tek sonuç raporunu koru.
 - [x] Canlı ölçümler için sürümlü bir `STARDROP Telemetry ABI` tanımla (`code-repo/tests/bmp180-f446/README.md`).
 - [x] RAM alanında magic, ABI sürümü, sıra numarası, zaman, durum, kanal sayısı ve CRC bulundur.
-- [x] Snapshot seqlock sözleşmesini tanımla: host sequence'i frame'den önce ve sonra okur; farklı/tek sıra numarası veya CRC uyuşmazlığını reddeder. ESP tarafında uygulama ve sahada doğrulama bekliyor.
-- [ ] Sabit boyutlu örnek tamponu veya çift tampon tasarla; STM32 çalışırken güvenli okunabilsin.
-- [ ] ESP32'ye işlemciyi durdurmadan ve reset atmadan salt-okunur SWD telemetri endpoint'i ekle.
-- [ ] Telemetri okumasında kullanılan SWD bağlantı yolunu flash/kurtarma yolundan ayır; canlı okumada NRST kullanma.
-- [ ] ESP32'den uygulamaya canlı veri akışı için SSE veya uygun akış endpoint'i ekle.
+- [x] Snapshot seqlock sözleşmesini ESP tarafında uygula; tek/farklı sıra ve CRC hataları reddedilir. Host protokol testleri geçti; sahada doğrulama bekliyor.
+- [x] Sabit 400 bayt ölçüm tamponu ve seqlock kullan; değişen görüntüyü kullanma.
+- [x] ESP32'ye pasif, NRST kullanmayan `/api/telemetry` endpoint'i ekle; gerçek kartta reset/halt olmaması ayrıca doğrulanacak.
+- [x] Telemetri SWD yolunu flash/kurtarma yolundan ayır; uygulamada tek donanım işlem kilidi kullan.
+- [x] Tek seferlik, sınırlı RAM sorguları ekle (250/500/1000 ms; sürekli açık HTTP bağlantısı yok).
 - [ ] Test kataloğuna sensörden bağımsız kanal şeması ekle: kanal kimliği, görünen ad, birim, veri tipi, ölçek ve önerilen örnekleme hızı.
-- [ ] Masaüstü uygulamasında kanal şemasından otomatik değer kartları ve zaman grafikleri üret.
-- [ ] Bağlantı kopması, eski örnek, CRC hatası ve örnek kaybını arayüzde açıkça göster.
-- [ ] Canlı izleme başlamadan önce hedef UID, MCU modeli, test kimliği ve çalışma kimliğini doğrula.
+- [x] Firmware kanal adları/birimlerinden otomatik değer kartları ve zaman grafikleri üret.
+- [x] Bağlantı kopması, eski örnek, CRC hatası ve atlanan örnekleri göster; simülasyon testleri geçti.
+- [x] UID/MCU/ABI ve çalışma kimliğini doğrula; test ekranından geçişte beklenen test/profil/çalıştırma hash'lerini eşleştir.
+- [x] Ölçüm kaydı ve CSV dışa aktarımı ekle (2000 örnek sınırı, son 240 okunan örnek grafik).
 - [ ] Kayıt alma, CSV dışa aktarma ve test geçmişine özet ölçüm ekleme seçeneklerini tasarla.
 - [ ] Geliştirici aracı olarak ELF sembolünden değişken izlemeyi daha sonra ayrıca değerlendir; ana kullanıcı akışına bağlama.
 
@@ -52,7 +53,7 @@ Karar: IDE'ye ait Live Expressions sistemini ürünün temeli yapmayacağız. ST
 ## Arayüz ve deneyim
 
 - [ ] Kullanıcının istediği UI/UX değişikliklerini mevcut işlevleri koruyarak uygula.
-- [ ] Yeni Test akışında canlı ölçüm ekranının yerini belirle: yükleme sonrası otomatik açılan sonuç adımı.
+- [x] Yeni Test akışına yükleme sonrası Canlı İzlemeyi Aç düğmesi ve ayrı Canlı İzleme sekmesi ekle; okuma kullanıcı başlatınca çalışır.
 - [ ] Testin `hazırlanıyor`, `yükleniyor`, `çalışıyor`, `veri geliyor`, `tamamlandı` durumlarını tek akışta göster.
 - [ ] Sensöre özel ekran yazma; görünümü katalogdaki kanal tanımından oluştur.
 - [ ] Grafik bulunmayan testlerde sade PASS/FAIL ve ölçüm özeti göster.

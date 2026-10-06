@@ -33,7 +33,7 @@ try {
             window.liveMock.calls++;
             if (window.liveMock.error) throw new Error('Mock ağ kesildi');
             if (!window.liveMock.frozen) counter++;
-            return JSON.stringify({ connected: true, valid: true, uid, abi: 1, sequence: counter * 2,
+            return JSON.stringify({ connected: true, valid: true, uid, model: 'STM32F446', abi: 1, sequence: counter * 2,
               timestampMs: counter * 100, sampleCounter: counter, sensorStatus: 1,
               testIdHash: 1, profileHash: 2, runHash: 3, readMs: 12,
               channels: [{ name: 'temperature', unit: 'degC', value: 22 + Math.sin(counter / 3), valid: true },

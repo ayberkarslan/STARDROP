@@ -961,9 +961,9 @@ void handleTelemetry() {
 
 void handleDiagnosticReport() {
     swd.setSpeedProfile(SwdSpeedProfile::FAST);
-    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, STM32_RST_PIN);
+    swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
     TargetProbeInfo target;
-    if (!swd.probe(&target)) {
+    if (!swd.probe(&target, true)) {
         server.send(200, "application/json", "{\"connected\":false,\"valid\":false,\"ack\":" + String(swd.lastAck) + "}");
         return;
     }
