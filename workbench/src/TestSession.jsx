@@ -24,6 +24,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
   const [testBusy, setTestBusy] = useState(false);
   const [testStage, setTestStage] = useState('');
   const [diagnosticReport, setDiagnosticReport] = useState(null);
+  const [telemetryContext, setTelemetryContext] = useState(null);
   const [testHistory, setTestHistory] = useState(initialData?.testHistory || []);
   const [visualPending, setVisualPending] = useState(null);
   const [confirmLedFlash, setConfirmLedFlash] = useState(false);
@@ -145,6 +146,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
     catch (error) { setNotice(error.message); return; }
     const requestId = crypto.randomUUID();
     setConfirmLedFlash(false); setVisualPending(null); setTestBusy(true); setDiagnosticReport(null);
+    setTelemetryContext(null);
     try {
       const profileJson = JSON.stringify(profile);
       setTestStage(`${selectedTest.name} GitHub kaynağından bilgisayarda derleniyor…`);
@@ -167,13 +169,17 @@ export default function TestSession({ documentId, initialData, services, onDraft
       setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
       const file = new File([firmwareBytes], `stardrop-${selectedTest.id}.bin`, { type: 'application/octet-stream' });
       if (!await flashFirmware(file, lease)) throw new Error('ESP32 flash işlemi başarısız.');
+      const hashes = {
+        test: hash32FromSha256(await sha256Hex(selectedTest.id)),
+        profile: hash32FromSha256(await sha256Hex(profileJson)),
+        run: hash32FromSha256(await sha256Hex(requestId)),
+      };
+      if (selectedTest.telemetryAbi === 1) setTelemetryContext({ uid: live.uid,
+        label: target.label || profile.name, testName: selectedTest.name,
+        expected: { testIdHash: hashes.test, profileHash: hashes.profile, runHash: hashes.run } });
       if (selectedTest.result === 'sram') {
         setTestStage('STM32 test raporu okunuyor…');
-        const report = await waitForDiagnosticReport({
-          test: hash32FromSha256(await sha256Hex(selectedTest.id)),
-          profile: hash32FromSha256(await sha256Hex(profileJson)),
-          run: hash32FromSha256(await sha256Hex(requestId)),
-        });
+        const report = await waitForDiagnosticReport(hashes);
         setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
           testId: selectedTest.id, targetUid: live.uid, status: report.state, sourceSha: built.sourceSha,
           firmwareSha256: built.sha256, report }]);
@@ -225,6 +231,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
     <fieldset className="session-controls" disabled={testBusy || flashBusy}>
       <WorkbenchWizard onShare={() => services.shareTest(documentId)} preset={initialData?.catalogPreset} profile={profile} setProfile={setProfile} sources={sources} catalog={catalog} githubConfig={githubConfig} sourceStatus={sourceStatus} sourceError={sourceError} sourceBusy={sourceBusy} refreshSource={refreshSource} activateSource={activateSource} target={target} esp={esp} activeSensor={activeSensor} activeComponent={activeComponent} setActiveComponent={setActiveComponent} editConnection={editConnection} approveComponent={approveComponent} updateLedSetting={updateLedSetting} compatibleTests={compatibleTests} selectedTest={selectedTest} setSelectedTestId={setSelectedTestId} testBlocker={testBlocker} testBusy={testBusy} testStage={testStage} flashBusy={flashBusy} flashLog={flashLog} flashProgress={flashProgress} visualPending={visualPending} finishVisualTest={finishVisualTest} setConfirmLedFlash={setConfirmLedFlash} loadNetlist={loadNetlist} importProject={importProject} exportProject={exportProject} setAnalysis={setAnalysis} setSources={setSources} bindTarget={() => setProfile((current) => addAuditEvent({ ...current, targetUid: target.uid, targetLabel: target.label || current.name }, 'TARGET_UID_BOUND', { uid: target.uid }))} refreshTarget={refreshTarget} setFlashLog={setFlashLog} setTestStage={setTestStage} setNotice={setNotice} aiConfig={aiConfig} updateAiConfig={updateAiConfig} aiKey={aiKey} setAiKey={setAiKey} aiBusy={aiBusy} runAiReview={runAiReview} aiReview={aiReview} acceptedSuggestions={acceptedSuggestions} setAcceptedSuggestions={setAcceptedSuggestions} applySelectedAiSuggestions={applySelectedAiSuggestions} diagnosticReport={diagnosticReport} testHistory={testHistory} />
     </fieldset>
+    {telemetryContext && <button className="secondary" disabled={testBusy || flashBusy || Boolean(hardwareBusy)} onClick={() => services.openTelemetry(telemetryContext)}>CANLI İZLEMEYİ AÇ →</button>}
     {confirmLedFlash && <Popup className="confirm-card" labelledBy="led-confirm-title" onClose={() => setConfirmLedFlash(false)}><h2 id="led-confirm-title">STM32 yazılımı değişecek</h2><p>{selectedTest?.name || 'Donanım testi'} için mevcut firmware silinip yerel derlenen kod yüklenecek. Hedef: {target?.model || 'bilinmiyor'} · {target?.uid || 'UID yok'}</p><div><button className="secondary" onClick={() => setConfirmLedFlash(false)}>VAZGEÇ</button><button className="primary" onClick={runHardwareTest}>DERLE VE YÜKLE</button></div></Popup>}
   </div>;
 }

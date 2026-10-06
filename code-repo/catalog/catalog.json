@@ -31,7 +31,7 @@
       "id": "bmp180-f446",
       "deviceId": "bmp180",
       "name": "BMP180 · sıcaklık ve basınç",
-      "description": "F446RE üzerinde ilk ölçüm raporu ve ortak RAM telemetrisi. Donanım doğrulaması bekliyor; canlı grafik henüz yok.",
+      "description": "F446RE üzerinde ilk ölçüm raporu, SWD canlı sıcaklık/basınç grafikleri ve CSV kaydı. Donanım doğrulaması bekliyor.",
       "status": "ready",
       "protocol": "I2C",
       "matchParts": ["BMP180"],
@@ -39,6 +39,7 @@
       "sourcePath": "tests/bmp180-f446/stardrop-project.json",
       "build": "stm32-hal-v1",
       "result": "sram",
+      "telemetryAbi": 1,
       "requiredRoles": ["SCL", "SDA"]
     },
     {

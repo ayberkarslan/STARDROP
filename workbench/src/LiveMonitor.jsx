@@ -56,10 +56,13 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   const [recording, setRecording] = useState(false);
   const [recordCount, setRecordCount] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const controller = useRef(null), records = useRef([]), recordOn = useRef(false), lastFrame = useRef(null);
   const mounted = useRef(true), lastMessage = useRef('');
   const expectedUid = initialData?.uid || target?.uid;
   const running = ['connecting', 'live', 'stale', 'retrying', 'sensor-error'].includes(state.status);
+  const sampleAge = latest ? (latest.ageMs ?? 0) + Math.max(0, now - latest.receivedAt) : null;
+  const status = state.status === 'live' && sampleAge > Math.max(2000, Number(interval) * 3) ? 'stale' : state.status;
   const addLog = message => {
     if (message === lastMessage.current) return;
     lastMessage.current = message;
@@ -68,8 +71,14 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   const stop = message => controller.current?.stop(message || 'İzleme durduruldu.');
   useEffect(() => {
     if (!active || esp.status !== 'online') stop(!active ? 'Sekme arka planda; SWD okuması durduruldu.' : 'ESP32 bağlantısı kesildi.');
-  }, [active, esp.status, activeBridge]);
-  useEffect(() => () => { mounted.current = false; controller.current?.stop(); }, []);
+  }, [active, esp.status]);
+  useEffect(() => () => controller.current?.stop('ESP32 adresi veya sekme değişti; izleme durduruldu.'), [activeBridge]);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.stop(); }; }, []);
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [running]);
   const start = () => {
     try {
       if (!activeBridge || esp.status !== 'online') throw new Error('Önce ESP32’ye bağlan.');
@@ -113,7 +122,7 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   };
   return <div className="live-monitor">
     <header className="live-heading"><div><span className="eyebrow">SWD / SALT OKUNUR</span><h1>Canlı İzleme</h1><p>{initialData?.label || target?.label || latest?.model || target?.model || 'STM32'}{initialData?.testName && ` · ${initialData.testName}`}</p></div>
-      <span className={`live-status status-${state.status}`}><i/>{stateLabels[state.status]}</span></header>
+      <span className={`live-status status-${status}`}><i/>{stateLabels[status]}</span></header>
     <div className="live-toolbar">
       <button className={running ? 'secondary' : 'primary'} onClick={running ? () => stop() : start}
         disabled={!running && (esp.status !== 'online' || !expectedUid || Boolean(hardwareBusy))}>{running ? <Pause size={16}/> : <Play size={16}/>} {running ? 'DURDUR' : 'İZLEMEYİ BAŞLAT'}</button>
@@ -124,13 +133,13 @@ export default function LiveMonitor({ documentId, initialData, active, services 
       <button className="live-clear" aria-label="Ölçüm kaydını temizle" disabled={recording || !recordCount} onClick={() => { records.current = []; setRecordCount(0); }}><Trash2 size={15}/></button>
       <span className="live-record-count">{recordCount} kayıt</span>
     </div>
-    <p className={`live-message ${state.status === 'error' || state.status === 'sensor-error' ? 'is-error' : ''}`} role="status">{state.message}</p>
+    <p className={`live-message ${status === 'error' || status === 'sensor-error' ? 'is-error' : ''}`} role="status">{status === 'stale' ? 'Yeni örnek bekleniyor; ekrandaki değerler son ölçümdür.' : state.message}</p>
     {!esp.programmer?.telemetryAvailable && <p className="live-update-note">Eski ESP yazılımında bu özellik yok. ESP32-S3 firmware’ini güncelledikten sonra kullanabilirsin.</p>}
     <div className="live-facts"><div><small>HEDEF UID</small><span title={expectedUid}>{expectedUid || 'Bağlı STM32 yok'}</span></div><div><small>ÖRNEK</small><span>{latest?.sampleCounter ?? '—'}</span></div><div><small>MCU ZAMANI</small><span>{latest ? `${(latest.timestampMs / 1000).toFixed(2)} s` : '—'}</span></div><div><small>ATLANAN ÖRNEK</small><span>{latest?.skipped ?? '—'}</span></div></div>
-    <div className="live-channels">{latest?.channels.map(channel => <article className={`live-channel ${state.status === 'live' && channel.valid ? 'channel-live' : 'channel-inactive'}`} key={channel.name}>
+    <div className="live-channels">{latest?.channels.map(channel => <article className={`live-channel ${status === 'live' && channel.valid ? 'channel-live' : 'channel-inactive'}`} key={channel.name}>
       <div className="live-channel-heading"><div><h2>{labels[channel.name] || channel.name}</h2><small>{channel.name}</small></div><Activity size={16}/></div>
       <div className="live-value"><strong>{channel.valid && latest.sensorStatus === 1 ? number(channel.value) : '—'}</strong><span>{channel.unit === 'degC' ? '°C' : channel.unit}</span>
-        <small>{state.status === 'live' && channel.valid ? 'CANLI' : !channel.valid || latest.sensorStatus === 2 ? 'GEÇERSİZ ÖRNEK' : 'SON ÖLÇÜM'}</small></div>
+        <small>{status === 'live' && channel.valid ? 'CANLI' : !channel.valid || latest.sensorStatus === 2 ? 'GEÇERSİZ ÖRNEK' : 'SON ÖLÇÜM'}</small></div>
       <Trace samples={samples} channel={channel}/>
     </article>)}{!latest?.channels.length && <div className="live-empty"><Activity size={28}/><h2>Ölçüm bekleniyor</h2><p>Kanallar firmware’den otomatik okunur.<br/>UART veya ek sensör kablosu gerekmez.</p></div>}</div>
     <details className="live-details"><summary>Oturum ve veri bütünlüğü</summary><div className="live-integrity"><span>ABI {latest?.abi || '—'} · CRC ESP32’de doğrulanır</span><span>Test {hex(latest?.testIdHash)}</span><span>Profil {hex(latest?.profileHash)}</span><span>Çalıştırma {hex(latest?.runHash)}</span><span>RAM 0x20000200 · 400 bayt</span><span>SWD okuma {latest?.readMs ?? '—'} ms</span><span>Son örnek {latest?.ageMs === null || !latest ? '—' : `${latest.ageMs} ms önce`}</span><span>Grafik: son 240 okunan örnek · CSV: en fazla 2000 örnek</span></div></details>
