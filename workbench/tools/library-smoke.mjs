@@ -31,6 +31,11 @@ try {
   });
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
   await page.locator('.welcome-screen:visible').waitFor();
+  const sky = page.locator('.welcome-screen:visible .welcome-stars');
+  assert.equal(await sky.getAttribute('aria-hidden'), 'true');
+  assert.equal(await sky.evaluate(el => getComputedStyle(el).pointerEvents), 'none');
+  assert.equal(await sky.locator('circle').count(), 210);
+  assert.ok(await sky.locator('circle').evaluateAll(stars => stars.every(star => Number(star.getAttribute('r')) <= 1.05)));
   assert.deepEqual(await page.evaluate(() => {
     const surface = document.querySelector('.welcome-screen');
     const cancelled = (type, options) => !surface.dispatchEvent(new (type === 'keydown' ? KeyboardEvent : MouseEvent)(type, { bubbles: true, cancelable: true, ...options }));
