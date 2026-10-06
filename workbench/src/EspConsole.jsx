@@ -266,7 +266,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     <label className={`firmware-select${deviceBusy ? ' is-disabled' : ''}`} onDrop={(event) => { event.preventDefault(); chooseFile(event.dataTransfer.files?.[0]); }} onDragOver={(event) => event.preventDefault()}><FileUp size={28} strokeWidth={1.3}/><strong>Firmware dosyası seç</strong><small>.BIN veya .ELF · buraya sürükle</small><input aria-label="Firmware dosyası" type="file" accept=".bin,.elf" disabled={deviceBusy} onChange={(event) => chooseFile(event.target.files?.[0])}/></label>
     {firmware && <div className="firmware-file-card"><div><strong title={firmware.name}>{firmware.name}</strong><span>{firmware.name.toLowerCase().endsWith('.elf') ? 'ELF → BIN' : 'RAW BIN'}</span></div><small>{kb(firmware.size)}</small></div>}
 
-    <button className="flash-submit" disabled={Boolean(blocker)} title={blocker || 'Seçili firmware’i STM32’ye yükle'} onClick={() => flashFirmware()}>{flashBusy ? 'YÜKLENİYOR…' : hardwareBusy ? 'DONANIM İŞLEMİ BEKLENİYOR…' : 'YAZILIMI YÜKLE (SWD)'}</button>
+    <button className="flash-submit" disabled={Boolean(blocker)} title={blocker || 'Seçili firmware’i STM32’ye yükle'} onClick={() => flashFirmware()}>{flashBusy ? 'YÜKLENİYOR…' : hardwareBusy ? 'DONANIM İŞLEMİ BEKLENİYOR…' : 'YAZILIMI YÜKLE'}</button>
     <p className="flash-blocker">{blocker || `${target?.label || target?.model} · yüklemeye hazır`}</p>
     <p className="flash-footnote">Yükleme mevcut firmware’i değiştirir. Yazılan veriler geri okunarak doğrulanır.</p>
     </section><section className="flash-runtime" aria-label="Yükleme durumu ve terminal">

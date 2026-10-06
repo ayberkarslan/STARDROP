@@ -160,7 +160,7 @@ try {
   await page.getByRole('button', { name: /Mock kart/ }).waitFor();
   await page.locator('.workspace-panel:visible input[type=file]').setInputFiles({ name: 'first.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(32, 1) });
   const flashTabId = await page.locator('[role=tab][aria-selected=true]:visible').getAttribute('data-tab-id');
-  await page.getByRole('button', { name: 'YAZILIMI YÜKLE (SWD)', exact: true }).click();
+  await page.getByRole('button', { name: 'YAZILIMI YÜKLE', exact: true }).click();
   await page.waitForFunction(() => Boolean(window.__finishMockUpload));
   assert.equal(await page.getByRole('button', { name: 'Hızlı Yükleme sekmesini kapat' }).isDisabled(), true);
   await drag(page.locator('[data-rail-tool="settings"]:visible'), page.locator('.workspace-panel:visible'), true);
@@ -179,7 +179,7 @@ try {
   assert.match(await page.locator('.flash-terminal:visible').innerText(), /Mock aktarım tamamlandı/);
   // A target swap after preparation must never upload the selected bytes.
   await page.evaluate(() => { window.__mockUid = 'another-target'; });
-  await page.getByRole('button', { name: 'YAZILIMI YÜKLE (SWD)', exact: true }).click();
+  await page.getByRole('button', { name: 'YAZILIMI YÜKLE', exact: true }).click();
   await page.locator('.flash-terminal:visible').getByText(/STM32 hedefi değişti/).waitFor();
   assert.equal(await page.evaluate(() => window.__mockUploadCount), 1);
   assert.deepEqual(errors, []);

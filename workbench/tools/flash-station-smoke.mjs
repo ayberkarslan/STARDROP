@@ -60,7 +60,7 @@ try {
   assert.ok(discoveryBounds.y - (titleBounds.y + titleBounds.height) >= 17);
   assert.equal(await settings.locator('.discovered-list-head').evaluate(el => getComputedStyle(el).alignItems), 'center');
   await settings.getByRole('button', { name: 'Kapat', exact: true }).click();
-  const upload = page.getByRole('button', { name: 'YAZILIMI YÜKLE (SWD)', exact: true });
+  const upload = page.getByRole('button', { name: 'YAZILIMI YÜKLE', exact: true });
   assert.equal(await upload.isEnabled(), false);
   await station.getByLabel('Firmware dosyası', { exact: true }).setInputFiles({ name: 'blink.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(512) });
   await page.screenshot({ path: '/tmp/stardrop-flash-ready.png' });
