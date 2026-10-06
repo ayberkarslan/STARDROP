@@ -9,6 +9,7 @@ use tauri::{Emitter, Manager};
 mod local_build;
 mod esp_watch;
 mod target_registry;
+mod settings;
 
 const AUTH_WORKER: &str = "https://stardrop-auth.ayberkarslann0.workers.dev";
 const GITHUB_CLIENT_ID: &str = "Iv23liLOQvO5jpP3xkxR";
@@ -200,10 +201,10 @@ async fn esp_upload(base: String, bytes: Vec<u8>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn telemetry_export_csv(app: tauri::AppHandle, csv: String) -> Result<String, String> {
+fn telemetry_export_csv(app: tauri::AppHandle, csv: String, directory: Option<String>) -> Result<String, String> {
     use std::io::Write;
     if csv.is_empty() || csv.len() > 4 * 1024 * 1024 { return Err("Ölçüm kaydı boş veya 4 MB sınırını aşıyor".into()); }
-    let directory = app.path().app_data_dir().map_err(|error| error.to_string())?.join("exports");
+    let directory = settings::export_directory(&app, directory)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
     let path = directory.join(format!("telemetry-{stamp}.csv"));
@@ -322,7 +323,8 @@ fn memory_secret(key: &str) -> Result<Option<String>, String> {
 
 fn read_secret(key: &str) -> Result<Option<String>, String> {
     if let Some(value) = memory_secret(key)? { return Ok(Some(value)); }
-    match entry_for(key)?.get_password() {
+    let Ok(entry) = entry_for(key) else { return Ok(None); };
+    match entry.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
         // On systems without Secret Service, a previously persisted login
@@ -334,7 +336,12 @@ fn read_secret(key: &str) -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn save_secret(key: String, value: String) -> Result<&'static str, String> {
-    match entry_for(&key)?.set_password(&value) {
+    if key.is_empty() || !key.chars().all(|value| value.is_ascii_alphanumeric() || value == '_' || value == '-') { return Err("Geçersiz secret anahtarı".into()); }
+    let credential = match entry_for(&key) {
+        Ok(entry) => entry,
+        Err(_) => { volatile_secrets().lock().map_err(|error| error.to_string())?.insert(key, value); return Ok("memory"); }
+    };
+    match credential.set_password(&value) {
         Ok(()) => {
             volatile_secrets().lock().map_err(|error| error.to_string())?.remove(&key);
             Ok("os")
@@ -345,6 +352,21 @@ fn save_secret(key: String, value: String) -> Result<&'static str, String> {
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+#[tauri::command]
+fn save_repo_secret(value: String, remember: bool) -> Result<&'static str, String> {
+    let value = value.trim().to_string();
+    if value.is_empty() || value.len() > 512 || value.chars().any(char::is_whitespace) { return Err("Depo anahtarı boş veya geçersiz".into()); }
+    if remember { return save_secret("github_repo_token".into(), value); }
+    if let Ok(entry) = entry_for("github_repo_token") {
+        match entry.delete_credential() { Ok(()) | Err(keyring::Error::NoEntry) => {}, Err(error) => return Err(format!("Kalıcı anahtar silinemedi: {error}")) }
+    } else if memory_secret("github_repo_token")?.is_none() {
+        // A locked/unavailable persistent store cannot be silently forgotten.
+        return Err("Güvenli anahtar kasasına erişilemiyor; kalıcı kaydı silmek için kasayı aç.".into());
+    }
+    volatile_secrets().lock().map_err(|error| error.to_string())?.insert("github_repo_token".into(), value);
+    Ok("memory")
 }
 
 #[tauri::command]

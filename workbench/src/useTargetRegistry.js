@@ -30,5 +30,7 @@ export default function useTargetRegistry(rawTarget, setNotice) {
     if (!target?.connected || !registry.current) throw new Error('Önce UID okunmuş bir STM32 bağla.');
     return registry.current.saveAnalysis(target.uid, target.model || '', analysis);
   }, []);
-  return { records, saveTargetName, saveTargetAnalysis };
+  return { records, saveTargetName, saveTargetAnalysis, reloadRecords: async () => {
+    const next = await targetRegistryStorage().load(); setRecords(next); return next;
+  } };
 }

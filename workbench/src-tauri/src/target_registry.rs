@@ -54,14 +54,29 @@ fn read_registry(path: &Path) -> Result<Registry, String> {
     };
     if bytes.len() > 2 * 1024 * 1024 { return Err("Kart kayıt dosyası fazla büyük.".into()); }
     let registry: Registry = serde_json::from_slice(&bytes).map_err(|_| "Kart kayıt dosyası bozuk; mevcut dosya korunuyor.")?;
-    if registry.version != 1 { return Err("Kart kayıt sürümü desteklenmiyor.".into()); }
+    validate_registry(&registry)?;
+    Ok(registry)
+}
+fn validate_registry(registry: &Registry) -> Result<(), String> {
+    if registry.version != 1 || registry.targets.len() > 10000 { return Err("Kart kayıt sürümü veya kapasitesi desteklenmiyor.".into()); }
     for (uid, record) in &registry.targets {
         if normalize_uid(uid)? != *uid || record.uid != *uid || (record.label.trim().is_empty() && record.flash_analysis.is_none()) || record.label.chars().count() > 32 || record.label.chars().any(char::is_control) {
             return Err("Kart kaydı geçersiz; mevcut dosya korunuyor.".into());
         }
         if let Some(analysis) = &record.flash_analysis { validate_analysis(analysis)?; }
     }
-    Ok(registry)
+    Ok(())
+}
+
+#[tauri::command]
+pub fn target_registry_import(app: tauri::AppHandle, records: BTreeMap<String, TargetRecord>) -> Result<BTreeMap<String, TargetRecord>, String> {
+    let _lock = REGISTRY_LOCK.lock().map_err(|error| error.to_string())?;
+    let incoming = Registry { version: 1, targets: records }; validate_registry(&incoming)?;
+    let path = app.path().app_data_dir().map_err(|error| error.to_string())?.join("targets.json");
+    let mut registry = read_registry(&path)?;
+    registry.targets.extend(incoming.targets); validate_registry(&registry)?;
+    persist_registry(&path, &registry)?;
+    Ok(registry.targets)
 }
 
 fn save_record(path: &Path, uid: &str, label: &str, model: &str, overwrite: bool) -> Result<BTreeMap<String, TargetRecord>, String> {

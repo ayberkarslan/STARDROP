@@ -364,6 +364,45 @@ pub async fn compile_led(app: tauri::AppHandle, request: LedBuildRequest) -> Res
     tauri::async_runtime::spawn_blocking(move || compile_led_blocking(&app, request)).await.map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+pub async fn toolchain_status(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let tools: Vec<_> = ["arm-none-eabi-gcc", "arm-none-eabi-g++", "arm-none-eabi-objcopy"].iter().map(|name| {
+            let result = compiler(&app, name).and_then(|path| {
+                let output = Command::new(&path).arg("--version").output().map_err(|error| error.to_string())?;
+                if !output.status.success() { return Err("Araç çalıştırılamadı".into()); }
+                Ok((path.to_string_lossy().to_string(), String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").chars().take(180).collect::<String>()))
+            });
+            match result { Ok((path, version)) => serde_json::json!({ "name": name, "ready": true, "path": path, "version": version }),
+                Err(error) => serde_json::json!({ "name": name, "ready": false, "error": error }) }
+        }).collect();
+        serde_json::json!({ "ready": tools.iter().all(|tool| tool["ready"] == true), "tools": tools })
+    }).await.map_err(|error| error.to_string())
+}
+#[tauri::command]
+pub fn code_cache_info(app: tauri::AppHandle, repository: String) -> Result<serde_json::Value, String> {
+    let root = code_root(&app, &repository)?;
+    let active = active_code_sha(&root);
+    let mut snapshots = Vec::new();
+    for entry in fs::read_dir(&root).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.len() == 40 && name.chars().all(|ch| ch.is_ascii_hexdigit()) && entry.file_type().map_err(|error| error.to_string())?.is_dir() {
+            snapshots.push(serde_json::json!({ "sha": name, "verified": code_source_valid(&entry.path()), "active": active.as_deref() == Some(name.as_str()) }));
+        }
+    }
+    Ok(serde_json::json!({ "activeSha": active, "snapshots": snapshots }))
+}
+#[tauri::command]
+pub fn code_cache_retire(app: tauri::AppHandle, repository: String) -> Result<String, String> {
+    let root = code_root(&app, &repository)?;
+    let trash = app.path().app_cache_dir().map_err(|error| error.to_string())?.join("retired-code-repos");
+    fs::create_dir_all(&trash).map_err(|error| error.to_string())?;
+    let destination = trash.join(uuid::Uuid::new_v4().to_string());
+    fs::rename(root, &destination).map_err(|error| error.to_string())?;
+    Ok(destination.to_string_lossy().into())
+}
+
 fn compile_led_blocking(app: &tauri::AppHandle, request: LedBuildRequest) -> Result<LedBuildResult, String> {
     #[cfg(debug_assertions)]
     let development = request.repository.is_empty();
