@@ -2,6 +2,12 @@
   "schemaVersion": 2,
   "devices": [
     {
+      "id": "bmp180",
+      "name": "Bosch BMP180",
+      "matchParts": ["BMP180"],
+      "interfaces": [{ "protocol": "I2C", "requiredRoles": ["SCL", "SDA"], "optionalRoles": [] }]
+    },
+    {
       "id": "led",
       "name": "LED",
       "matchParts": ["LED"],
@@ -21,6 +27,20 @@
     }
   ],
   "tests": [
+    {
+      "id": "bmp180-f446",
+      "deviceId": "bmp180",
+      "name": "BMP180 · sıcaklık ve basınç",
+      "description": "F446RE üzerinde ilk ölçüm raporu ve ortak RAM telemetrisi. Donanım doğrulaması bekliyor; canlı grafik henüz yok.",
+      "status": "ready",
+      "protocol": "I2C",
+      "matchParts": ["BMP180"],
+      "supportedMcu": ["STM32F446RE"],
+      "sourcePath": "tests/bmp180-f446/stardrop-project.json",
+      "build": "stm32-hal-v1",
+      "result": "sram",
+      "requiredRoles": ["SCL", "SDA"]
+    },
     {
       "id": "led-blink",
       "deviceId": "led",
