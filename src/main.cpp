@@ -7,6 +7,7 @@
 #include <NetBIOS.h>
 #include <Preferences.h>
 #include <vector>
+#include <algorithm>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "swd.h"
