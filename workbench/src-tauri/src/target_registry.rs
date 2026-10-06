@@ -130,6 +130,35 @@ mod tests {
     use super::*;
     const FIRST: &str = "001300155231501920323239";
     const SECOND: &str = "001300155231501920323240";
+    fn sample() -> FlashAnalysis { FlashAnalysis { total_bytes: 524288, programmed_bytes: 4096, free_bytes: 520192, duration_ms: 2500, analyzed_at: 0 } }
+    #[test]
+    fn analysis_survives_restart_rename_and_another_card() {
+        let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("targets.json");
+        save_analysis(&path, FIRST, "STM32F446", sample()).unwrap();
+        let before = read_registry(&path).unwrap().targets[FIRST].flash_analysis.clone().unwrap();
+        assert!(before.analyzed_at > 0);
+        save_record(&path, FIRST, "Telemetri", "STM32F446", true).unwrap();
+        save_analysis(&path, SECOND, "STM32F446", sample()).unwrap();
+        let records = read_registry(&path).unwrap().targets;
+        assert_eq!(records[FIRST].flash_analysis.as_ref().unwrap().analyzed_at, before.analyzed_at);
+        assert_eq!(records[FIRST].label, "Telemetri");
+        assert_eq!(records[SECOND].label, "");
+        assert!(records[SECOND].flash_analysis.is_some());
+    }
+    #[test]
+    fn failed_analysis_keeps_last_record_and_legacy_files_load() {
+        let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("targets.json");
+        save_record(&path, FIRST, "Kart", "STM32F446", true).unwrap();
+        let mut legacy: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        legacy["targets"][FIRST].as_object_mut().unwrap().remove("flashAnalysis");
+        fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert!(read_registry(&path).unwrap().targets[FIRST].flash_analysis.is_none());
+        save_analysis(&path, FIRST, "STM32F446", sample()).unwrap();
+        let before = fs::read(&path).unwrap();
+        let mut invalid = sample(); invalid.free_bytes = 0;
+        assert!(save_analysis(&path, FIRST, "STM32F446", invalid).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
     #[test]
     fn names_survive_reopen_and_are_keyed_by_uid_not_model() {
         let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("targets.json");

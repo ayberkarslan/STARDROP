@@ -206,7 +206,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     <div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div>
     <div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div>
     <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
-    {target?.flashSizeKb > 0 && <div className="detail-row"><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + target.flashSizeKb * 1024 - 1).toString(16).toUpperCase()}</code></div>}
+    {target?.flashSizeKb > 0 && <div className="detail-row"><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + target.flashSizeKb * 1024 - 1).toString(16).toUpperCase().padStart(8, '0')}</code></div>}
     {usage?.durationMs > 0 && <div className="detail-row"><span>Son tarama hızı</span><strong>{kb(usage.totalBytes * 1000 / usage.durationMs)}/sn</strong></div>}
     {target?.recordUpdatedAt && <div className="detail-row"><span>Yerel kayıt güncellendi</span><strong>{recordedDate(target.recordUpdatedAt)}</strong></div>}
     <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>

@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createTargetRegistry, namedTarget, targetUid } from './targetRegistry.js';
+import { createTargetRegistry, namedTarget, targetUid, validateFlashAnalysis } from './targetRegistry.js';
 
 const first = '001300155231501920323239', second = '001300155231501920323240';
 function storage() {
   let records = {};
   return { load: async () => structuredClone(records), save: async ({ uid, label, model, overwrite }) => {
-    if (overwrite || !records[uid]) records[uid] = { uid, label, model };
+    if (overwrite || !records[uid]?.label) records[uid] = { ...records[uid], uid, label, model };
+    return structuredClone(records);
+  }, saveAnalysis: async ({ uid, model, analysis }) => {
+    records[uid] = { uid, label: '', model, ...records[uid], flashAnalysis: { ...analysis, analyzedAt: 1700000000000 } };
     return structuredClone(records);
   } };
 }
@@ -23,6 +26,24 @@ test('UID identity survives unplug, fresh ESP labels and registry reload', async
   let reloaded;
   await createTargetRegistry({ ...disk, onChange: next => { reloaded = next; } }).ready;
   assert.equal(namedTarget({ connected: true, uid: first }, reloaded).label, 'Telemetri');
+});
+
+test('last analysis survives names, reload and other cards without masking firmware names', async () => {
+  const disk = storage(); let records;
+  const registry = createTargetRegistry({ ...disk, onChange: next => { records = next; } });
+  const analysis = { totalBytes: 524288, programmedBytes: 4096, freeBytes: 520192, durationMs: 2500 };
+  await registry.saveAnalysis(first, 'STM32F446', analysis);
+  assert.equal(namedTarget({ connected: true, uid: first, label: 'ESP adı' }, records).label, 'ESP adı');
+  await registry.save(first, 'Kart');
+  await registry.saveAnalysis(second, 'STM32F446', { ...analysis, programmedBytes: 0, freeBytes: 524288 });
+  let restored;
+  await createTargetRegistry({ ...disk, onChange: next => { restored = next; } }).ready;
+  assert.equal(restored[first].flashAnalysis.programmedBytes, 4096);
+  assert.equal(restored[first].label, 'Kart');
+  assert.equal(restored[second].flashAnalysis.programmedBytes, 0);
+  await assert.rejects(registry.saveAnalysis(first, '', { ...analysis, freeBytes: 0 }));
+  assert.equal(records[first].flashAnalysis.programmedBytes, 4096);
+  assert.throws(() => validateFlashAnalysis({ ...analysis, totalBytes: NaN }));
 });
 
 test('late initialization and concurrent writes retain both names', async () => {

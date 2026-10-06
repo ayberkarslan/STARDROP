@@ -24,6 +24,14 @@ alınır. Ad değiştirmek ESP'ye veya STM flashına yazmaz. Kayıt atomik dosya
 değişimiyle yapılır; bozuk kayıt sessizce boş veriyle ezilmez. Bu şimdilik
 dosya tabanlı yerel kayıttır, bulut/ekip senkronizasyonu değildir.
 
+Son başarılı flash analizi de aynı UID kaydında tarih, dolu/boş bayt ve tarama
+süresiyle saklanır. Cihazlar ve Hızlı Yükleme hedef paneli bu kaydı paylaşır.
+Yükleme/silme eski ölçümü güncel yapmaz: panel bunu geçmiş yerel analiz olarak
+gösterir ve yeniden taramayı önerir. Başarısız/yarım tarama eski sonucu ezmez;
+taramanın başında ve sonunda canlı UID doğrulanır. İsimsiz kartların analizi
+de saklanır; sonradan ad vermek sonucu silmez. Kayıt zamanı bilgisayarın
+saatinden alınır. Test: `tools/flash-record-smoke.mjs` (donanım simülasyonu).
+
 Yeni ESP firmware'i `statusEventsAvailable` özelliğiyle UDP 4210 üzerinden
 bağlantı değişikliklerini bildirir. Masaüstü uygulaması dinler; bağlıyken
 periyodik HTTP/SWD hedef sorgusu göndermez. ESP, yalnız izleyici varken ve
