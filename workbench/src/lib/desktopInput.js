@@ -12,7 +12,9 @@ export function installDesktopInput(window) {
     const keyboardControl = event.target?.closest?.(
       'input,textarea,select,[contenteditable="true"],[role="dialog"],[role="combobox"],[role="listbox"]'
     );
-    if (inspect || (key === 'tab' && !keyboardControl)) event.preventDefault();
+    const editable = event.target?.closest?.('input,textarea,[contenteditable="true"]');
+    const selectPage = key === 'a' && (event.ctrlKey || event.metaKey) && !editable;
+    if (inspect || selectPage || (key === 'tab' && !keyboardControl)) event.preventDefault();
   };
   document.addEventListener('contextmenu', contextMenu, true);
   document.addEventListener('keydown', keyDown, true);

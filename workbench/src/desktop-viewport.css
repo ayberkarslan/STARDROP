@@ -17,3 +17,6 @@ body{position:fixed;inset:0}
 .workspace-empty{min-height:0;overflow:auto;overscroll-behavior:none;place-items:safe center}
 .welcome-content{max-height:100%;min-height:0;overflow:auto;overscroll-behavior:none}
 .select-options,.notification-history,.flash-terminal,.wizard-terminal,.log,.ui-popup,.drawer-body,.network-scan{overscroll-behavior:none}
+/* Interface labels behave like desktop controls, not selectable page text. */
+#root,#root *{-webkit-user-select:none;user-select:none}
+#root input,#root textarea,#root [contenteditable="true"],#root [contenteditable="true"] *{-webkit-user-select:text;user-select:text}
