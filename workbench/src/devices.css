@@ -1,4 +1,6 @@
 .devices-workspace{max-width:1380px;padding-top:28px}
+.flash-record-meta{display:grid;gap:7px;margin-top:14px;padding-top:12px;border-top:1px solid #292929;font-size:10px;line-height:1.8;color:#eee}
+.flash-record-meta small{color:#bcbcbc}
 .device-page-heading h2{font-size:21px;font-weight:400;margin:0}
 .device-route{display:flex;align-items:center;justify-content:center;gap:18px;margin:26px 0 30px;font-size:11px;color:#eee}
 .device-route-line{display:flex;align-items:center;gap:12px;font-size:9px;letter-spacing:.1em;color:#aaa}

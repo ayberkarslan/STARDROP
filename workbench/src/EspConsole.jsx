@@ -7,8 +7,10 @@ import espModuleImage from './assets/esp32-s3.png';
 import stmModuleImage from './assets/stm32.png';
 import WiringGuide from './WiringGuide.jsx';
 import FlashProgress from './FlashProgress.jsx';
+import { targetUid, validateFlashAnalysis } from './lib/targetRegistry.js';
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+const recordedDate = value => value ? new Date(value).toLocaleString('tr-TR') : '—';
 const speedOptions = [
   { value: 'auto', title: 'AUTO', detail: 'Önerilen · gerektiğinde yavaşlar' },
   { value: 'turbo', title: 'TURBO', detail: 'En hızlı · sağlam kısa hat' },
@@ -16,7 +18,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId }) {
+export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId }) {
   const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [wiringOpen, setWiringOpen] = useState(false);
@@ -67,8 +69,8 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     if (esp?.programmer) setProgrammer(esp.programmer);
     if (esp?.wifi) setWifi(esp.wifi);
   }, [esp?.programmer, esp?.wifi]);
-  useEffect(() => { setLabel(target?.label || ''); setUsage(null); setUsageError(''); }, [target?.uid, target?.label, base]);
-  useEffect(() => { if (flashBusy) { setUsage(null); setUsageError(''); } }, [flashBusy]);
+  useEffect(() => { setLabel(target?.label || ''); }, [target?.uid, target?.label]);
+  useEffect(() => { setUsage(target?.flashAnalysis || null); setUsageError(''); }, [target?.uid, target?.flashAnalysis, base]);
   useEffect(() => { if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight; }, [flashLog]);
 
   const action = async (path, payload, success) => {
@@ -102,12 +104,19 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
   };
 
   const readUsage = () => {
+    const snapshot = { ...target };
+    const uid = targetUid(snapshot.uid);
+    if (!snapshot.connected || !uid) { setNotice('Flash analizi için geçerli UID okunmalı.'); return; }
     let lease;
     try { lease = hardware.acquire(documentId, 'Flash analizi'); }
     catch (error) { setNotice(error.message); return; }
-    setUsage(null); setUsageError(''); setUsageProgress(0); setUsageRemaining(null);
+    setUsageError(''); setUsageProgress(0); setUsageRemaining(null);
     const startedAt = performance.now();
-    espStream(base, '/stream-target-flash-usage', (event) => {
+    const verifyTarget = async () => {
+      const live = await espJson(base, '/api/target/status');
+      if (!live.connected || targetUid(live.uid) !== uid) throw new Error('Hedef değişti; analiz bu karta kaydedilmedi.');
+    };
+    verifyTarget().then(() => espStream(base, '/stream-target-flash-usage', (event) => {
       if (Number.isFinite(event.pct)) {
         setUsageProgress(event.pct);
         if (event.pct > 2 && event.pct < 100) {
@@ -115,7 +124,21 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
           setUsageRemaining(Math.max(0, Math.round(elapsed * (100 - event.pct) / event.pct)));
         }
       }
-    }, 120000).then(setUsage).catch((error) => {
+    }, 120000)).then(async result => {
+      await verifyTarget();
+      const analysis = { ...validateFlashAnalysis(result), analyzedAt: Date.now(), unsaved: true };
+      setUsage(analysis);
+      if (saveTargetAnalysis) {
+        try {
+          const saved = await saveTargetAnalysis(snapshot, analysis);
+          setUsage(saved);
+          setNotice('Flash analizi UID ile bu bilgisayarda kaydedildi.');
+        } catch (error) {
+          setUsageError(`Analiz tamamlandı ama yerel kayıt yazılamadı: ${String(error)}`);
+          setNotice(`Flash analizi kaydedilemedi: ${String(error)}`);
+        }
+      }
+    }).catch((error) => {
       setUsageError(`Flash analizi başarısız: ${error.message}`);
       setNotice(`Flash okunamadı: ${error.message}`);
     }).finally(() => { setUsageProgress(null); setUsageRemaining(null); hardware.release(lease); });
@@ -150,7 +173,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
           await espJson(base, '/api/target/maintenance', { method: 'POST', timeoutMs: 120000, body: { operation, uid } });
         }
       });
-      setUsage(null);
+      // Keep the historical analysis; it is explicitly labelled as a past reading.
       if (operation !== 'erase') setMaintenance(null);
       setNotice(operation === 'erase' ? 'Flash silindi ve boş olduğu doğrulandı. Yeni kod yükle.' : operation === 'esp-reset' ? 'ESP32 yeniden başlatılıyor; ağ bağlantısının dönmesini bekle.' : 'STM32 yeniden başlatıldı.');
       if (operation !== 'esp-reset') await refreshTarget().catch(error => setNotice(`Bakım tamamlandı; hedef bilgisi yenilenemedi: ${error.message}`));
@@ -177,11 +200,15 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       </div>
       {usageProgress !== null && <div className="target-analysis-progress"><div className="flash-feedback-top"><span>{usageRemaining === null ? 'SWD FLASH OKUNUYOR...' : `FLASH TARANIYOR · ~${usageRemaining} SN KALDI`}</span><strong>{usageProgress}%</strong></div><div className="progress"><i style={{ width: `${usageProgress}%` }}/></div></div>}
       <p className="flash-analysis-note">Analiz tüm flash’ı SWD üzerinden yalnızca okur. “Programlanmış” bayt, değeri FF olmayan fiziksel flash baytıdır.</p>
+      {usage?.analyzedAt && <div className="flash-record-meta"><time dateTime={new Date(usage.analyzedAt).toISOString()}>Son analiz · {recordedDate(usage.analyzedAt)}</time><small>{usage.unsaved ? 'Bu oturum · yerel kayıt yapılmadı.' : 'Yerel kayıt · canlı ölçüm değil. Yükleme veya silme sonrası yeniden analiz et.'}</small></div>}
     </div>
     <div className="detail-row"><span>UID</span><code>{target?.uid || '—'}</code></div>
     <div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div>
     <div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div>
     <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
+    {target?.flashSizeKb > 0 && <div className="detail-row"><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + target.flashSizeKb * 1024 - 1).toString(16).toUpperCase()}</code></div>}
+    {usage?.durationMs > 0 && <div className="detail-row"><span>Son tarama hızı</span><strong>{kb(usage.totalBytes * 1000 / usage.durationMs)}/sn</strong></div>}
+    {target?.recordUpdatedAt && <div className="detail-row"><span>Yerel kayıt güncellendi</span><strong>{recordedDate(target.recordUpdatedAt)}</strong></div>}
     <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>
   </div>;
 
