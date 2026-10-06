@@ -55,6 +55,10 @@ try {
   assert.equal(await page.locator('.device-login-card:visible').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   await page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' }).waitFor({ timeout: 15000 });
   const manualChoice = page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' });
+  const workspaceSky = page.locator('.workspace-panel:visible .workspace-stars');
+  assert.equal(await workspaceSky.locator('circle').count(), 70);
+  assert.equal(await workspaceSky.evaluate(el => getComputedStyle(el).opacity), '0.38');
+  assert.equal(await workspaceSky.evaluate(el => getComputedStyle(el).pointerEvents), 'none');
   assert.equal(await manualChoice.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   await manualChoice.hover();
   assert.equal(await manualChoice.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
@@ -88,10 +92,12 @@ try {
   await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).fill('1');
   assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).evaluate(el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))), true);
   await page.getByRole('spinbutton', { name: 'Sönük kalma süresi (s)', exact: true }).fill('2');
+  assert.equal(await page.locator('.workspace-panel:visible .wizard-fields').first().evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).inputValue(), '1');
   assert.equal(await page.getByRole('spinbutton', { name: 'Sönük kalma süresi (s)', exact: true }).inputValue(), '2');
   await page.locator('[data-rail-tool="devices"]:visible').click();
   await page.getByRole('heading', { name: 'Cihazlar', exact: true }).waitFor();
+  assert.equal(await page.locator('.workspace-panel:visible .workspace-stars circle').count(), 70);
   await page.locator('.device-maintenance summary').click();
   assert.equal(await page.getByRole('button', { name: 'Flash’ı sil', exact: true }).isEnabled(), false);
   assert.deepEqual(errors, []);
