@@ -1,0 +1,3 @@
+.welcome-screen{position:relative;isolation:isolate}
+.welcome-stars{position:absolute;inset:0 0 auto;width:100%;height:min(46%,440px);pointer-events:none;user-select:none;z-index:-1}
+.welcome-sidebar,.welcome-content{position:relative}

@@ -9,6 +9,7 @@ import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
 import NotificationCenter, { useNoticeHistory } from './NotificationCenter.jsx';
 import WorkspaceTabs, { useWorkspaceTabs } from './WorkspaceTabs.jsx';
+import WelcomeStars from './WelcomeStars.jsx';
 import { workspaceLabels } from './lib/workspaceTabs.js';
 import { validateBoardProfile } from './lib/boardProfile.js';
 import { libraryReadme, makeLibraryEntry, validateLibraryEntry } from './lib/testLibrary.js';
@@ -565,7 +566,7 @@ export default function App() {
     onGithub={() => { if (githubUser) { setSession('github'); setMode('workbench'); } else startGithubLogin(); }}
     onGuest={() => { setSession('guest'); guestWorkspace.open('flash'); }}
     error={githubLoginError} preparing={githubLoginBusy && !deviceLogin}/>;
-  const welcomeView = <div className="welcome-screen"><aside className="welcome-sidebar">
+  const welcomeView = <div className="welcome-screen"><WelcomeStars /><aside className="welcome-sidebar">
     <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
     <div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div>
     </aside><main className="welcome-content">{startContent}</main></div>;
