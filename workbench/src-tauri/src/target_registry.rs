@@ -60,7 +60,7 @@ fn read_registry(path: &Path) -> Result<Registry, String> {
 fn validate_registry(registry: &Registry) -> Result<(), String> {
     if registry.version != 1 || registry.targets.len() > 10000 { return Err("Kart kayıt sürümü veya kapasitesi desteklenmiyor.".into()); }
     for (uid, record) in &registry.targets {
-        if normalize_uid(uid)? != *uid || record.uid != *uid || (record.label.trim().is_empty() && record.flash_analysis.is_none()) || record.label.chars().count() > 32 || record.label.chars().any(char::is_control) {
+        if normalize_uid(uid)? != *uid || record.uid != *uid || (record.label.trim().is_empty() && record.flash_analysis.is_none()) || record.label.chars().count() > 32 || record.label.chars().any(char::is_control) || record.model.len() > 80 || record.model.chars().any(char::is_control) {
             return Err("Kart kaydı geçersiz; mevcut dosya korunuyor.".into());
         }
         if let Some(analysis) = &record.flash_analysis { validate_analysis(analysis)?; }

@@ -13,9 +13,9 @@ export function validateSettings(input = {}) {
   }
   for (const key of ['exportDirectory', 'trustedRepository']) {
     if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > 500 || /[\x00-\x1f]/.test(input[key]))) throw new Error(`Geçersiz ayar: ${key}`);
-    result[key] = input[key] || '';
+    if (input[key] !== undefined) result[key] = input[key];
   }
-  if (result.trustedRepository && !/^[\w.-]+\/[\w.-]+$/.test(result.trustedRepository)) throw new Error('Geçersiz güvenilir depo.');
+  if (result.trustedRepository && !/^[\w][\w.-]*\/[\w][\w.-]*$/.test(result.trustedRepository)) throw new Error('Geçersiz güvenilir depo.');
   return result;
 }
 export function loadSettings() {
@@ -62,16 +62,16 @@ export function parseBackup(text) {
     || Object.keys(data.records).length > 10000) throw new Error('Desteklenen atölye yedeği değil.');
   for (const [uid, record] of Object.entries(data.records)) {
     if (!/^[0-9a-f]{24}$/.test(uid) || /^(0{24}|f{24})$/.test(uid) || record.uid !== uid
-      || typeof record.label !== 'string' || record.label.length > 64 || /[\x00-\x1f]/.test(record.label)
-      || typeof record.model !== 'string' || record.model.length > 80
-      || !Number.isSafeInteger(record.createdAt) || !Number.isSafeInteger(record.updatedAt)) throw new Error('Yedekteki kart kaydı geçersiz.');
+      || typeof record.label !== 'string' || [...record.label].length > 32 || /[\x00-\x1f]/.test(record.label)
+      || typeof record.model !== 'string' || record.model.length > 80 || /[\x00-\x1f]/.test(record.model)
+      || !Number.isSafeInteger(record.createdAt) || record.createdAt < 0 || !Number.isSafeInteger(record.updatedAt) || record.updatedAt < 0) throw new Error('Yedekteki kart kaydı geçersiz.');
     const a = record.flashAnalysis;
     if (a && (!['totalBytes', 'programmedBytes', 'freeBytes', 'durationMs', 'analyzedAt'].every(key => Number.isSafeInteger(a[key]) && a[key] >= 0)
       || a.totalBytes <= 0 || a.totalBytes > 16 * 1024 * 1024 || a.programmedBytes + a.freeBytes !== a.totalBytes)) throw new Error('Yedekteki flash analizi geçersiz.');
     if (!record.label.trim() && !a) throw new Error('Kart kaydı boş.');
   }
   const repo = data.githubConfig;
-  if (!repo || !/^[\w.-]+\/[\w.-]+$/.test(repo.repository) || !/^[\w.-]{1,100}$/.test(repo.ref)) throw new Error('Yedekte depo ayarı geçersiz.');
+  if (!repo || !/^[\w][\w.-]*\/[\w][\w.-]*$/.test(repo.repository) || !/^[\w.-]{1,100}$/.test(repo.ref)) throw new Error('Yedekte depo ayarı geçersiz.');
   const profiles = data.profiles.map(profile => {
     if (profile.schemaVersion !== 1 || typeof profile.name !== 'string' || !profile.name.trim() || profile.name.length > 200
       || !profile.mcu || typeof profile.mcu.part !== 'string' || !Array.isArray(profile.components)
