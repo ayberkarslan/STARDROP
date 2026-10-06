@@ -1,15 +1,23 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { ArrowLeft, Expand, X } from 'lucide-react';
 import Popup from './Popup.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import { ESP_WIRING_PROFILES, WIRING_BOARDS, WIRING_MCUS, guideMcu, wiringRows } from './lib/wiringGuide.js';
+import nucleoPinout from './assets/nucleo-f446re-pinout.png';
 
 export default function WiringGuide({ programmer, online, target, onClose }) {
   const live = online && Number.isInteger(programmer?.swdioPin) && Number.isInteger(programmer?.swclkPin);
   const [espProfile, setEspProfile] = useState(live ? 'live' : 's3');
-  const [board, setBoard] = useState('custom');
+  const [board, setBoard] = useState(String(target?.model || '').startsWith('STM32F401') ? 'custom' : 'nucleo');
   const [mcu, setMcu] = useState(guideMcu(target?.model));
+  const [pinoutFull, setPinoutFull] = useState(false);
   const rows = wiringRows({ programmer, espProfile, board, mcu });
+  if (pinoutFull) return <Popup className="wiring-pinout-preview" ariaLabel="Nucleo F446RE pinout" onClose={onClose}>
+    <div className="wiring-title"><button className="wizard-text-button" onClick={() => setPinoutFull(false)}><ArrowLeft size={16}/>Rehbere dön</button><button className="icon-button" aria-label="Rehberi kapat" onClick={onClose}><X size={18}/></button></div>
+    <h2>Nucleo F446RE · CN7</h2>
+    <div className="wiring-pinout-scroll"><img src={nucleoPinout} alt="Nucleo F446RE pinout: CN7 pin 13 SWDIO PA13, pin 15 SWCLK PA14, pin 19 GND, pin 14 RESET"/></div>
+    <p className="wiring-board-note">SWDIO 13 · SWCLK 15 · GND 19 · NRST 14. Numara, CN7 başlığına aittir; MCU bacağına değil.</p>
+  </Popup>;
   return <Popup className="wiring-guide" ariaLabel="SWD bağlantı rehberi" onClose={onClose}>
     <div className="wiring-title"><div><small>ESP32 → STM32</small><h2>Bağlantı rehberi</h2></div><button className="icon-button" aria-label="Rehberi kapat" onClick={onClose}><X size={18}/></button></div>
     <div className="wiring-selectors">
@@ -24,6 +32,11 @@ export default function WiringGuide({ programmer, online, target, onClose }) {
         <strong role="cell">{row.esp}</strong><span className="wiring-wire" role="cell"><i/>{row.signal}<i/>{row.optional && <small>isteğe bağlı</small>}</span><span role="cell"><strong>{row.stm}</strong><small>{row.location}</small></span>
       </div>)}
     </div>
+    {board === 'nucleo' && <details className="wiring-pinout">
+      <summary>Kart üzerinde göster <span>F446RE pinout</span></summary>
+      <figure><img src={nucleoPinout} alt="Nucleo F446RE kart başlıkları ve işaretli SWDIO, SWCLK bağlantıları" loading="lazy"/><figcaption>CN7: SWDIO 13 · SWCLK 15 · GND 19 · NRST 14</figcaption></figure>
+      <button className="secondary" onClick={() => setPinoutFull(true)}><Expand size={14}/>Büyük göster</button>
+    </details>}
     <div className="wiring-safety"><strong>Önce güç, sonra bağlantı</strong><p>Kabloları güç kapalıyken tak. İki kartı kendi uygun kaynağından besle; GND ortak olsun. Bu rehberde 3V3 veya 5V güç uçlarını birbirine bağlamıyoruz. SWD hatları 3,3 V seviyesinde olmalı.</p></div>
     {board === 'nucleo' && <p className="wiring-board-note">CN2 üzerindeki iki ST-LINK jumper’ını çıkar; iki programlayıcı aynı hattı sürmesin. CN7 numaralarını kart üzerindeki pin 1 işaretinden doğrula; çizim fiziksel başlık sırası değildir. <a href="https://www.st.com/resource/en/user_manual/dm00105823.pdf" target="_blank" rel="noreferrer">ST · UM1724, tablo 29</a></p>}
     {board === 'blackpill' && <p className="wiring-board-note">Klonlarda başlık yönü değişebilir. DIO / IO ve CLK baskılarını kontrol et; çizimdeki sıra fiziksel başlık sırası değildir. NRST için karttaki reset noktasını kullan.</p>}

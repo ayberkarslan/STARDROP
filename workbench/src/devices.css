@@ -59,4 +59,14 @@
 .wiring-safety>strong{font-size:11px;font-weight:400}.wiring-safety>p{font-size:10px;margin-bottom:0}
 .wiring-troubleshooting{border-top:1px solid #222;padding-top:16px;margin-top:20px;font-size:11px}
 .wiring-troubleshooting summary{cursor:pointer;color:#eee}.wiring-troubleshooting p{font-size:10px}
+.wiring-pinout{border-bottom:1px solid #222;margin:0 0 20px;padding:0 0 18px}
+.wiring-pinout summary{cursor:pointer;font-size:11px;color:#eee;line-height:1.7}
+.wiring-pinout summary>span{font-size:9px;color:#bcbcbc;margin-left:12px}
+.wiring-pinout figure{margin:20px 0 12px}.wiring-pinout img{display:block;width:100%;height:auto;background:#000}
+.wiring-pinout figcaption{font-size:10px;color:#ddd;line-height:1.8;margin-top:14px}
+.wiring-pinout .secondary{font-size:10px}
+.ui-popup-backdrop .wiring-pinout-preview{width:min(1100px,100%);background:#000}
+.wiring-pinout-preview h2{margin-top:24px}
+.wiring-pinout-scroll{overflow:auto;max-height:65vh;overscroll-behavior:contain;background:#000}
+.wiring-pinout-scroll img{display:block;width:100%;min-width:800px;height:auto}
 @media(max-width:700px){.wiring-selectors{grid-template-columns:1fr}.wiring-selectors>label:last-child:nth-child(3){grid-column:auto}.wiring-map-heading,.wiring-row{grid-template-columns:minmax(0,1fr) 76px minmax(0,1.4fr);gap:8px}.wiring-row{font-size:10px}.ui-popup-backdrop .wiring-guide{padding:20px}}
