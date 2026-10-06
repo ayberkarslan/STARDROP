@@ -576,6 +576,9 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
         ("SPI", "SPI1" | "SPI2" | "SPI3") => header.push_str(&format!("#define STARDROP_SPI_BUS_NUMBER {}\n", &bus[3..])),
         _ => {}
     }
+    if protocol == "I2C" && !matches!(bus, "I2C1" | "I2C2" | "I2C3") && !bus.starts_with("SOFT_I2C_") {
+        return Err("I2C bağlantı türü eksik veya geçersiz".into());
+    }
     let mut roles = std::collections::HashSet::new();
     let mut pins = std::collections::HashSet::new();
     let mut count = 0;
@@ -587,6 +590,22 @@ fn role_pin_header(profile_json: &str, component_ref: &str) -> Result<String, St
             return Err("Tekrarlı veya bilinmeyen pin rolü".into());
         }
         let pin = connection["mcuPin"].as_str().ok_or("MCU pini eksik")?;
+        if protocol == "I2C" && matches!(role, "SCL" | "SDA") {
+            if connection["peripheral"].as_str() != Some(bus) {
+                return Err("SCL ve SDA aynı I2C hattında olmalı".into());
+            }
+            let supported = match (bus, role) {
+                ("I2C1", "SCL") => matches!(pin, "PB6" | "PB8"),
+                ("I2C1", "SDA") => matches!(pin, "PB7" | "PB9"),
+                ("I2C2", "SCL") => pin == "PB10",
+                ("I2C2", "SDA") => pin == "PB11",
+                ("I2C3", "SCL") => pin == "PA8",
+                ("I2C3", "SDA") => pin == "PC9",
+                (value, _) if value.starts_with("SOFT_I2C_") => true,
+                _ => false,
+            };
+            if !supported { return Err("Seçilen pin donanımsal I2C rolünü desteklemiyor; uygun AF pini veya yazılımsal I2C seç".into()); }
+        }
         if !pins.insert(pin) { return Err("İki rol aynı MCU pinine atanmış".into()); }
         let bytes = pin.as_bytes();
         if bytes.len() < 3 || bytes.len() > 4 || bytes[0] != b'P' || !matches!(bytes[1], b'A' | b'B' | b'C' | b'D') { return Err("MCU pini geçersiz".into()); }
@@ -621,11 +640,14 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
     } else { return Err("HAL derleyicisi bu MCU için hazır değil".into()); };
     let project = project.canonicalize().map_err(|_| "Test proje klasörü bulunamadı")?;
     let repo_root = repo_root.canonicalize().map_err(|_| "Test deposu bulunamadı")?;
-    for required in ["stardrop-project.json", "Src/main.c", "Inc/main.h", "Inc/pin_configurations.h"] {
+    for required in ["stardrop-project.json", "Inc/main.h", "Inc/pin_configurations.h"] {
         if !project.join(required).is_file() { return Err(format!("Test projesinde {required} eksik")); }
     }
     let manifest: ProjectManifest = serde_json::from_slice(&fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?)
         .map_err(|error| format!("Proje manifesti geçersiz: {error}"))?;
+    if !manifest.sources.iter().any(|source| matches!(source.as_str(), "Src/main.c" | "Src/main.cpp")) {
+        return Err("Proje manifestinde main.c veya main.cpp eksik".into());
+    }
     let profile: serde_json::Value = serde_json::from_str(&request.profile_json).map_err(|_| "Profil geçersiz")?;
     let is_led = profile["components"].as_array().map(|items| items.iter().any(|component|
         component["ref"] == request.component_ref && component["part"] == "LED")).unwrap_or(false);
@@ -658,7 +680,13 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
         let mut command = Command::new(gcc);
         command.args(["-c", "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-Og", "-Wall", "-fdata-sections", "-ffunction-sections"]);
         if source.ends_with(".s") { command.args(["-x", "assembler-with-cpp"]); }
-        else if !source.ends_with(".c") { return Err(format!("Desteklenmeyen kaynak uzantısı: {source}")); }
+        else {
+            if source.ends_with(".cpp") {
+                command.args(["-x", "c++", "-std=c++14", "-fno-rtti", "-fno-exceptions", "-fno-threadsafe-statics", "-fno-use-cxa-atexit"]);
+            } else if !source.ends_with(".c") { return Err(format!("Desteklenmeyen kaynak uzantısı: {source}")); }
+            // Quoted includes in Inc/ must not silently use the checked-in defaults.
+            command.arg("-include").arg(work.path().join("pin_configurations.h"));
+        }
         for define in &manifest.defines { command.arg(format!("-D{define}")); }
         command.arg("-I").arg(work.path());
         for include in &manifest.include_dirs { command.arg("-I").arg(manifest_path(&project, &repo_root, include)?); }
@@ -680,8 +708,11 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
     if !converted.status.success() { return Err(format!("BIN oluşturulamadı: {}", String::from_utf8_lossy(&converted.stderr).chars().take(2000).collect::<String>())); }
     let bytes = fs::read(bin).map_err(|error| format!("BIN okunamadı: {error}"))?;
     if bytes.len() < 64 || bytes.len() > maximum { return Err("Derlenen BIN boyutu geçersiz".into()); }
-    let source = [fs::read(project.join("Src/main.c")).map_err(|error| error.to_string())?,
-        fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?].concat();
+    let mut source = fs::read(project.join("stardrop-project.json")).map_err(|error| error.to_string())?;
+    for item in manifest.sources.iter().chain(std::iter::once(&manifest.linker_script)) {
+        source.extend_from_slice(item.as_bytes());
+        source.extend(fs::read(manifest_path(&project, &repo_root, item)?).map_err(|error| error.to_string())?);
+    }
     Ok(LedBuildResult { sha256: digest(&bytes), bytes,
         source_sha: format!("local-{}", &digest(&source)[..12]), profile_hash: hash32(request.profile_json.as_bytes()),
         request_id: request.request_id, header })

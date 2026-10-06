@@ -78,8 +78,8 @@ try {
   assert.ok(Math.abs(brandBounds.y + brandBounds.height / 2 - tabBounds.y - tabBounds.height / 2) < 1);
   await page.locator('[data-rail-tool="library"]:visible').click();
   await page.locator('.library-card').filter({ hasText: 'LED Blink · F446RE' }).waitFor();
-  assert.equal(await page.locator('.library-card').count(), 2);
-  assert.equal(await page.getByText('Kod hazır', { exact: true }).count(), 2);
+  assert.equal(await page.locator('.library-card').count(), 3);
+  assert.equal(await page.getByText('Kod hazır', { exact: true }).count(), 3);
   assert.equal(await page.getByText('Başarılı', { exact: true }).count(), 0);
   await page.locator('.library-card').filter({ hasText: 'LED Blink · F446RE' }).click();
   assert.equal(await page.getByRole('button', { name: 'Geri', exact: true }).count(), 1);
