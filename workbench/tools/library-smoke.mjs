@@ -39,6 +39,9 @@ try {
   const activeMenu = page.locator('[data-rail-tool="workbench"]:visible');
   assert.equal(await activeMenu.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   assert.notEqual(await activeMenu.evaluate(el => getComputedStyle(el).boxShadow), 'none');
+  const brandBounds = await page.locator('.app-shell:visible > .rail .brand strong').boundingBox();
+  const tabBounds = await page.locator('.app-shell:visible .workspace-tabbar').boundingBox();
+  assert.ok(Math.abs(brandBounds.y + brandBounds.height / 2 - tabBounds.y - tabBounds.height / 2) < 1);
   await page.locator('[data-rail-tool="library"]:visible').click();
   await page.locator('.library-card').filter({ hasText: 'LED Blink · F446RE' }).waitFor();
   assert.equal(await page.locator('.library-card').count(), 2);
