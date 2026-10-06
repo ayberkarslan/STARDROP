@@ -135,6 +135,12 @@
 .app-shell .badge.bad{background:#1d0c0b;border-color:#70302c;color:var(--status-red)}
 
 /* Meaningful states retain their own colours. */
+.app-shell .wizard-choices button{background:#000;border-color:#383838}
+.app-shell .wizard-choices button:hover{background:#000;border-color:#888}
+.app-shell .wizard-choices button:focus-visible{outline:1px solid #fff;outline-offset:3px}
+.welcome-actions button,.welcome-actions button:hover{background:#000}
+.welcome-actions button:hover{box-shadow:inset 2px 0 0 #fff}
+.welcome-actions button:focus-visible{outline:1px solid #fff;outline-offset:3px}
 .app-shell .library-card em.result-pass{color:var(--status-green)}
 .app-shell .library-card em.result-fail{color:var(--status-red)}
 .app-shell .status-dot,.guest-layout .status-dot{background:var(--status-green)}

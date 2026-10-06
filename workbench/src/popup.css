@@ -16,3 +16,4 @@
 .ui-popup-backdrop .device-login-card{display:grid;gap:15px}
 .ui-popup-backdrop .device-login-code{background:#000;border-color:#444;color:#fff}
 .ui-popup-backdrop .device-login-actions .welcome-guest{background:#000;color:#ddd;border-color:#444}
+.ui-popup-backdrop .discovered-list{padding-top:18px}
