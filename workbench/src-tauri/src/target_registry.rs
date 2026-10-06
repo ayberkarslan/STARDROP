@@ -71,11 +71,14 @@ fn validate_registry(registry: &Registry) -> Result<(), String> {
 #[tauri::command]
 pub fn target_registry_import(app: tauri::AppHandle, records: BTreeMap<String, TargetRecord>) -> Result<BTreeMap<String, TargetRecord>, String> {
     let _lock = REGISTRY_LOCK.lock().map_err(|error| error.to_string())?;
-    let incoming = Registry { version: 1, targets: records }; validate_registry(&incoming)?;
     let path = app.path().app_data_dir().map_err(|error| error.to_string())?.join("targets.json");
-    let mut registry = read_registry(&path)?;
+    import_records(&path, records)
+}
+fn import_records(path: &Path, records: BTreeMap<String, TargetRecord>) -> Result<BTreeMap<String, TargetRecord>, String> {
+    let incoming = Registry { version: 1, targets: records }; validate_registry(&incoming)?;
+    let mut registry = read_registry(path)?;
     registry.targets.extend(incoming.targets); validate_registry(&registry)?;
-    persist_registry(&path, &registry)?;
+    persist_registry(path, &registry)?;
     Ok(registry.targets)
 }
 
@@ -202,5 +205,19 @@ mod tests {
         fs::write(&path, "broken").unwrap();
         assert!(save_record(&path, FIRST, "Kart", "STM32", true).is_err());
         assert_eq!(fs::read_to_string(path).unwrap(), "broken");
+    }
+    #[test]
+    fn backup_merge_keeps_other_cards_and_rejects_bad_records_before_writing() {
+        let dir = tempfile::tempdir().unwrap(); let path = dir.path().join("targets.json");
+        let mut records = save_record(&path, FIRST, "Birinci", "STM32F446", true).unwrap();
+        save_record(&path, SECOND, "İkinci", "STM32F401", true).unwrap();
+        records.get_mut(FIRST).unwrap().label = "Yeni ad".into();
+        let merged = import_records(&path, records.clone()).unwrap();
+        assert_eq!(merged[FIRST].label, "Yeni ad");
+        assert_eq!(merged[SECOND].label, "İkinci");
+        let before = fs::read(&path).unwrap();
+        records.get_mut(FIRST).unwrap().model = "\n".into();
+        assert!(import_records(&path, records).is_err());
+        assert_eq!(fs::read(path).unwrap(), before);
     }
 }
