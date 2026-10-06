@@ -28,6 +28,9 @@ export default function SettingsPage({ services, account }) {
   const [compiler, setCompiler] = useState(null), [system, setSystem] = useState(null), [cache, setCache] = useState(null);
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [checkedAt, setCheckedAt] = useState(null);
   const [confirmation, setConfirmation] = useState(null), [pendingBackup, setPendingBackup] = useState(null);
+  const [repositoryDraft, setRepositoryDraft] = useState(githubConfig), [directoryDraft, setDirectoryDraft] = useState(preferences.exportDirectory);
+  useEffect(() => { setRepositoryDraft(githubConfig); }, [githubConfig]);
+  useEffect(() => { setDirectoryDraft(preferences.exportDirectory); }, [preferences.exportDirectory]);
   const fileInput = useRef(null), alive = useRef(true), actionBusy = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const matching = sections.filter(s => `${s.title} ${s.hint}`.toLocaleLowerCase('tr').includes(query.toLocaleLowerCase('tr')));
@@ -101,8 +104,11 @@ export default function SettingsPage({ services, account }) {
       </>}
       {selected.id === 'sources' && <>
         <Row title="GitHub hesabı"><button className="secondary" disabled={githubLoginBusy || Boolean(githubUser)} onClick={startGithubLogin}>{githubUser ? `@${githubUser.login}` : 'GİRİŞ YAP'}</button></Row>
-        <Row title="Test deposu"><input aria-label="Test deposu" disabled={Boolean(hardwareBusy) || sourceBusy} value={githubConfig.repository} onChange={e => updateGithubConfig('repository', e.target.value)}/></Row>
-        <Row title="Dal"><input aria-label="Kaynak dalı" disabled={Boolean(hardwareBusy) || sourceBusy} value={githubConfig.ref} onChange={e => updateGithubConfig('ref', e.target.value)}/></Row>
+        <Row title="Test deposu"><input aria-label="Test deposu" disabled={Boolean(hardwareBusy) || sourceBusy} value={repositoryDraft.repository} onChange={e => setRepositoryDraft({ ...repositoryDraft, repository: e.target.value })}/></Row>
+        <Row title="Dal"><input aria-label="Kaynak dalı" disabled={Boolean(hardwareBusy) || sourceBusy} value={repositoryDraft.ref} onChange={e => setRepositoryDraft({ ...repositoryDraft, ref: e.target.value })}/><button className="secondary" disabled={busy || Boolean(hardwareBusy) || sourceBusy || JSON.stringify(repositoryDraft) === JSON.stringify(githubConfig)} onClick={() => task(() => {
+          if (!/^[\w][\w.-]*\/[\w][\w.-]*$/.test(repositoryDraft.repository) || !/^[\w.-]{1,100}$/.test(repositoryDraft.ref)) throw new Error('Depoyu kullanıcı/depo biçiminde ve geçerli dal adıyla gir.');
+          updateGithubConfig(repositoryDraft); setMessage('Kaynak ayarı kaydedildi.');
+        })}>KAYNAĞI KAYDET</button></Row>
         <Row title="Depo anahtarı" description="Okuma: Contents Read. Paylaşım: Contents Read and write."><input aria-label="Depo anahtarı" type="password" autoComplete="off" value={repoToken} placeholder={repoTokenSaved ? 'Anahtar kayıtlı' : 'Fine-grained token'} onChange={e => setRepoToken(e.target.value)}/><button className="secondary" disabled={busy || !repoToken.trim() || Boolean(hardwareBusy)} onClick={() => task(saveRepoAccess)}>KAYDET</button></Row>
         <Row title="Bu bilgisayarda hatırla" description={repoTokenSaved ? repoStorageMode === 'os' ? 'Anahtar güvenli kasada; yeniden açınca kullanılacak.' : 'Anahtar yalnız oturum belleğinde. Kalıcı kasa kullanılamadı veya hatırlama kapalı.' : 'Anahtar hiçbir zaman düz metin dosyaya yazılmaz.'}><input type="checkbox" aria-label="Bu bilgisayarda hatırla" checked={preferences.rememberRepo} disabled={busy || Boolean(hardwareBusy)} onChange={e => task(() => changeRememberRepo(e.target.checked))}/></Row>
         <div className="settings-actions"><button className="secondary" disabled={busy || repoDiagnosticBusy || Boolean(hardwareBusy)} onClick={() => task(runRepoDiagnostic)}>ERİŞİMİ TEST ET</button>{repoTokenSaved && <button className="secondary" disabled={busy || Boolean(hardwareBusy)} onClick={() => setConfirmation('forget')}>ANAHTARI UNUT</button>}</div>
@@ -127,13 +133,16 @@ export default function SettingsPage({ services, account }) {
       {selected.id === 'measure' && <>
         <Row title="Varsayılan okuma aralığı"><Pick title="Varsayılan okuma aralığı" value={preferences.intervalMs} choices={[[250, '250 ms'], [500, '500 ms'], [1000, '1 saniye']]} change={v => updatePreferences({ intervalMs: Number(v) })}/></Row>
         <Row title="Kayıt sınırı" description="Yeni izleme oturumlarında uygulanır."><Pick title="Kayıt sınırı" value={preferences.recordLimit} choices={[[500, '500 örnek'], [1000, '1000 örnek'], [2000, '2000 örnek']]} change={v => updatePreferences({ recordLimit: Number(v) })}/></Row>
-        <Row title="Kayıt klasörü" description={system?.exportDirectory ? `Boş bırakırsan: ${system.exportDirectory}` : 'Boş bırakıldığında uygulamanın exports klasörü kullanılır.'}><input aria-label="Kayıt klasörü" placeholder="Tam klasör yolu" value={preferences.exportDirectory} onChange={e => updatePreferences({ exportDirectory: e.target.value })}/></Row>
+        <Row title="Kayıt klasörü" description={system?.exportDirectory ? `Boş bırakırsan: ${system.exportDirectory}` : 'Boş bırakıldığında uygulamanın exports klasörü kullanılır.'}><input aria-label="Kayıt klasörü" placeholder="Tam klasör yolu" value={directoryDraft} onChange={e => setDirectoryDraft(e.target.value)}/><button className="secondary" disabled={busy || directoryDraft === preferences.exportDirectory} onClick={() => task(() => {
+          if (directoryDraft && !/^(\/|[a-zA-Z]:[\\/]|\\\\)/.test(directoryDraft)) throw new Error('Tam klasör yolu gir; örneğin /home/... veya C:\\...');
+          updatePreferences({ exportDirectory: directoryDraft }); setMessage('Kayıt klasörü kaydedildi.');
+        })}>KAYDET</button></Row>
         <Row title="Sıcaklık birimi" description="Yalnız ekran değişir; CSV ham değeri ve birimi korur."><Pick title="Sıcaklık birimi" value={preferences.temperatureUnit} choices={['C', 'F'].map(v => [v, `°${v}`])} change={v => updatePreferences({ temperatureUnit: v })}/></Row>
         <Row title="Basınç birimi"><Pick title="Basınç birimi" value={preferences.pressureUnit} choices={['Pa', 'hPa', 'kPa'].map(v => [v, v])} change={v => updatePreferences({ pressureUnit: v })}/></Row>
       </>}
       {selected.id === 'security' && <>
         <Row title="Güvenilir test deposu" description="Başka depodan kod yüklemek için önce burada güvenilir olarak seç."><span>{preferences.trustedRepository || 'Seçilmedi'}</span><button className="secondary" disabled={Boolean(hardwareBusy) || preferences.trustedRepository === githubConfig.repository} onClick={() => setConfirmation('trust')}>BU DEPOYA GÜVEN</button></Row>
-        {['Flash öncesi hedef UID kontrolü', 'Yazılım değiştirmeden önce onay', 'İndirilen kaynak bütünlüğü kontrolü', 'Telemetride ABI, CRC ve çalıştırma doğrulaması'].map(title => <Row key={title} title={title} description="Güvenlik kontrolü kapatılamaz."><ShieldCheck size={17}/> Zorunlu</Row>)}
+        {['Flash öncesi hedef UID kontrolü', 'Flash silmeden önce onay', 'İndirilen kaynak bütünlüğü kontrolü', 'Telemetride ABI, CRC ve çalıştırma doğrulaması'].map(title => <Row key={title} title={title} description="Güvenlik kontrolü kapatılamaz."><ShieldCheck size={17}/> Zorunlu</Row>)}
         <Row title="Depo anahtarının saklanması"><span>{repoTokenSaved ? repoStorageMode === 'os' ? 'Kalıcı güvenli kasa' : 'Oturum belleği' : 'Anahtar yok'}</span></Row>
         <p className="settings-note">GitHub’dan çıkış, hatırlanan depo anahtarını silmez. Paylaşılan bilgisayarda “Anahtarı unut” kullan.</p>
       </>}

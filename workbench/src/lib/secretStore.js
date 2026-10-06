@@ -18,8 +18,8 @@ export async function loadSecret(key) {
   return value === undefined ? (volatileSecrets.get(key) || null) : value;
 }
 
-export async function deleteSecret(key) {
-  const deleted = await tauriInvoke('delete_secret', { key });
+export async function deleteSecret(key, forgetPersistent = false) {
+  const deleted = await tauriInvoke('delete_secret', { key, forgetPersistent });
   if (deleted === undefined) volatileSecrets.delete(key);
 }
 

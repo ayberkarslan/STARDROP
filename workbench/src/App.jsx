@@ -334,7 +334,7 @@ export default function App() {
   });
 
   const updateGithubConfig = (field, value) => setGithubConfig((current) => {
-    const next = { ...current, [field]: value };
+    const next = { ...current, ...(typeof field === 'object' ? field : { [field]: value }) };
     localStorage.setItem('stardrop.code.config', JSON.stringify(next));
     return next;
   });
@@ -354,7 +354,7 @@ export default function App() {
     } catch (error) { setNotice(`Depo anahtarı kaydedilemedi: ${error.message}`); }
   };
   const removeRepoAccess = async () => {
-    try { await deleteSecret('github_repo_token'); setRepoTokenSaved(false); setRepoDiagnostic(null); setRepoCredentialRevision((value) => value + 1); setNotice('Depo erişim anahtarı silindi.'); }
+    try { await deleteSecret('github_repo_token', repoTokenSaved && repoStorageMode === 'os'); setRepoTokenSaved(false); setRepoToken(''); setRepoDiagnostic(null); setRepoCredentialRevision((value) => value + 1); setNotice('Depo erişim anahtarı silindi.'); }
     catch (error) { setNotice(`Anahtar silinemedi: ${error.message}`); }
   };
 

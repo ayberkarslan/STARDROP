@@ -375,15 +375,16 @@ fn load_secret(key: String) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn delete_secret(key: String) -> Result<(), String> {
+fn delete_secret(key: String, forget_persistent: Option<bool>) -> Result<(), String> {
     let memory = memory_secret(&key)?.is_some();
     match entry_for(&key) {
         Ok(entry) => match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => {},
-            Err(_) if memory => {},
+            Err(_) if memory && !forget_persistent.unwrap_or(false) => {},
+            Err(keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_)) if !forget_persistent.unwrap_or(false) => {},
             Err(error) => return Err(error.to_string()),
         },
-        Err(_) if memory => {},
+        Err(_) if !forget_persistent.unwrap_or(false) => {},
         Err(error) => return Err(error),
     };
     volatile_secrets().lock().map_err(|error| error.to_string())?.remove(&key); Ok(())
