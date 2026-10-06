@@ -3,6 +3,7 @@ import { ChevronRight, Cpu, FileUp, RefreshCw, Settings, X } from 'lucide-react'
 import { normalizeEspAddress } from './lib/espConnection.js';
 import { espJson, espStream } from './lib/espTransport.js';
 import Popup from './Popup.jsx';
+import espModuleImage from './assets/esp32-s3.png';
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 const speedOptions = [
@@ -192,8 +193,11 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
 
   if (devicesOnly) return <div className="workspace devices-workspace">
     <div className="device-page-heading"><h2>Cihazlar</h2><button className="secondary" disabled={deviceBusy || busy} onClick={() => { loadSettings(); refreshTarget(); }}><RefreshCw size={15}/>Yenile</button></div>
-    <div className="device-chain"><section><small>PROGRAMLAYICI</small><h3>ESP32</h3><span>{esp?.status === 'online' ? 'Bağlı' : 'Çevrimdışı'}</span><code>{base || 'Adres bekleniyor'}</code></section><span className="device-chain-link">SWD →</span><section><small>HEDEF</small><h3>{target?.label || target?.model || 'STM32 bekleniyor'}</h3><span>{target?.connected ? target.model : 'Bağlı değil'}</span><code>{target?.uid || 'UID bekleniyor'}</code></section></div>
-    <div className="device-columns"><section className="device-section"><h3>ESP32</h3>
+    <div className="device-route" aria-label="Bilgisayar Wi-Fi üzerinden ESP32’ye, ESP32 SWD üzerinden STM32’ye bağlanır"><span>Bilgisayar</span><span className="device-route-line">Wi-Fi</span><span>ESP32</span><span className="device-route-line">SWD</span><span>STM32</span></div>
+    <div className="device-columns"><section className="device-section device-programmer" aria-label="ESP32 programlayıcı">
+      <div className="device-card-heading"><div><small>PROGRAMLAYICI</small><h3>ESP32</h3></div><span className={'device-connection-state' + (esp?.status === 'online' ? ' is-connected' : '')}><i/>{esp?.status === 'online' ? 'Bağlı' : 'Çevrimdışı'}</span></div>
+      <div className="device-hero device-esp-hero"><img src={espModuleImage} alt="ESP32-S3 modülü"/><span>{programmer?.chipModel || 'ESP32'}<small>{base || 'Adres bekleniyor'}</small></span></div>
+      <div className="device-card-content">
       <div className="detail-row"><span>Model</span><strong>{programmer?.chipModel || '—'}</strong></div>
       <div className="detail-row"><span>Flash / PSRAM</span><strong>{programmer ? `${kb(programmer.flashBytes || 0)} / ${kb(programmer.psramBytes || 0)}` : '—'}</strong></div>
       <div className="detail-row"><span>Boş heap / CPU</span><strong>{programmer ? `${kb(programmer.freeHeapBytes || 0)} / ${programmer.cpuMhz || '—'} MHz` : '—'}</strong></div>
@@ -202,14 +206,19 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       <div className="detail-row"><span>SWCLK / SWDIO</span><code>{programmer?.swclkPin ?? '—'} / {programmer?.swdioPin ?? '—'}</code></div>
       <div className="detail-row"><span>Reset bağlantısı</span><strong>{programmer ? programmer.resetAvailable ? 'Destekleniyor' : 'Yok' : '—'}</strong></div>
       <div className="detail-row"><span>Son işlem</span><strong>{programmer?.lastResult || '—'}</strong></div>
-      <button className="secondary" onClick={() => setDrawer('settings')}>ESP ayarları</button>
+      <div className="device-action-row"><button className="secondary" onClick={() => setDrawer('settings')}>ESP ayarları</button>
       <button className="secondary" disabled={deviceBusy || busy || !programmer?.maintenanceAvailable} onClick={() => openMaintenance('esp-reset')}>ESP32 yeniden başlat</button>
-    </section><section className="device-section"><h3>STM32</h3>{target?.connected ? renderTargetBody() : <p>ESP32’ye bağlı hedef bulunamadı. SWD bağlantılarını kontrol et.</p>}
+      </div></div>
+    </section><section className="device-section device-target" aria-label="STM32 hedef kart">
+      <div className="device-card-heading"><div><small>HEDEF KART</small><h3>STM32</h3></div><span className={'device-connection-state' + (target?.connected ? ' is-connected' : '')}><i/>{target?.connected ? 'Bağlı' : 'Hedef bekleniyor'}</span></div>
+      <div className="device-hero device-stm-hero"><div className="device-chip-symbol" aria-hidden="true"><Cpu size={68} strokeWidth={1}/></div><span>{target?.label || target?.model || 'Henüz kart bağlı değil'}<small>{target?.label ? target?.model : 'SWD üzerinden hedef bağlantısı'}</small></span></div>
+      <div className="device-card-content">{target?.connected ? renderTargetBody() : <div className="device-target-empty"><Cpu size={24} strokeWidth={1}/><p>Hedef bağlantısı bekleniyor</p><small>SWDIO, SWCLK ve GND bağlantılarını kontrol et.</small></div>}
       <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
         {!programmer?.maintenanceAvailable && <p>Bakım işlemleri için ESP firmware’ini güncelle.</p>}
         <div className="device-action-row">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <button key={operation} className="secondary" disabled={deviceBusy || busy || !target?.connected || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</button>)}</div>
         <small>Kurtarma donanım arızasını, kopuk hattı veya RDP kilidini çözmez. NRST bağlantısı kilitli hedefte gerekebilir.</small>
       </details>
+      </div>
     </section></div>
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel="ESP32 ayarları" onClose={() => setDrawer(null)}><div className="drawer-title"><h2>ESP32 ayarları</h2><button onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>{renderSettingsBody()}</Popup>}
     {maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}>

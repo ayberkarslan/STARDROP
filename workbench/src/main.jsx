@@ -13,5 +13,6 @@ import './workspace-interactions.css';
 import './readable-type.css';
 import './desktop-viewport.css';
 import './library-refined.css';
+import './devices.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><WindowChrome /><App /></React.StrictMode>);
