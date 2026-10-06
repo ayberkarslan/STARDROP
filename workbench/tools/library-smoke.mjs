@@ -109,6 +109,7 @@ try {
   assert.equal(await page.getByRole('spinbutton', { name: 'Yanma süresi (s)', exact: true }).inputValue(), '1');
   assert.equal(await page.getByRole('spinbutton', { name: 'Sönük kalma süresi (s)', exact: true }).inputValue(), '2');
   await page.locator('[data-rail-tool="library"]:visible').click();
+  await page.getByRole('button', { name: 'Geri', exact: true }).click();
   await page.locator('.library-card').filter({ hasText: 'BMP180 · sıcaklık ve basınç' }).click();
   await page.getByRole('button', { name: 'YENİ TESTTE AÇ' }).click();
   await page.getByRole('heading', { name: 'Hangi STM32?' }).waitFor();

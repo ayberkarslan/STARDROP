@@ -44,6 +44,9 @@ yapısıyla isim/birim/değer yayınlayabilir; sensöre özel parser gerekmez.
 Bu klasörü tek başına yükleme: manifest ortak HAL kaynaklarını
 `@repo/tests/led-blink-f446/Drivers` yolundan kullanır. GitHub'a `code-repo`
 içeriğinin tamamını mevcut `stardrop/` klasör yapısında taşı.
+Terminalde derlemek için bu klasörde `make -j4` çalıştır:
+`build/BMP180_F446.bin` ve `.elf` oluşur. Bu işlem karta yükleme yapmaz.
+Host testleri: Workbench klasöründe `npm run test:bmp180`.
 
 Referans: [Bosch BMP180 datasheet](https://cdn-shop.adafruit.com/datasheets/BST-BMP180-DS000-09.pdf),
 [STM32F446 datasheet](https://www.st.com/resource/en/datasheet/DM00141306.pdf).
