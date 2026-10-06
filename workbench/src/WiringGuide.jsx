@@ -37,11 +37,8 @@ export default function WiringGuide({ programmer, online, target, onClose }) {
       <figure><img src={nucleoPinout} alt="Nucleo F446RE kart başlıkları ve işaretli SWDIO, SWCLK bağlantıları" loading="lazy"/><figcaption>CN7: SWDIO 13 · SWCLK 15 · GND 19 · NRST 14</figcaption></figure>
       <button className="secondary" onClick={() => setPinoutFull(true)}><Expand size={14}/>Büyük göster</button>
     </details>}
-    <div className="wiring-safety"><strong>Önce güç, sonra bağlantı</strong><p>Kabloları güç kapalıyken tak. İki kartı kendi uygun kaynağından besle; GND ortak olsun. Bu rehberde 3V3 veya 5V güç uçlarını birbirine bağlamıyoruz. SWD hatları 3,3 V seviyesinde olmalı.</p></div>
-    {board === 'nucleo' && <p className="wiring-board-note">CN2 üzerindeki iki ST-LINK jumper’ını çıkar; iki programlayıcı aynı hattı sürmesin. CN7 numaralarını kart üzerindeki pin 1 işaretinden doğrula; çizim fiziksel başlık sırası değildir. <a href="https://www.st.com/resource/en/user_manual/dm00105823.pdf" target="_blank" rel="noreferrer">ST · UM1724, tablo 29</a></p>}
     {board === 'blackpill' && <p className="wiring-board-note">Klonlarda başlık yönü değişebilir. DIO / IO ve CLK baskılarını kontrol et; çizimdeki sıra fiziksel başlık sırası değildir. NRST için karttaki reset noktasını kullan.</p>}
     {board === 'custom' && <p className="wiring-board-note">Bacak numarası seçili MCU paketine aittir; PCB konektörünün pin numarası değildir. Şemanda PA13, PA14 ve NRST hatlarının çıktığı test noktalarını bul.</p>}
-    {rows[3].available && rows[3].esp === 'GPIO bildirilmedi' && <p className="wiring-board-note">Reset GPIO’su firmware tarafından bildirilmedi. NRST bağlamadan önce platformio.ini içindeki STM32_RST_PIN değerini kontrol et.</p>}
     <details className="wiring-troubleshooting"><summary>Hedef görünmüyorsa</summary><p>Önce ortak GND ve kartın beslemesini kontrol et. IO ile CLK yer değiştirmiş olmasın; kablolar kısa ve temas sağlam olsun. Nucleo’da CN2 jumper’larını çıkar. Gerekirse SAFE hızını seç; kilitli hedefte NRST gerekebilir.</p></details>
   </Popup>;
 }
