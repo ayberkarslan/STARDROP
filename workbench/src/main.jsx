@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import WindowChrome from './WindowChrome.jsx';
+import { installDesktopInput } from './lib/desktopInput.js';
 import './styles.css';
 import './esp-theme.css';
 import './desktop-shell.css';
@@ -15,5 +16,8 @@ import './desktop-viewport.css';
 import './library-refined.css';
 import './devices.css';
 import './flash-station.css';
+
+const removeDesktopInput = installDesktopInput(window);
+if (import.meta.hot) import.meta.hot.dispose(removeDesktopInput);
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><WindowChrome /><App /></React.StrictMode>);
