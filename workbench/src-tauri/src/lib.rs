@@ -10,6 +10,7 @@ mod local_build;
 mod esp_watch;
 mod target_registry;
 mod settings;
+mod elf_watch;
 
 const AUTH_WORKER: &str = "https://stardrop-auth.ayberkarslann0.workers.dev";
 const GITHUB_CLIENT_ID: &str = "Iv23liLOQvO5jpP3xkxR";
@@ -150,6 +151,7 @@ const ESP_GET_PATHS: &[&str] = &[
 const ESP_POST_PATHS: &[&str] = &[
     "/api/wifi/switch", "/api/wifi/add", "/api/wifi/remove",
     "/api/programmer/settings", "/api/programmer/restart", "/api/target/label", "/api/target/maintenance",
+    "/api/watch/verify", "/api/watch/read",
 ];
 
 fn esp_url(base: &str, path: &str) -> Result<reqwest::Url, String> {
@@ -165,7 +167,7 @@ fn esp_url(base: &str, path: &str) -> Result<reqwest::Url, String> {
 #[tauri::command]
 async fn esp_http(base: String, path: String, method: String, body: Option<String>, timeout_ms: Option<u64>) -> Result<String, String> {
     let url = esp_url(&base, &path)?;
-    let maximum_timeout = if path == "/api/target/maintenance" { 180000 } else { 30000 };
+    let maximum_timeout = if path == "/api/target/maintenance" { 180000 } else if path.starts_with("/api/watch/") { 60000 } else { 30000 };
     let client = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms.unwrap_or(10000).clamp(1000, maximum_timeout)))
         .build().map_err(|error| error.to_string())?;
     let request = match method.as_str() {
@@ -537,7 +539,7 @@ async fn github_refresh_login(refresh_token: String) -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_repo_secret, settings::settings_export, settings::settings_system_info, local_build::toolchain_status, local_build::code_cache_info, local_build::code_cache_retire, target_registry::target_registry_import, telemetry_export_csv, save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, esp_watch::esp_watch, esp_watch::esp_watch_stop, target_registry::target_registry_load, target_registry::target_registry_save, target_registry::target_registry_analysis_save, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
+        .invoke_handler(tauri::generate_handler![elf_watch::inspect_watch_elf, save_repo_secret, settings::settings_export, settings::settings_system_info, local_build::toolchain_status, local_build::code_cache_info, local_build::code_cache_retire, target_registry::target_registry_import, telemetry_export_csv, save_secret, load_secret, delete_secret, github_repo_diagnostic, github_browser_login, github_refresh_login, github_device_start, github_device_poll, github_device_refresh, github_device_open, discover_esp, esp_http, esp_upload, esp_stream, esp_watch::esp_watch, esp_watch::esp_watch_stop, target_registry::target_registry_load, target_registry::target_registry_save, target_registry::target_registry_analysis_save, local_build::source_status, local_build::activate_source, local_build::code_repo_status, local_build::activate_code_repo, local_build::compile_code_test, local_build::compile_led, local_build::compile_blackpill_led, local_build::clear_source_cache])
         .run(tauri::generate_context!())
         .expect("STARDROP Workbench başlatılamadı");
 }

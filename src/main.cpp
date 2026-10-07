@@ -13,6 +13,14 @@
 #include "swd.h"
 #include "web_page.h"
 #include "telemetry_protocol.h"
+#include "watch_protocol.h"
+#include "mbedtls/sha256.h"
+
+struct WatchBinding {
+    String uid, hash, session;
+    uint32_t size = 0, verifiedAt = 0, lastRead = 0;
+} watchBinding;
+void invalidateWatch() { watchBinding.session = ""; }
 
 // ==============================================================================
 // 1. AYARLAR VE YAPILANDIRMA
@@ -481,6 +489,7 @@ String flashFailureMessage(FlashAttemptResult result) {
 }
 
 void handleStreamFlash() {
+    invalidateWatch();
     server.setContentLength(CONTENT_LENGTH_UNKNOWN);
     server.send(200, "text/event-stream", "");
     if (firmwareBuffer.empty()) {
@@ -588,6 +597,7 @@ void handleProgrammerStatus() {
     json += "\"maintenanceStreamAvailable\":true,";
     json += "\"statusEventsAvailable\":true,";
     json += "\"telemetryAvailable\":true,\"telemetryAbi\":1,\"telemetryMinIntervalMs\":200,";
+    json += "\"watchAvailable\":true,\"watchVersion\":1,\"watchMaxVariables\":16,";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
     json += "\"psramBytes\":" + String(ESP.getPsramSize()) + ",";
@@ -756,6 +766,7 @@ void maintenanceEraseProgress(uint32_t completed, uint32_t total) {
 }
 
 void handleTargetMaintenance(bool stream = false) {
+    invalidateWatch();
     const String body = server.arg("plain");
     auto field = [&](const char* name) -> String {
         const String marker = String("\"") + name + "\":\"";
@@ -898,6 +909,113 @@ const char* diagnosticStateName(uint32_t state) {
 // Test firmware'i, diagnostics/runtime/stardrop_diagnostic_report.h içindeki
 // 128B ABI'yi SRAM'e yazar. Bu salt-okunur endpoint CPU'yu durdurmadan yalnız
 // SWCLK + SWDIO üzerinden sonucu alır.
+String watchField(const String &body, const char *name) {
+    const String key = "\"" + String(name) + "\":";
+    int start = body.indexOf(key);
+    if (start < 0 || body.indexOf(key, start + key.length()) >= 0) return "";
+    start += key.length();
+    while (start < (int)body.length() && body[start] == ' ') ++start;
+    if (body[start] != '"') return "";
+    const int end = body.indexOf('"', start + 1);
+    return end < 0 ? "" : body.substring(start + 1, end);
+}
+bool watchHex(const String &value, unsigned length) {
+    if (value.length() != length) return false;
+    for (unsigned i = 0; i < length; ++i) if (!((value[i] >= '0' && value[i] <= '9') || (value[i] >= 'a' && value[i] <= 'f'))) return false;
+    return true;
+}
+bool watchFlashMatches() {
+    mbedtls_sha256_context hash;
+    mbedtls_sha256_init(&hash);
+    bool ok = mbedtls_sha256_starts_ret(&hash, 0) == 0;
+    alignas(4) uint8_t block[256];
+    const uint32_t started = millis();
+    for (uint32_t offset = 0; ok && offset < watchBinding.size;) {
+        if (millis() - started > 25000) { ok = false; break; }
+        const unsigned size = std::min<uint32_t>(256, watchBinding.size - offset);
+        ok = swd.readBlock(0x08000000 + offset, block, (size + 3U) & ~3U)
+            && mbedtls_sha256_update_ret(&hash, block, size) == 0;
+        offset += size; delay(0);
+    }
+    uint8_t digest[32];
+    ok = ok && mbedtls_sha256_finish_ret(&hash, digest) == 0;
+    mbedtls_sha256_free(&hash);
+    if (!ok) return false;
+    char hex[65];
+    for (unsigned i = 0; i < 32; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
+    return watchBinding.hash == hex;
+}
+void watchError(const char *reason) {
+    server.send(200, "application/json", "{\"valid\":false,\"reason\":\"" + String(reason) + "\"}");
+}
+void handleWatchVerify() {
+    invalidateWatch();
+    server.sendHeader("Cache-Control", "no-store");
+    const String body = server.arg("plain");
+    const String uid = watchField(body, "uid"), hash = watchField(body, "sha256"), sizeText = watchField(body, "size");
+    uint32_t size = 0; const char *cursor = sizeText.c_str();
+    if (body.length() > 2048 || !watchHex(uid, 24) || !watchHex(hash, 64) || !Watch::decimal(cursor, size) || *cursor || size < 64 || size > 1024 * 1024) { watchError("WATCH_REQUEST_INVALID"); return; }
+    swd.setSpeedProfile(SwdSpeedProfile::FAST); swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
+    TargetProbeInfo target;
+    if (!swd.probe(&target, true)) { watchError("TARGET_OFFLINE"); return; }
+    if (formatTargetUid(target) != uid) { watchError("TARGET_CHANGED"); return; }
+    if (!Watch::ramEnd(target.deviceId) || size > (uint32_t)target.flashSizeKb * 1024) { watchError("WATCH_TARGET_UNSUPPORTED"); return; }
+    watchBinding.uid = uid; watchBinding.hash = hash; watchBinding.size = size;
+    if (!watchFlashMatches()) { watchError("ELF_FIRMWARE_MISMATCH"); return; }
+    TargetProbeInfo confirm;
+    if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { watchError("TARGET_CHANGED"); return; }
+    watchBinding.session = String(esp_random(), HEX) + String(esp_random(), HEX);
+    watchBinding.verifiedAt = millis(); watchBinding.lastRead = 0;
+    server.send(200, "application/json", "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + watchBinding.session + "\",\"sha256\":\"" + hash + "\"}");
+}
+void handleWatchRead() {
+    server.sendHeader("Cache-Control", "no-store");
+    const String body = server.arg("plain");
+    if (body.length() > 2048) { watchError("WATCH_REQUEST_INVALID"); return; }
+    const String uid = watchField(body, "uid"), session = watchField(body, "session"), addresses = watchField(body, "addresses");
+    if (!watchBinding.session.length() || session != watchBinding.session || uid != watchBinding.uid) { watchError("WATCH_SESSION_INVALID"); return; }
+    if (watchBinding.lastRead && millis() - watchBinding.lastRead < 200) { watchError("WATCH_RATE_LIMIT"); return; }
+    watchBinding.lastRead = millis();
+    swd.setSpeedProfile(SwdSpeedProfile::FAST); swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
+    TargetProbeInfo target;
+    if (!swd.probe(&target, true) || formatTargetUid(target) != uid) { invalidateWatch(); watchError("TARGET_CHANGED"); return; }
+    Watch::Address items[Watch::maxVariables]; unsigned count = 0;
+    if (!Watch::addresses(addresses.c_str(), items, count, Watch::ramEnd(target.deviceId))) { watchError("WATCH_ADDRESS_INVALID"); return; }
+    // Periodic full-image verification also detects changes by another programmer.
+    if (millis() - watchBinding.verifiedAt >= 5000) {
+        if (!watchFlashMatches()) { invalidateWatch(); watchError("ELF_FIRMWARE_MISMATCH"); return; }
+        watchBinding.verifiedAt = millis();
+    }
+    String json = "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + session + "\",\"sha256\":\"" + watchBinding.hash + "\",\"values\":[";
+    for (unsigned i = 0; i < count; ++i) {
+        const uint32_t base = items[i].address & ~3U; const unsigned skip = items[i].address & 3U;
+        alignas(4) uint8_t bytes[12], again[12];
+        const unsigned length = (skip + items[i].size + 3U) & ~3U;
+        // Never cross the AP's 1 KB auto-increment boundary, including unaligned values.
+        for (unsigned offset = 0; offset < length; offset += 4) {
+            uint32_t word;
+            if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); watchError("SRAM_READ_FAILED"); return; }
+            memcpy(bytes + offset, &word, 4);
+        }
+        bool stable = true;
+        if (items[i].size == 8) {
+            for (unsigned offset = 0; offset < length; offset += 4) {
+                uint32_t word;
+                if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); watchError("SRAM_READ_FAILED"); return; }
+                memcpy(again + offset, &word, 4);
+            }
+            stable = memcmp(bytes + skip, again + skip, items[i].size) == 0;
+        }
+        char hex[17];
+        for (unsigned byte = 0; byte < items[i].size; ++byte) snprintf(hex + byte * 2, 3, "%02x", bytes[skip + byte]);
+        if (i) json += ',';
+        json += "{\"address\":" + String(items[i].address) + ",\"hex\":\"" + hex + "\",\"stable\":" + String(stable ? "true" : "false") + "}";
+    }
+    TargetProbeInfo confirm;
+    if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { invalidateWatch(); watchError("TARGET_CHANGED"); return; }
+    json += "]}"; server.send(200, "application/json", json);
+}
+
 void handleTelemetry() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Cache-Control", "no-store");
@@ -1204,6 +1322,8 @@ void setup() {
     server.on("/stream-target-flash-usage", HTTP_GET, handleStreamTargetFlashUsage);
     server.on("/api/diagnostic/report", HTTP_GET, handleDiagnosticReport);
     server.on("/api/telemetry", HTTP_GET, handleTelemetry);
+    server.on("/api/watch/verify", HTTP_POST, handleWatchVerify);
+    server.on("/api/watch/read", HTTP_POST, handleWatchRead);
 
     // Captive Portal Rotaları
     server.on("/generate_204", HTTP_GET, handleNotFound);
