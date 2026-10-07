@@ -95,7 +95,8 @@ pub fn inspect(bytes: &[u8]) -> Result<WatchElf, String> {
                 .or(declaration.as_ref().and_then(|d| d.attr_value(gimli::DW_AT_type).ok().flatten()));
             let Some(AttributeValue::UnitRef(offset)) = type_attr else { continue; };
             let Ok((kind, size, type_name)) = scalar(&dwarf, &unit, offset, 0) else { continue; };
-            if address < 0x20000000 || address + size as u64 > 0x20020000 || !symbols.contains_key(&(name.clone(), address)) { continue; }
+            if address < 0x20000000 || address.checked_add(size as u64).is_none_or(|end| end > 0x20020000)
+                || !symbols.get(&(name.clone(), address)).is_some_and(|symbol_size| *symbol_size == size as u64) { continue; }
             variables.insert((name.clone(), address), WatchVariable { name, address: address as u32, size, kind, type_name });
         }
     }

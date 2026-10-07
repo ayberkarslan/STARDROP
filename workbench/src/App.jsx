@@ -65,6 +65,8 @@ function RailTool({ tool, Icon, workspace, drag, onOpen }) {
 }
 
 export default function App() {
+  const [debugArtifacts, setDebugArtifacts] = useState({});
+  const onFirmwareLoaded = (uid, file) => setDebugArtifacts(current => ({ ...current, [uid]: file ? { file } : null }));
   const [preferences, setPreferences] = useState(loadSettings);
   const updatePreferences = updates => {
     try { const next = validateSettings({ ...preferences, ...updates }); localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); setPreferences(next); }
@@ -576,6 +578,7 @@ export default function App() {
     } finally { hardware.release(lease); }
   };
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy, preferences,
+    debugArtifact: debugArtifacts[target?.uid], onFirmwareLoaded,
     openTelemetry: data => workspace.open('monitor', { fresh: true, data }),
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,

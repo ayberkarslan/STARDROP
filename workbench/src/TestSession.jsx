@@ -169,6 +169,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
       }
       setTestStage('ESP32 üzerinden STM32’ye yükleniyor…');
       const file = new File([firmwareBytes], `stardrop-${selectedTest.id}.bin`, { type: 'application/octet-stream' });
+      if (built.elfBytes?.length) file.debugElf = new File([Uint8Array.from(built.elfBytes)], `stardrop-${selectedTest.id}.elf`);
       if (!await flashFirmware(file, lease)) throw new Error('ESP32 flash işlemi başarısız.');
       const hashes = {
         test: hash32FromSha256(await sha256Hex(selectedTest.id)),
@@ -178,6 +179,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
       if (selectedTest.telemetryAbi === 1) setTelemetryContext({ uid: live.uid, model: live.model,
         label: target.label || profile.name, testName: selectedTest.name,
         expected: { testIdHash: hashes.test, profileHash: hashes.profile, runHash: hashes.run } });
+      else if (file.debugElf) setTelemetryContext({ uid: live.uid, model: live.model, label: target.label || profile.name, mode: 'variables' });
       if (selectedTest.result === 'sram') {
         setTestStage('STM32 test raporu okunuyor…');
         const report = await waitForDiagnosticReport(hashes);

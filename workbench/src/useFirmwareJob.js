@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { espJson, espStream, espUpload } from './lib/espTransport.js';
 
-export default function useFirmwareJob({ documentId, hardware, esp, activeBridge, target, refreshTargetAt, setNotice }) {
+export default function useFirmwareJob({ documentId, hardware, esp, activeBridge, target, refreshTargetAt, setNotice, onFirmwareLoaded }) {
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
   const [flashProgress, setFlashProgress] = useState(0);
@@ -35,6 +35,7 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
       await espUpload(base, image);
       appendFlashLog(`Yazılım belleğe alındı. SWD Flash akışı başlıyor... (${selected.name}, ${image.size} bayt)`, 'success');
       stage = 'programming'; setFlashStage(stage);
+      onFirmwareLoaded?.(expectedUid, null);
       await espStream(base, '/stream-flash', (event) => {
         if (event.msg) appendFlashLog(event.msg, event.type || 'info');
         if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
@@ -43,6 +44,7 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
       });
       setFlashStage('done'); setFlashProgress(100);
       appendFlashLog('STM32 başarıyla programlandı ve çalıştırıldı!', 'success');
+      onFirmwareLoaded?.(expectedUid, selected.debugElf || (/\.elf$/i.test(selected.name) ? selected : null));
       await refreshTargetAt(base);
       return true;
     } catch (error) { const detail = error?.message || String(error); setFlashStage('error'); setFlashError({ message: detail, stage }); appendFlashLog(`Hata: ${detail}`, 'error'); setNotice(`Flash başarısız: ${detail}`); return false; }

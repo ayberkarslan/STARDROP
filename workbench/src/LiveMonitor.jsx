@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Activity, Download, Pause, Play, Circle, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import SelectMenu from './SelectMenu.jsx';
+import GlobalWatch from './GlobalWatch.jsx';
 import { espJson } from './lib/espTransport.js';
 import { createTelemetrySession, telemetryCsv } from './lib/telemetry.js';
 import { DEFAULT_SETTINGS, measurement } from './lib/settings.js';
@@ -48,6 +49,7 @@ function Trace({ samples, channel }) {
 }
 
 export default function LiveMonitor({ documentId, initialData, active, services }) {
+  const [mode, setMode] = useState(initialData?.mode || 'telemetry');
   const { esp, target, activeBridge, hardware, hardwareBusy, setNotice } = services;
   const preferences = services.preferences || DEFAULT_SETTINGS;
   const recordLimit = useRef(preferences.recordLimit);
@@ -74,8 +76,8 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   };
   const stop = message => controller.current?.stop(message || 'İzleme durduruldu.');
   useEffect(() => {
-    if (!active || esp.status !== 'online') stop(!active ? 'Sekme arka planda; SWD okuması durduruldu.' : 'ESP32 bağlantısı kesildi.');
-  }, [active, esp.status]);
+    if (!active || mode !== 'telemetry' || esp.status !== 'online') stop(!active || mode !== 'telemetry' ? 'İzleme ekranı değişti; SWD okuması durduruldu.' : 'ESP32 bağlantısı kesildi.');
+  }, [active, mode, esp.status]);
   useEffect(() => () => controller.current?.stop('ESP32 adresi veya sekme değişti; izleme durduruldu.'), [activeBridge]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.stop(); }; }, []);
   useEffect(() => {
@@ -125,7 +127,9 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     } catch (error) { setNotice(`CSV kaydedilemedi: ${error.message}`); addLog(error.message); }
     finally { if (mounted.current) setExporting(false); }
   };
-  return <div className="live-monitor">
+  const modes = <div className="live-mode-switch" aria-label="Canlı izleme türü"><button className={mode === 'telemetry' ? 'active' : ''} onClick={() => setMode('telemetry')}>Sensör verileri</button><button className={mode === 'variables' ? 'active' : ''} onClick={() => { stop(); setMode('variables'); }}>Değişkenler</button></div>;
+  if (mode === 'variables') return <>{modes}<GlobalWatch documentId={documentId} initialData={initialData} active={active} services={services}/></>;
+  return <>{modes}<div className="live-monitor">
     <header className="live-heading"><div><span className="eyebrow">SWD / SALT OKUNUR</span><h1>Canlı İzleme</h1><p>{initialData?.label || target?.label || latest?.model || target?.model || 'STM32'}{initialData?.testName && ` · ${initialData.testName}`}</p></div>
       <span className={`live-status status-${status}`}><i/>{stateLabels[status]}</span></header>
     <div className="live-toolbar">
@@ -150,5 +154,5 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     <details className="live-details"><summary>Oturum ve veri bütünlüğü</summary><div className="live-integrity"><span>ABI {latest?.abi || '—'} · CRC ESP32’de doğrulanır</span><span>Test {hex(latest?.testIdHash)}</span><span>Profil {hex(latest?.profileHash)}</span><span>Çalıştırma {hex(latest?.runHash)}</span><span>RAM 0x20000200 · 400 bayt</span><span>SWD okuma {latest?.readMs ?? '—'} ms</span><span>Son örnek {latest?.ageMs === null || !latest ? '—' : `${latest.ageMs} ms önce`}</span><span>Grafik: son 240 okunan örnek · CSV: en fazla 2000 örnek</span></div></details>
     <div className="live-log" role="log" aria-label="Canlı izleme günlüğü"><h2>Olay günlüğü</h2>{logs.length ? logs.map((entry, index) => <p key={index}><time>{entry.at}</time><span>{entry.message}</span></p>) : <p>İzleme başlatılmadı.</p>}</div>
     <p className="live-footnote">Bu ekran canlı ölçüm izler; breakpoint koymaz, çekirdeği durdurmaz veya reset atmaz. Atlanan örnekler, okuma aralığı nedeniyle yakalanamayan MCU örnekleridir.</p>
-  </div>;
+  </div></>;
 }

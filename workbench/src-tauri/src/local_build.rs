@@ -340,7 +340,7 @@ pub struct LedBuildRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LedBuildResult {
-    bytes: Vec<u8>, sha256: String, source_sha: String, profile_hash: String,
+    bytes: Vec<u8>, elf_bytes: Vec<u8>, sha256: String, source_sha: String, profile_hash: String,
     request_id: String, header: String,
 }
 
@@ -430,7 +430,7 @@ fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRe
     let elf = work.path().join("led.elf");
     let bin = work.path().join("led.bin");
     let output = Command::new(gcc)
-        .args(["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft", "-Os", "-std=c11", "-ffreestanding", "-fno-builtin", "-ffunction-sections", "-fdata-sections", "-Wall", "-Wextra", "-Werror"])
+        .args(["-mcpu=cortex-m4", "-mthumb", "-mfloat-abi=soft", "-Os", "-g", "-gdwarf-4", "-std=c11", "-ffreestanding", "-fno-builtin", "-ffunction-sections", "-fdata-sections", "-Wall", "-Wextra", "-Werror"])
         .arg("-I").arg(work.path()).arg("-I").arg(source.join("runtime")).arg("-I").arg(source.join("firmware"))
         .arg(source.join("firmware/startup.c")).arg(source.join("firmware/main.c")).arg(source.join("firmware/platform_i2c.c"))
         .arg(source.join("runtime/stardrop_diagnostic_report.c")).arg(source.join("templates/led_blink.c"))
@@ -442,7 +442,7 @@ fn compile_led_at(source: &Path, gcc: &Path, objcopy: &Path, request: LedBuildRe
     let bytes = fs::read(bin).map_err(|error| error.to_string())?;
     let maximum = if target == "stm32f401cc" { 256 * 1024 } else { 512 * 1024 };
     if bytes.len() < 64 || bytes.len() > maximum { return Err("Derlenen BIN flash boyutuna uymuyor".into()); }
-    Ok(LedBuildResult { sha256: digest(&bytes), bytes, source_sha: sha, profile_hash: hash32(request.profile_json.as_bytes()), request_id: request.request_id, header })
+    Ok(LedBuildResult { elf_bytes: fs::read(&elf).map_err(|e| e.to_string())?, sha256: digest(&bytes), bytes, source_sha: sha, profile_hash: hash32(request.profile_json.as_bytes()), request_id: request.request_id, header })
 }
 
 fn validate_led_request(request: &LedBuildRequest) -> Result<(u8, u8, u64, bool, &'static str), String> {
@@ -718,7 +718,7 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
         if !input.is_file() { return Err(format!("Proje kaynağı eksik: {source}")); }
         let object = work.path().join(format!("source-{index}.o"));
         let mut command = Command::new(gcc);
-        command.args(["-c", "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-Og", "-Wall", "-fdata-sections", "-ffunction-sections"]);
+        command.args(["-c", "-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard", "-Og", "-g", "-gdwarf-4", "-Wall", "-fdata-sections", "-ffunction-sections"]);
         if source.ends_with(".s") { command.args(["-x", "assembler-with-cpp"]); }
         else {
             if source.ends_with(".cpp") {
@@ -758,7 +758,7 @@ fn compile_hal_at(project: &Path, repo_root: &Path, gcc: &Path, objcopy: &Path, 
         source.extend_from_slice(item.as_bytes());
         source.extend(fs::read(manifest_path(&project, &repo_root, item)?).map_err(|error| error.to_string())?);
     }
-    Ok(LedBuildResult { sha256: digest(&bytes), bytes,
+    Ok(LedBuildResult { elf_bytes: fs::read(&elf).map_err(|e| e.to_string())?, sha256: digest(&bytes), bytes,
         source_sha: format!("local-{}", &digest(&source)[..12]), profile_hash: hash32(request.profile_json.as_bytes()),
         request_id: request.request_id, header })
 }
