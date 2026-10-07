@@ -915,7 +915,7 @@ String watchField(const String &body, const char *name) {
     if (start < 0 || body.indexOf(key, start + key.length()) >= 0) return "";
     start += key.length();
     while (start < (int)body.length() && body[start] == ' ') ++start;
-    if (body[start] != '"') return "";
+    if (start >= (int)body.length() || body[start] != '"') return "";
     const int end = body.indexOf('"', start + 1);
     return end < 0 ? "" : body.substring(start + 1, end);
 }
@@ -998,7 +998,7 @@ void handleWatchRead() {
             memcpy(bytes + offset, &word, 4);
         }
         bool stable = true;
-        if (items[i].size == 8) {
+        if (skip + items[i].size > 4) {
             for (unsigned offset = 0; offset < length; offset += 4) {
                 uint32_t word;
                 if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); watchError("SRAM_READ_FAILED"); return; }

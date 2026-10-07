@@ -114,7 +114,10 @@ pub async fn inspect_watch_elf(bytes: Vec<u8>) -> Result<WatchElf, String> {
     #[test] fn malformed_files_are_rejected() { assert!(inspect(&[]).is_err()); assert!(inspect(&vec![0; 52]).is_err()); }
     #[test] fn ram_demo_when_configured() {
         let Ok(path) = std::env::var("STARDROP_TEST_WATCH_ELF") else { return; };
-        let info = inspect(&std::fs::read(path).unwrap()).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        let info = inspect(&bytes).unwrap();
+        let bin = std::fs::read(std::path::Path::new(&path).with_extension("bin")).unwrap();
+        assert_eq!(flash_image(&bytes).unwrap(), bin);
         for (name, kind) in [("watch_random", "unsigned"), ("watch_temperature", "float"), ("watch_signed", "signed")] {
             let variable = info.variables.iter().find(|v| v.name == name).unwrap(); assert_eq!(variable.kind, kind); assert_eq!(variable.size, 4);
         }

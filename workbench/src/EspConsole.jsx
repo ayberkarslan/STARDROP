@@ -18,7 +18,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId }) {
+export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId, openTelemetry, debugArtifact }) {
   const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [wiringOpen, setWiringOpen] = useState(false);
@@ -298,6 +298,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     <p className="flash-footnote">Yükleme mevcut firmware’i değiştirir. Yazılan veriler geri okunarak doğrulanır.</p>
     </section><section className="flash-runtime" aria-label="Yükleme durumu ve terminal">
     <FlashProgress stage={flashStage || (flashBusy ? 'programming' : flashLog.some(entry => entry.type === 'error') ? 'error' : flashProgress === 100 ? 'done' : 'idle')} error={flashError} progress={flashProgress} busy={flashBusy} startedAt={flashStartedAt}/>
+    {flashStage === 'done' && debugArtifact?.file && <button className="secondary" disabled={deviceBusy} onClick={() => openTelemetry?.({ uid: target.uid, model: target.model, mode: 'variables' })}>DEĞİŞKENLERİ İZLE →</button>}
     <div className="flash-terminal-heading"><span>İşlem terminali</span><small>{flashBusy ? 'Canlı' : flashLog.length ? 'Son işlem' : 'Beklemede'}</small></div>
     <div className="flash-terminal" ref={terminalRef} role="log" aria-label="SWD işlem terminali" aria-live="off">
       {flashLog.length ? flashLog.map((entry, index) => <p key={index} className={`log-${['info', 'success', 'warn', 'error', 'chunk'].includes(entry.type) ? entry.type : 'info'}`}>[{entry.time}] {entry.msg}</p>)
