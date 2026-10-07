@@ -17,3 +17,7 @@ STARDROP Hızlı Yükleme'den ELF'i yükleyip Canlı İzleme → Değişkenler'd
 
 Örnekleme süresi `Inc/pin_configurations.h` dosyasında ayarlanır. Bu test
 SWD pinlerini başka bir iş için yeniden yapılandırmaz.
+
+Bu örnek bir sensör veya LED doğrulama testi değildir. Kaynak arşivinde ve
+proje manifestinde yer alır; mevcut sensör kataloğuna sahte bir LED testi
+olarak eklenmez. Deneme Hızlı Yükleme → ELF üzerinden yapılır.

@@ -48,7 +48,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     } catch (error) { if (alive.current && id === importId.current) setState({ status: 'error', message: error.message || String(error) }); }
     finally { if (alive.current && id === importId.current) setLoading(false); }
   };
-  useEffect(() => { if (debugArtifact?.file && !elf && !loading && active && !hardware.current) void load(debugArtifact.file); }, [debugArtifact, active]);
+  useEffect(() => { if (debugArtifact?.file && !elf && !loading && active && !hardware.current && !running) void load(debugArtifact.file); }, [debugArtifact, active, hardwareBusy]);
   const filtered = (elf?.variables || []).filter(v => !selected.includes(variableId(v)) && `${v.name} ${v.typeName}`.toLocaleLowerCase('tr').includes(query.toLocaleLowerCase('tr')));
   const chosen = filtered.find(v => variableId(v) === choice) || filtered[0];
   const variables = (elf?.variables || []).filter(v => selected.includes(variableId(v)));

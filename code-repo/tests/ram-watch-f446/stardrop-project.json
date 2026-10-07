@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "capabilities": ["ram-watch-v1"],
+  "target": "STM32F446xx",
+  "linkerScript": "STM32F446xx_FLASH.ld",
+  "cpu": "cortex-m4",
+  "fpu": "fpv4-sp-d16",
+  "floatAbi": "hard",
+  "defines": ["USE_HAL_DRIVER", "STM32F446xx"],
+  "includeDirs": [
+    "Inc",
+    "Drivers/STM32F4xx_HAL_Driver/Inc",
+    "Drivers/STM32F4xx_HAL_Driver/Inc/Legacy",
+    "Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+    "Drivers/CMSIS/Include"
+  ],
+  "sources": [
+    "Src/main.c", "Src/stm32f4xx_it.c", "Src/stm32f4xx_hal_msp.c",
+    "Src/system_stm32f4xx.c", "Src/sysmem.c", "Src/syscalls.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ramfunc.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma_ex.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c",
+    "Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_exti.c",
+    "startup_stm32f446xx.s"
+  ]
+}

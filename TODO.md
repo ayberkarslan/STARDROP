@@ -28,7 +28,8 @@ Karar: IDE'ye ait Live Expressions sistemini ürünün temeli yapmayacağız. ST
 - [x] UID/MCU/ABI ve çalışma kimliğini doğrula; test ekranından geçişte beklenen test/profil/çalıştırma hash'lerini eşleştir.
 - [x] Ölçüm kaydı ve CSV dışa aktarımı ekle (2000 örnek sınırı, son 240 okunan örnek grafik).
 - [ ] Kayıt alma, CSV dışa aktarma ve test geçmişine özet ölçüm ekleme seçeneklerini tasarla.
-- [ ] Geliştirici aracı olarak ELF sembolünden değişken izlemeyi daha sonra ayrıca değerlendir; ana kullanıcı akışına bağlama.
+- [x] Ayrı geliştirici modu olarak ELF/DWARF’tan global değişken izleme: sayısal skalerler, SHA-256/UID kontrolü, grafik ve CSV; mevcut sensör telemetrisi korunur.
+- [ ] RAMDENEME / Nucleo F446RE ile gerçek kartta global değişken okumalarını ve çekirdeğin çalışmaya devam ettiğini doğrula; yazılım ve taklit arayüz testleri tamamlandı.
 
 ## İlk uçtan uca doğrulama
 
