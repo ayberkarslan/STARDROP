@@ -49,7 +49,7 @@ function Trace({ samples, channel }) {
 }
 
 export default function LiveMonitor({ documentId, initialData, active, services }) {
-  const [mode, setMode] = useState(initialData?.mode || 'telemetry');
+  const [mode, setMode] = useState(initialData?.mode || (initialData?.expected ? 'telemetry' : services.debugArtifact?.file ? 'variables' : 'telemetry'));
   const { esp, target, activeBridge, hardware, hardwareBusy, setNotice } = services;
   const preferences = services.preferences || DEFAULT_SETTINGS;
   const recordLimit = useRef(preferences.recordLimit);

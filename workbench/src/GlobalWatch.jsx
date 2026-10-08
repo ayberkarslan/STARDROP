@@ -26,6 +26,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   const [frames, setFrames] = useState([]), [latest, setLatest] = useState(null), [interval, setIntervalMs] = useState(String(preferences.intervalMs));
   const [exporting, setExporting] = useState(false), [now, setNow] = useState(Date.now);
   const controller = useRef(null), alive = useRef(true), importId = useRef(0), history = useRef([]), limit = useRef(preferences.recordLimit);
+  const uploadedFile = useRef(null), loadedSource = useRef('manual');
   const running = ['verifying', 'live', 'retrying'].includes(state.status);
   const uid = initialData?.uid || target?.uid;
   const stop = message => controller.current?.stop(message);
@@ -35,9 +36,10 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   useEffect(() => { if (running) { const timer = window.setInterval(() => setNow(Date.now()), 500); return () => window.clearInterval(timer); } }, [running]);
   useEffect(() => { if (!running) setIntervalMs(String(preferences.intervalMs)); }, [preferences.intervalMs]);
   useEffect(() => { stop('Hedef değişti; okuma durduruldu.'); setLatest(null); setFrames([]); }, [target?.uid]);
-  const load = async file => {
+  const load = async (file, source = 'manual') => {
     if (!file || running || hardware.current) return;
     const id = ++importId.current; setLoading(true); setElf(null); setSelected([]); setLatest(null); setFrames([]); history.current = [];
+    loadedSource.current = source;
     try {
       if (!/\.elf$/i.test(file.name) || file.size > 16 * 1024 * 1024) throw new Error('Debug bilgili .ELF seç; en fazla 16 MB. BIN değişken adlarını taşımaz.');
       if (!window.__TAURI_INTERNALS__) throw new Error('ELF çözümleme masaüstü uygulamasında kullanılabilir.');
@@ -48,7 +50,21 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     } catch (error) { if (alive.current && id === importId.current) setState({ status: 'error', message: error.message || String(error) }); }
     finally { if (alive.current && id === importId.current) setLoading(false); }
   };
-  useEffect(() => { if (debugArtifact?.file && !elf && !loading && active && !hardware.current && !running) void load(debugArtifact.file); }, [debugArtifact, active, hardwareBusy]);
+  useEffect(() => {
+    const file = debugArtifact?.file;
+    if (!file) {
+      if (uploadedFile.current && loadedSource.current === 'upload') {
+        ++importId.current; setLoading(false); setElf(null); setFileName(''); setSelected([]); setLatest(null); setFrames([]); history.current = [];
+        setState({ status: 'idle', message: 'Son yükleme için ELF yok. İstersen aynı derlemenin ELF’ini seç.' });
+      }
+      uploadedFile.current = null;
+      return;
+    }
+    if (file !== uploadedFile.current && !loading && active && !hardware.current && !running) {
+      uploadedFile.current = file;
+      void load(file, 'upload');
+    }
+  }, [debugArtifact, active, hardwareBusy, loading, running]);
   const filtered = (elf?.variables || []).filter(v => !selected.includes(variableId(v)) && `${v.name} ${v.typeName}`.toLocaleLowerCase('tr').includes(query.toLocaleLowerCase('tr')));
   const chosen = filtered.find(v => variableId(v) === choice) || filtered[0];
   const variables = (elf?.variables || []).filter(v => selected.includes(variableId(v)));
@@ -76,7 +92,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   const fresh = state.status === 'live' && latest && now - latest.receivedAt <= Math.max(2500, Number(interval) * 3);
   return <div className="live-monitor global-watch">
     <header className="live-heading"><div><span className="eyebrow">ELF / SWD · SALT OKUNUR</span><h1>Global Değişkenler</h1><p>{target?.label || target?.model || 'STM32'} · {uid || 'Hedef bağlı değil'}</p></div><span className={`live-status status-${state.status}`}><i/>{fresh || state.status !== 'live' ? labels[state.status] : 'Okuma bekleniyor'}</span></header>
-    <div className="watch-source"><label className="secondary"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : fileName || 'ELF SEÇ'}<input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/></label>{elf && <span>{elf.variables.length} değişken · {elf.imageSha256.slice(0, 12)}</span>}</div>
+    <div className="watch-source"><label className="secondary"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}<input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/></label>{elf && <span>{fileName} · {loadedSource.current === 'upload' ? 'Son yüklenen ELF · ' : ''}{elf.variables.length} değişken</span>}{debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>SON YÜKLENEN ELF</button>}</div>
     {elf && <fieldset className="watch-add" disabled={running || loading}><input aria-label="Global değişken ara" placeholder="Değişken adı · watch_random" value={query} onChange={e => setQuery(e.target.value)}/><SelectMenu ariaLabel="İzlenecek global değişken" value={chosen ? variableId(chosen) : ''} options={filtered.map(v => ({ value: variableId(v), label: `${v.name} · ${v.typeName} · 0x${v.address.toString(16)}` }))} onChange={setChoice}/><button className="secondary" disabled={!chosen || selected.length >= 16} onClick={() => { setSelected(current => [...current, variableId(chosen)]); setQuery(''); }}><Plus size={15}/> EKLE</button></fieldset>}
     <div className="live-toolbar"><button className={running ? 'secondary' : 'primary'} disabled={!running && (!elf || !selected.length || !active || esp.status !== 'online' || !uid || Boolean(hardwareBusy))} onClick={running ? () => stop() : start}>{running ? <Pause size={15}/> : <Play size={15}/>} {running ? 'DURDUR' : 'İZLEMEYİ BAŞLAT'}</button><fieldset className="live-rate" disabled={running}><SelectMenu ariaLabel="Değişken okuma aralığı" value={interval} options={[{ value: '250', label: '250 ms' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]} onChange={setIntervalMs}/></fieldset><button className="secondary" disabled={!history.current.length || exporting} onClick={exportCsv}><Download size={15}/> CSV</button><span>{history.current.length} / {limit.current} kayıt</span></div>
     <p role="status" className={`live-message ${state.status === 'error' ? 'is-error' : ''}`}>{state.message}</p>
