@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import PanelResize, { usePanelWidth } from './PanelResize.jsx';
 
 export function usePopupDismiss(root, open, onClose, additionalRoot) {
   const close = useRef(onClose);
@@ -20,6 +21,7 @@ export function usePopupDismiss(root, open, onClose, additionalRoot) {
 }
 
 export default function Popup({ children, onClose, labelledBy, ariaLabel, className = '', variant = 'dialog' }) {
+  const size = usePanelWidth('drawer', { min: 300, max: 900, reserve: 24, fallback: 430 });
   const root = useRef(null);
   usePopupDismiss(root, true, onClose);
   useEffect(() => {
@@ -37,7 +39,8 @@ export default function Popup({ children, onClose, labelledBy, ariaLabel, classN
     else if (!event.shiftKey && (document.activeElement === last || document.activeElement === root.current)) { event.preventDefault(); first.focus(); }
   };
   return <div className={`ui-popup-backdrop ui-popup-${variant}`} role="presentation">
-    <section ref={root} className={`ui-popup ${className}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy} aria-label={ariaLabel} tabIndex={-1} onKeyDown={trapFocus}>
+    <section ref={root} className={`ui-popup ${className}`} style={variant === 'drawer' ? { width: size.width, maxWidth: 'calc(100vw - 24px)' } : undefined} role="dialog" aria-modal="true" aria-labelledby={labelledBy} aria-label={ariaLabel} tabIndex={-1} onKeyDown={trapFocus}>
+      {variant === 'drawer' && <PanelResize panel={size} side="left" label="Yan panel genişliği"/>}
       {children}
     </section>
   </div>;
