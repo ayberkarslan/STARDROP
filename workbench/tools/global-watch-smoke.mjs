@@ -8,7 +8,8 @@ try {
     const secrets = new Map(), uid = '001300155231501920323239', hash = 'a'.repeat(64);
     let counter = 10;
     localStorage.setItem('stardrop.bridge', 'http://192.168.1.3');
-    window.watchMock = { calls: 0, mismatch: false, exports: [] };
+    window.watchMock = { calls: 0, mismatch: false, exports: [], failFlash: false };
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     const variables = [{ name: 'watch_random', address: 0x20000004, size: 4, kind: 'unsigned', typeName: 'unsigned int' }, { name: 'watch_temperature', address: 0x20000008, size: 4, kind: 'float', typeName: 'float' }];
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' } }, transformCallback: () => 1, unregisterCallback: () => {},
       invoke: async (command, args = {}) => {
@@ -20,6 +21,7 @@ try {
         if (command === 'target_registry_load') return {};
         if (command === 'discover_esp') return [{ ip: '192.168.1.3', replyAddress: '192.168.1.3' }];
         if (command === 'code_repo_status') return { activeSha: null };
+        if (command === 'esp_stream') return JSON.stringify(window.watchMock.failFlash ? { error: true, msg: 'Mock yükleme hatası' } : { done: true, pct: 100 });
         if (command === 'inspect_watch_elf') return { variables, imageSha256: hash, imageSize: 4000 };
         if (command === 'telemetry_export_csv') { window.watchMock.exports.push(args.csv); return '/tmp/watch-mock.csv'; }
         if (command === 'esp_http') {
@@ -44,7 +46,29 @@ try {
   await page.locator('[data-rail-tool="monitor"]:visible').click();
   await page.getByRole('button', { name: 'Değişkenler', exact: true }).click();
   const monitor = page.locator('.global-watch:visible');
-  await monitor.getByLabel('İzleme ELF dosyası').setInputFiles({ name: 'RAMDENEME.elf', mimeType: 'application/octet-stream', buffer: Buffer.from([1, 2, 3]) });
+  // A minimal ELF image exercises the real upload conversion; transport stays mocked.
+  const image = Buffer.alloc(128);
+  image.set([0x7f, 0x45, 0x4c, 0x46, 1, 1]); image.writeUInt16LE(40, 18);
+  image.writeUInt32LE(52, 28); image.writeUInt16LE(32, 42); image.writeUInt16LE(1, 44);
+  image.writeUInt32LE(1, 52); image.writeUInt32LE(96, 56); image.writeUInt32LE(0x08000000, 64); image.writeUInt32LE(4, 68);
+  const upload = async name => {
+    await page.locator('[data-rail-tool="flash"]:visible').click();
+    await page.locator('.firmware-select:visible input').setInputFiles({ name, mimeType: 'application/octet-stream', buffer: image });
+    await page.getByRole('button', { name: 'YAZILIMI YÜKLE', exact: true }).click();
+    await page.getByRole('button', { name: 'DEĞİŞKENLERİ İZLE →' }).waitFor();
+    await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
+    await monitor.getByText(`${name} · Son yüklenen ELF · 2 değişken`, { exact: true }).waitFor();
+  };
+  await upload('RAMDENEME.elf');
+  await monitor.getByLabel('İzleme ELF dosyası').setInputFiles({ name: 'EXTRA.elf', mimeType: 'application/octet-stream', buffer: Buffer.from([1, 2, 3]) });
+  await monitor.getByText('EXTRA.elf · 2 değişken', { exact: true }).waitFor();
+  await page.locator('[data-rail-tool="devices"]:visible').click();
+  await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
+  assert.equal(await monitor.getByText('EXTRA.elf · 2 değişken', { exact: true }).count(), 1);
+  await monitor.getByRole('button', { name: 'SON YÜKLENEN ELF', exact: true }).click();
+  await monitor.getByText('RAMDENEME.elf · Son yüklenen ELF · 2 değişken', { exact: true }).waitFor();
+  // Replacing firmware must also update an already populated monitor tab.
+  await upload('RAMDENEME-v2.elf');
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
   await monitor.getByRole('button', { name: 'EKLE', exact: true }).click();
   await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT' }).click();
@@ -70,5 +94,5 @@ try {
   await page.waitForTimeout(1100);
   assert.equal(await page.evaluate(() => window.watchMock.calls), count);
   assert.deepEqual(errors, []);
-  console.log('Global watch: ELF, seçim, canlı değer, grafik, CSV, yanlış firmware ve sekme durdurma geçti');
+  console.log('Global watch: yüklenen ELF aktarımı, yeni firmware, ek ELF, seçim, grafik, CSV ve güvenli durdurma geçti');
 } finally { await browser.close(); }

@@ -6,7 +6,7 @@ Asıl çalışma projesi: `/home/ayberk/YRT_Projects/RAMDENEME`.
 1. `make -j4` ile F446 firmware’ini derle.
 2. ESP32-S3 yazılımını güncelle: kök dizinde `pio run -e esp32-s3-n16r8 -t upload`.
 3. Hızlı Yükleme’de aynı derlemenin `build/RAMDENEME.elf` dosyasını seç ve yükle.
-4. **Değişkenleri izle** kısayolunu aç. Alternatif: Canlı İzleme → Değişkenler → ELF seç.
+4. **Değişkenleri izle** kısayolunu aç. Son başarıyla yüklenen ELF hedef UID’sine göre otomatik aktarılır; Canlı İzleme → Değişkenler’de yeniden seçilmesi gerekmez.
 5. `watch_random` ara, Ekle, İzlemeyi başlat. İstenirse `watch_counter`, `watch_temperature`, `watch_signed` ekle.
 
 UART veya sensör kablosu eklenmez; mevcut SWD hattı kullanılır. Önce flash
@@ -24,7 +24,12 @@ nedeniyle ELF’te RAM adresi kalmamış değişken listelenmez. Kendi derlemele
 `-g -Og` kullan; gerçekten kullanılan `volatile` global deneme için uygundur.
 STARDROP’un yerel derleyicisi artık debug bilgili ELF’i BIN yanında saklar ve
 başarılı yüklemeden sonra izleme ekranına aktarır. Bu oturum içi dosya ilişkisi
-uygulama kapanınca unutulur; yeniden açınca aynı ELF’i seçebilirsin.
+uygulama kapanınca unutulur; yeniden açınca aynı ELF’i seçebilirsin. Açık bir
+izleme sekmesi de yeni başarılı ELF yüklemesine geçer. **ELF değiştir** ile
+ek dosya seçilebilir; **Son yüklenen ELF** ile otomatik kaynağa geri dönülür.
+Elle seçilen dosya sırf sekme değişti diye üzerine yazılmaz. BIN yüklemesi
+otomatik ELF ilişkisini kaldırır; seçilen her ELF için flash eşleşmesi yine
+izleme başlatılırken kontrol edilir.
 
 Sekme değiştirilince okuma durur. Bekleyen istek bitene kadar ortak donanım
 kilidi tutulur; paralel flash/telemetri okuması başlatılmaz. UID değişince,
