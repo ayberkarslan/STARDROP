@@ -55,6 +55,21 @@ try {
   await page.getByRole('button', { name: 'Bağlantıları kendim seçeceğim' }).click();
   await page.getByRole('textbox', { name: 'Kart adı' }).fill('İlk kart');
   const firstTabId = await page.getByRole('tab', { name: 'Yeni Test', exact: true }).getAttribute('data-tab-id');
+  const handle = page.locator('.panel-resize[aria-label="Sol menü genişliği"]:visible');
+  const beforeWidth = (await page.locator('.rail:visible').boundingBox()).width;
+  const edge = await handle.boundingBox();
+  await page.mouse.move(edge.x + edge.width / 2, edge.y + 140); await page.mouse.down();
+  await page.mouse.move(edge.x + edge.width / 2 + 90, edge.y + 140, { steps: 10 }); await page.mouse.up();
+  const afterWidth = (await page.locator('.rail:visible').boundingBox()).width;
+  assert.ok(afterWidth > beforeWidth + 70);
+  assert.equal(Number(await page.evaluate(() => localStorage.getItem('stardrop.panel.rail'))), Math.round(afterWidth));
+  assert.equal(await page.evaluate(() => document.body.dataset.panelResizing), undefined);
+  const footer = page.locator('.rail-footer:visible');
+  const noticeBox = await footer.locator('.notification-details').boundingBox(), accountBox = await footer.locator('.rail-account').boundingBox(), connectionBox = await footer.locator('.connection-status').boundingBox();
+  assert.ok(noticeBox.y < accountBox.y && accountBox.y < connectionBox.y);
+  assert.equal(await footer.locator('.notification-latest').count(), 0);
+  await handle.dblclick();
+  assert.equal((await page.locator('.rail:visible').boundingBox()).width, 210);
   await page.locator('[data-rail-tool="library"]:visible').click();
   assert.equal(await page.getByText('EKİP HAFIZASI', { exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Sensörler', exact: true }).click();
@@ -91,7 +106,7 @@ try {
   await page.locator(`[data-tab-id="${secondTabId}"]`).click();
   assert.equal(await page.getByRole('textbox', { name: 'Kart adı' }).inputValue(), 'İkinci kart');
   await drag(page.locator('[data-rail-tool="settings"]:visible'), page.locator('.workspace-panel:visible'), true);
-  await page.getByRole('heading', { name: 'GITHUB TEST DEPOSU' }).waitFor();
+  await page.locator('.settings-hub-header:visible').getByRole('heading', { name: 'Ayarlar', exact: true }).waitFor();
   await page.locator('.notification-details:visible summary').click();
   await page.locator('.notification-history-floating').waitFor();
   assert.equal(await page.locator('.notification-history-floating').evaluate(el => {
@@ -101,11 +116,12 @@ try {
   assert.equal(await page.locator('.notification-history-floating').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)');
   await page.getByRole('heading', { name: 'Bildirimler', exact: true }).click();
   assert.equal(await page.locator('.notification-details:visible').evaluate(el => el.open), true);
-  await page.getByRole('button', { name: /Son taslağı geri aç/ }).click();
+  assert.equal(await page.locator('.rail-footer:visible').getByRole('button', { name: /Son taslağı geri aç/ }).count(), 0);
+  await page.getByRole('button', { name: /Kapatılan sekmeyi geri aç/ }).click();
   assert.equal(await page.getByRole('textbox', { name: 'Kart adı' }).inputValue(), 'İkinci kart');
   await page.getByRole('button', { name: 'Yeni Test sekmesini kapat' }).last().click();
   await page.locator('.notification-details:visible summary').click();
-  await page.getByRole('button', { name: /Son taslağı geri aç/ }).click();
+  await page.getByRole('button', { name: /Kapatılan sekmeyi geri aç/ }).click();
   assert.equal(await page.getByRole('textbox', { name: 'Kart adı' }).inputValue(), 'İkinci kart');
   await drag(page.locator('[role=tab][aria-selected=true]:visible'), page.getByRole('tab', { name: 'Hızlı Yükleme', exact: true }), true);
   assert.equal(await page.getByRole('tab').first().innerText(), 'Yeni Test');
@@ -167,12 +183,13 @@ try {
   assert.equal(await page.locator('[role=tab][aria-selected=true]:visible').getAttribute('data-tab-id'), flashTabId);
   await page.getByRole('button', { name: 'Yeni sekme aç' }).click();
   await drag(page.locator('[data-rail-tool="flash"]:visible'), page.locator('.workspace-empty:visible'));
-  await page.locator('.workspace-panel:visible input[type=file]').setInputFiles({ name: 'second.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(48, 2) });
   assert.equal(await page.locator('.flash-submit:visible').isDisabled(), true);
   assert.equal(await page.locator('.flash-terminal:visible').innerText(), '[STARDROP] YRT Aviyonik SWD İstasyonu Hazır. Yazılım bekleniyor...');
   assert.equal(await page.locator('.flash-feedback:visible').count(), 0);
   await page.evaluate(() => window.__finishMockUpload());
-  await page.waitForFunction(() => !document.querySelector('.session-view:not([hidden]) .workspace-panel:not([hidden]) .flash-submit').disabled);
+  await page.waitForFunction(() => [...document.querySelectorAll('.flash-submit')].some(button => button.getClientRects().length && button.title !== 'Donanım işleminin bitmesi bekleniyor.'));
+  await page.locator('.workspace-panel:visible input[type=file]').setInputFiles({ name: 'second.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(48, 2) });
+  await page.waitForFunction(() => [...document.querySelectorAll('.flash-submit')].some(button => button.getClientRects().length && !button.disabled));
   assert.equal(await page.locator('.firmware-file-card:visible').innerText(), 'second.bin\nRAW BIN\n0.0 KB');
   await page.locator(`[data-tab-id="${flashTabId}"]`).click();
   assert.match(await page.locator('.firmware-file-card:visible').innerText(), /first.bin/);
@@ -182,6 +199,15 @@ try {
   await page.getByRole('button', { name: 'YAZILIMI YÜKLE', exact: true }).click();
   await page.locator('.flash-terminal:visible').getByText(/STM32 hedefi değişti/).waitFor();
   assert.equal(await page.evaluate(() => window.__mockUploadCount), 1);
+  await page.getByRole('button', { name: 'ESP32 ayarları', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'ESP32 ayarları', exact: true });
+  const drawerBefore = (await drawer.boundingBox()).width;
+  const drawerEdge = await drawer.getByRole('separator', { name: 'Yan panel genişliği' }).boundingBox();
+  await page.mouse.move(drawerEdge.x + 3, drawerEdge.y + 160); await page.mouse.down();
+  await page.mouse.move(drawerEdge.x - 110, drawerEdge.y + 160, { steps: 10 }); await page.mouse.up();
+  assert.ok((await drawer.boundingBox()).width > drawerBefore + 90);
+  await drawer.getByRole('button', { name: 'Kapat', exact: true }).click();
+  await page.screenshot({ path: '/tmp/stardrop-resizable-panels.png' });
   assert.deepEqual(errors, []);
-  console.log('Workspace smoke passed: isolated forms/files/results, drop/replace/recovery, reorder, Escape, welcome retention, Michroma, hardware lock and UID guard.');
+  console.log('Workspace smoke passed: panel drag/persistence/reset, footer order, notification recovery, isolated forms/files/results, drop/replace, reorder, Escape, hardware lock and UID guard.');
 } finally { await browser.close(); }
