@@ -6,6 +6,7 @@
 #include <ESPmDNS.h>
 #include <NetBIOS.h>
 #include <Preferences.h>
+#include <esp_system.h>
 #include <vector>
 #include <algorithm>
 #include "soc/soc.h"
@@ -1277,6 +1278,9 @@ void setup() {
     Serial.println("\n==============================================");
     Serial.println("  STARDROP • Yıldız Roket Takımı Aviyonik OTA ");
     Serial.println("==============================================");
+    Serial.printf("[BOOT] build=%s %s reset=%d flash=%u psram=%u\n",
+                  __DATE__, __TIME__, static_cast<int>(esp_reset_reason()),
+                  ESP.getFlashChipSize(), ESP.getPsramSize());
 
     pinMode(ONBOARD_LED_PIN, OUTPUT);
     setStatusLed(false);
