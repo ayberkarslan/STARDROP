@@ -5,8 +5,9 @@ import SelectMenu from './SelectMenu.jsx';
 import { espJson } from './lib/espTransport.js';
 import { createGlobalWatch, globalWatchCsv, variableId } from './lib/globalWatch.js';
 import { DEFAULT_SETTINGS } from './lib/settings.js';
+import { reloadWatchFirmware } from './lib/watchFirmware.js';
 
-const labels = { idle: 'Hazır', verifying: 'Doğrulanıyor', live: 'Canlı', paused: 'Durduruldu', retrying: 'Bağlantı kontrolü', error: 'İzleme durdu' };
+const labels = { idle: 'Hazır', verifying: 'Doğrulanıyor', programming: 'Yükleniyor', live: 'Canlı', paused: 'Durduruldu', retrying: 'Bağlantı kontrolü', error: 'İzleme durdu' };
 const valueText = v => !v?.valid ? '—' : v.kind === 'bool' ? v.value ? 'true' : 'false' : typeof v.value === 'number' ? v.value.toLocaleString('tr-TR', { maximumFractionDigits: 6 }) : v.value;
 function Sparkline({ frames, id }) {
   const points = frames.map(frame => frame.values.find(v => v.id === id)).map(v => v?.valid && Number.isFinite(v.value) ? v.value : null);
@@ -27,7 +28,8 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   const [exporting, setExporting] = useState(false), [now, setNow] = useState(Date.now);
   const controller = useRef(null), alive = useRef(true), importId = useRef(0), history = useRef([]), limit = useRef(preferences.recordLimit);
   const uploadedFile = useRef(null), loadedSource = useRef('manual');
-  const running = ['verifying', 'live', 'retrying'].includes(state.status);
+  const fileRef = useRef(null);
+  const running = ['verifying', 'programming', 'live', 'retrying'].includes(state.status);
   const uid = initialData?.uid || target?.uid;
   const stop = message => controller.current?.stop(message);
   useEffect(() => { alive.current = true; return () => { alive.current = false; ++importId.current; stop(); }; }, []);
@@ -40,6 +42,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     if (!file || running || hardware.current) return;
     const id = ++importId.current; setLoading(true); setElf(null); setSelected([]); setLatest(null); setFrames([]); history.current = [];
     loadedSource.current = source;
+    fileRef.current = file;
     try {
       if (!/\.elf$/i.test(file.name) || file.size > 16 * 1024 * 1024) throw new Error('Debug bilgili .ELF seç; en fazla 16 MB. BIN değişken adlarını taşımaz.');
       if (!window.__TAURI_INTERNALS__) throw new Error('ELF çözümleme masaüstü uygulamasında kullanılabilir.');
@@ -76,6 +79,12 @@ export default function GlobalWatch({ documentId, initialData, active, services 
       history.current = []; setFrames([]); setLatest(null); limit.current = preferences.recordLimit;
       const session = createGlobalWatch({ hardware, ownerId: documentId, uid, elf, variables, intervalMs: Number(interval),
         verify: () => espJson(activeBridge, '/api/watch/verify', { method: 'POST', body: { uid, sha256: elf.imageSha256, size: String(elf.imageSize) }, timeoutMs: 40000 }),
+        reloadFirmware: (lease, isStopped) => reloadWatchFirmware({ hardware, lease, isStopped, file: fileRef.current,
+          uid, model: target.model, base: activeBridge, imageSha256: elf.imageSha256, imageSize: elf.imageSize,
+          onNotice: setNotice,
+          onProgress: next => { if (alive.current && !isStopped()) setState(next); },
+          onLoaded: (id, file) => { uploadedFile.current = file; loadedSource.current = 'upload'; services.onFirmwareLoaded?.(id, file); },
+        }),
         read: (token, vars) => espJson(activeBridge, '/api/watch/read', { method: 'POST', body: { uid, session: token, addresses: vars.map(v => `${v.address}:${v.size}`).join(',') }, timeoutMs: 40000 }),
         onState: next => { if (alive.current) setState(next); },
         onFrame: frame => { if (!alive.current) return; setLatest(frame); setNow(Date.now()); setFrames(current => [...current.slice(-239), frame]); if (history.current.length < limit.current) history.current.push(frame); },
@@ -90,12 +99,15 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     finally { if (alive.current) setExporting(false); }
   };
   const fresh = state.status === 'live' && latest && now - latest.receivedAt <= Math.max(2500, Number(interval) * 3);
+  const automaticLabel = debugArtifact?.status === 'selected' ? 'Seçilen ELF' : 'Son yüklenen ELF';
   return <div className="live-monitor global-watch">
     <header className="live-heading"><div><span className="eyebrow">ELF / SWD · SALT OKUNUR</span><h1>Global Değişkenler</h1><p>{target?.label || target?.model || 'STM32'} · {uid || 'Hedef bağlı değil'}</p></div><span className={`live-status status-${state.status}`}><i/>{fresh || state.status !== 'live' ? labels[state.status] : 'Okuma bekleniyor'}</span></header>
-    <div className="watch-source"><label className="secondary"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}<input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/></label>{elf && <span>{fileName} · {loadedSource.current === 'upload' ? 'Son yüklenen ELF · ' : ''}{elf.variables.length} değişken</span>}{debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>SON YÜKLENEN ELF</button>}</div>
+    <div className="watch-source"><label className="secondary"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}<input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/></label>{elf && <span>{fileName} · {loadedSource.current === 'upload' ? `${automaticLabel} · ` : ''}{elf.variables.length} değişken</span>}{debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>HIZLI YÜKLEME ELF’İ</button>}</div>
     {elf && <fieldset className="watch-add" disabled={running || loading}><input aria-label="Global değişken ara" placeholder="Değişken adı · watch_random" value={query} onChange={e => setQuery(e.target.value)}/><SelectMenu ariaLabel="İzlenecek global değişken" value={chosen ? variableId(chosen) : ''} options={filtered.map(v => ({ value: variableId(v), label: `${v.name} · ${v.typeName} · 0x${v.address.toString(16)}` }))} onChange={setChoice}/><button className="secondary" disabled={!chosen || selected.length >= 16} onClick={() => { setSelected(current => [...current, variableId(chosen)]); setQuery(''); }}><Plus size={15}/> EKLE</button></fieldset>}
     <div className="live-toolbar"><button className={running ? 'secondary' : 'primary'} disabled={!running && (!elf || !selected.length || !active || esp.status !== 'online' || !uid || Boolean(hardwareBusy))} onClick={running ? () => stop() : start}>{running ? <Pause size={15}/> : <Play size={15}/>} {running ? 'DURDUR' : 'İZLEMEYİ BAŞLAT'}</button><fieldset className="live-rate" disabled={running}><SelectMenu ariaLabel="Değişken okuma aralığı" value={interval} options={[{ value: '250', label: '250 ms' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]} onChange={setIntervalMs}/></fieldset><button className="secondary" disabled={!history.current.length || exporting} onClick={exportCsv}><Download size={15}/> CSV</button><span>{history.current.length} / {limit.current} kayıt</span></div>
     <p role="status" className={`live-message ${state.status === 'error' ? 'is-error' : ''}`}>{state.message}</p>
+    {state.status === 'programming' && <progress aria-label="ELF yükleme ilerlemesi" max="100" value={state.progress}/>}
+    {elf && <p className="live-update-note">İzlemeyi başlatırken doğrulanmış ELF uyumsuzluğu varsa bu dosya otomatik yüklenir; karttaki mevcut yazılım değiştirilir.</p>}
     {!esp.programmer?.watchAvailable && <p className="live-update-note">Bu özellik için güncel ESP firmware’i gerekir.</p>}
     <div className="live-channels">{variables.map(variable => { const v = latest?.values.find(v => v.id === variableId(variable)); return <article className={`live-channel ${fresh && v?.valid ? 'channel-live' : 'channel-inactive'}`} key={variableId(variable)}><div className="live-channel-heading"><div><h2>{variable.name}</h2><small>{variable.typeName} · 0x{variable.address.toString(16)} · {variable.size} bayt</small></div><button className="watch-remove" aria-label={`${variable.name} izlemeyi kaldır`} disabled={running} onClick={() => setSelected(current => current.filter(id => id !== variableId(variable)))}><X size={15}/></button></div><div className="live-value"><strong>{valueText(v)}</strong><small>{fresh && v?.valid ? 'CANLI' : v && !v.valid ? 'TUTARSIZ / GEÇERSİZ OKUMA' : 'SON OKUMA'}</small></div><Sparkline frames={frames} id={variableId(variable)}/></article>; })}{!variables.length && <div className="live-empty"><Activity size={28}/><h2>Bir değişken ekle</h2><p>Global ve statik sayısal değişkenler · en fazla 16</p></div>}</div>
     <p className="live-footnote">Çekirdek durdurulmaz. Okumalar örneklemelidir, değişkenlerin tamamı aynı anda okunmaz. 64-bit değerler iki kez karşılaştırılır; bu atomik snapshot garantisi değildir. Flash SHA-256 başlangıçta ve 5 saniyede bir yeniden kontrol edilir. Büyük firmware’de kontrol okuma aralığını uzatabilir. Pointer, dizi, struct ve yerel stack değişkenleri henüz desteklenmez.</p>

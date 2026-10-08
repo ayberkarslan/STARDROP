@@ -924,7 +924,8 @@ bool watchHex(const String &value, unsigned length) {
     for (unsigned i = 0; i < length; ++i) if (!((value[i] >= '0' && value[i] <= '9') || (value[i] >= 'a' && value[i] <= 'f'))) return false;
     return true;
 }
-bool watchFlashMatches() {
+bool watchFlashMatches(bool *readOk = nullptr) {
+    if (readOk) *readOk = false;
     mbedtls_sha256_context hash;
     mbedtls_sha256_init(&hash);
     bool ok = mbedtls_sha256_starts_ret(&hash, 0) == 0;
@@ -941,6 +942,7 @@ bool watchFlashMatches() {
     ok = ok && mbedtls_sha256_finish_ret(&hash, digest) == 0;
     mbedtls_sha256_free(&hash);
     if (!ok) return false;
+    if (readOk) *readOk = true;
     char hex[65];
     for (unsigned i = 0; i < 32; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
     return watchBinding.hash == hex;
@@ -961,9 +963,15 @@ void handleWatchVerify() {
     if (formatTargetUid(target) != uid) { watchError("TARGET_CHANGED"); return; }
     if (!Watch::ramEnd(target.deviceId) || size > (uint32_t)target.flashSizeKb * 1024) { watchError("WATCH_TARGET_UNSUPPORTED"); return; }
     watchBinding.uid = uid; watchBinding.hash = hash; watchBinding.size = size;
-    if (!watchFlashMatches()) { watchError("ELF_FIRMWARE_MISMATCH"); return; }
+    bool readOk = false;
+    const bool matches = watchFlashMatches(&readOk);
+    if (!readOk) { watchError("FLASH_READ_FAILED"); return; }
     TargetProbeInfo confirm;
     if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { watchError("TARGET_CHANGED"); return; }
+    if (!matches) {
+        server.send(200, "application/json", "{\"valid\":false,\"reason\":\"ELF_FIRMWARE_MISMATCH\",\"mismatchConfirmed\":true,\"uid\":\"" + uid + "\",\"sha256\":\"" + hash + "\"}");
+        return;
+    }
     watchBinding.session = String(esp_random(), HEX) + String(esp_random(), HEX);
     watchBinding.verifiedAt = millis(); watchBinding.lastRead = 0;
     server.send(200, "application/json", "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + watchBinding.session + "\",\"sha256\":\"" + hash + "\"}");
@@ -983,7 +991,8 @@ void handleWatchRead() {
     if (!Watch::addresses(addresses.c_str(), items, count, Watch::ramEnd(target.deviceId))) { watchError("WATCH_ADDRESS_INVALID"); return; }
     // Periodic full-image verification also detects changes by another programmer.
     if (millis() - watchBinding.verifiedAt >= 5000) {
-        if (!watchFlashMatches()) { invalidateWatch(); watchError("ELF_FIRMWARE_MISMATCH"); return; }
+        bool readOk = false;
+        if (!watchFlashMatches(&readOk)) { invalidateWatch(); watchError(readOk ? "ELF_FIRMWARE_MISMATCH" : "FLASH_READ_FAILED"); return; }
         watchBinding.verifiedAt = millis();
     }
     String json = "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + session + "\",\"sha256\":\"" + watchBinding.hash + "\",\"values\":[";

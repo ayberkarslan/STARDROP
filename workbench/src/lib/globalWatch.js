@@ -1,6 +1,7 @@
 export const WATCH_REASONS = {
   TARGET_OFFLINE: 'STM32 bağlantısı yok.', TARGET_CHANGED: 'Bağlı STM32 değişti; izleme durduruldu.',
-  ELF_FIRMWARE_MISMATCH: 'ELF karta yüklenen yazılımla eşleşmiyor veya flash okunamadı. Aynı derlemenin ELF’ini yükle.',
+  ELF_FIRMWARE_MISMATCH: 'ELF karta yüklenen yazılımla eşleşmiyor. Otomatik güncelleme için doğrulanmış uyumsuzluk yanıtı gerekir; eski ESP firmware’ini güncelle.',
+  FLASH_READ_FAILED: 'Flash güvenilir biçimde okunamadı; otomatik yükleme yapılmadı. SWD bağlantısını kontrol et.',
   WATCH_SESSION_INVALID: 'İzleme oturumu geçersiz; yazılım yüklenmiş veya ESP yeniden başlamış olabilir.',
   WATCH_TARGET_UNSUPPORTED: 'Bu STM32 için güvenli RAM okuma sınırları tanımlı değil.',
   WATCH_ADDRESS_INVALID: 'Değişken adresi hedef RAM sınırlarının dışında.', WATCH_REQUEST_INVALID: 'RAM okuma isteği geçersiz.',
@@ -24,7 +25,7 @@ export function decodeVariable(variable, raw) {
 }
 
 /** The lease is held during verification and every pending read, even after stop. */
-export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, verify, read, onFrame, onState,
+export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, verify, read, onFrame, onState, reloadFirmware,
   intervalMs = 500, schedule = setTimeout, cancel = clearTimeout, clock = Date.now }) {
   let lease = null, timer = null, stopped = true, inflight = false, session = null, errors = 0;
   const release = () => { if (lease) { hardware.release(lease); lease = null; } };
@@ -63,8 +64,17 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
       lease = hardware.acquire(ownerId, 'Global değişken izleme'); stopped = false; inflight = true;
       onState?.({ status: 'verifying', message: 'ELF flash’taki yazılımla karşılaştırılıyor; STM32 durdurulmuyor…' });
       try {
-        const result = await verify();
+        let result = await verify();
         if (stopped) return;
+        if (!result.valid && result.reason === 'ELF_FIRMWARE_MISMATCH' && result.mismatchConfirmed === true
+          && result.uid === uid && result.sha256 === elf.imageSha256 && reloadFirmware) {
+          onState?.({ status: 'programming', message: 'ELF uyuşmuyor; seçilen yazılım karta yükleniyor…' });
+          await reloadFirmware(lease, () => stopped);
+          if (stopped) return;
+          onState?.({ status: 'verifying', message: 'Yazılım yüklendi; flash eşleşmesi yeniden doğrulanıyor…' });
+          result = await verify();
+          if (stopped) return;
+        }
         validate(result); session = result.session;
       } catch (error) { if (!stopped) stop(error.message, 'error'); }
       finally { inflight = false; if (stopped) release(); }

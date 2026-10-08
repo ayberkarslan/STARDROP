@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { prepareFirmware } from './lib/firmwareImage.js';
 import { espJson, espStream, espUpload } from './lib/espTransport.js';
 
-export default function useFirmwareJob({ documentId, hardware, esp, activeBridge, target, refreshTargetAt, setNotice, onFirmwareLoaded }) {
+export default function useFirmwareJob({ documentId, hardware, esp, activeBridge, target, refreshTargetAt, setNotice, onFirmwareLoaded, onFirmwareSelected }) {
   const [firmware, setFirmware] = useState(null);
   const [flashLog, setFlashLog] = useState([]);
   const [flashProgress, setFlashProgress] = useState(0);
@@ -10,6 +10,9 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
   const [flashStage, setFlashStage] = useState('idle');
   const [flashError, setFlashError] = useState(null);
   const [flashStartedAt, setFlashStartedAt] = useState(null);
+  useEffect(() => {
+    if (firmware) onFirmwareSelected?.(target?.uid, firmware.debugElf || (/\.elf$/i.test(firmware.name) ? firmware : null));
+  }, [firmware, target?.uid]);
   const appendFlashLog = (msg, type = 'info') => setFlashLog((logs) => [...logs.slice(-299), {
     msg, type, time: new Date().toLocaleTimeString('tr-TR'),
   }]);
