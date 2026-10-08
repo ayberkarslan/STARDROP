@@ -1,13 +1,41 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHardwareGate } from './hardwareGate.js';
-import { createGlobalWatch, decodeVariable, globalWatchCsv } from './globalWatch.js';
+import { createGlobalWatch, decodeVariable, globalWatchCsv, resolveWatchName } from './globalWatch.js';
 
 const uid = '001300155231501920323239', hash = 'a'.repeat(64);
 const variable = { name: 'watch_random', address: 0x20000004, size: 4, kind: 'unsigned', typeName: 'uint32_t' };
 const elf = { imageSha256: hash, imageSize: 4000, variables: [variable] };
 const identity = { valid: true, uid, sha256: hash, session: 'test-session' };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('typed names resolve exactly, reject missing and ambiguous symbols', () => {
+  assert.equal(resolveWatchName(elf, '  watch_random '), variable);
+  assert.throws(() => resolveWatchName(elf, 'watch_rand'), /bulunamadı/);
+  assert.throws(() => resolveWatchName(elf, 'watch_random + 1'), /bulunamadı/);
+  assert.throws(() => resolveWatchName({ variables: [variable, { ...variable, address: 0x20000008 }] }, variable.name), /birden fazla/);
+});
+test('live edits preserve the pending request snapshot and hardware lease', async () => {
+  const second = { ...variable, name: 'counter', address: 0x20000008 };
+  let finish; const requests = [];
+  const item = setup({ elf: { ...elf, variables: [variable, second] }, read: (session, vars) => {
+    requests.push(vars); return new Promise(resolve => { finish = () => resolve({ ...identity, values: vars.map(v => ({ address: v.address, hex: '01000000', stable: true })) }); });
+  } });
+  await item.session.start();
+  const lease = item.hardware.current;
+  item.session.updateVariables([variable, second]);
+  finish(); await flush();
+  assert.equal(item.frames[0].values.length, 1);
+  const next = item.timers.shift()();
+  assert.equal(requests[1].length, 2); assert.equal(item.hardware.current, lease);
+  item.session.updateVariables([second]); finish(); await next;
+  assert.equal(item.frames[1].values.length, 2);
+  const last = item.timers.shift()(); assert.deepEqual(requests[2], [second]);
+  assert.throws(() => item.session.updateVariables([]), /ELF/);
+  assert.throws(() => item.session.updateVariables([second, second]), /ELF/);
+  assert.throws(() => item.session.updateVariables([{ ...second, address: 0 }]), /ELF/);
+  item.session.stop(); finish(); await last;
+  assert.equal(item.hardware.current, null);
+});
 function setup(overrides = {}) {
   const hardware = createHardwareGate(), states = [], frames = [], timers = [];
   const session = createGlobalWatch({ hardware, ownerId: 'one', uid, elf, variables: [variable],

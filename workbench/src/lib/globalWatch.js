@@ -8,6 +8,13 @@ export const WATCH_REASONS = {
   WATCH_RATE_LIMIT: 'RAM okuma aralığı çok kısa.', SRAM_READ_FAILED: 'SWD üzerinden RAM okunamadı.',
 };
 export function variableId(variable) { return `${variable.name}@${variable.address.toString(16)}`; }
+export function resolveWatchName(elf, name) {
+  const expression = name.trim();
+  const matches = (elf?.variables || []).filter(variable => variable.name === expression);
+  if (!matches.length) throw new Error(`“${expression}” ELF içinde bulunamadı. Global değişkenin tam adını yaz.`);
+  if (matches.length > 1) throw new Error('Bu isim birden fazla değişkene ait. ELF listesinden adresiyle seç.');
+  return matches[0];
+}
 export function decodeVariable(variable, raw) {
   if (raw.address !== variable.address || !new RegExp(`^[a-f0-9]{${variable.size * 2}}$`, 'i').test(raw.hex || '')) throw new Error('RAM yanıtındaki adres veya boyut ELF ile uyuşmuyor.');
   const bytes = Uint8Array.from(raw.hex.match(/../g), hex => parseInt(hex, 16));
@@ -28,6 +35,11 @@ export function decodeVariable(variable, raw) {
 export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, verify, read, onFrame, onState, reloadFirmware,
   intervalMs = 500, schedule = setTimeout, cancel = clearTimeout, clock = Date.now }) {
   let lease = null, timer = null, stopped = true, inflight = false, session = null, errors = 0;
+  let watched = [...variables];
+  const checkVariables = next => {
+    if (!next.length || next.length > 16 || new Set(next.map(variableId)).size !== next.length
+      || next.some(v => !elf.variables.some(item => variableId(item) === variableId(v) && item.kind === v.kind && item.size === v.size))) throw new Error('ELF ve 1–16 geçerli global değişken seç.');
+  };
   const release = () => { if (lease) { hardware.release(lease); lease = null; } };
   const stop = (message = 'Değişken izleme durduruldu.', status = 'paused') => {
     stopped = true; cancel(timer); timer = null; if (!inflight) release(); onState?.({ status, message });
@@ -40,10 +52,12 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
     if (stopped) return;
     inflight = true;
     try {
-      const raw = await read(session, variables);
+      // Liste okuma sürerken değişebilir; cevabı isteğin kendi listesiyle çöz.
+      const requested = [...watched];
+      const raw = await read(session, requested);
       if (stopped) return;
-      validate(raw); if (raw.session !== session || !Array.isArray(raw.values) || raw.values.length !== variables.length) throw new Error('RAM oturumu veya değişken listesi değişti.');
-      const values = variables.map((v, i) => decodeVariable(v, raw.values[i]));
+      validate(raw); if (raw.session !== session || !Array.isArray(raw.values) || raw.values.length !== requested.length) throw new Error('RAM oturumu veya değişken listesi değişti.');
+      const values = requested.map((v, i) => decodeVariable(v, raw.values[i]));
       errors = 0; onFrame?.({ receivedAt: clock(), uid, values });
       onState?.({ status: 'live', message: 'Global değişkenler RAM’den okunuyor. Değerlerin değişmemesi bağlantı kesildiği anlamına gelmez.' });
     } catch (error) {
@@ -80,6 +94,7 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
       finally { inflight = false; if (stopped) release(); }
       if (!stopped) void sample();
     }, stop,
+    updateVariables(next) { checkVariables(next); watched = [...next]; },
   };
 }
 export function globalWatchCsv(frames) {
