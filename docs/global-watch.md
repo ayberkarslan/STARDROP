@@ -7,7 +7,17 @@ Asıl çalışma projesi: `/home/ayberk/YRT_Projects/RAMDENEME`.
 2. ESP32-S3 yazılımını güncelle: kök dizinde `pio run -e esp32-s3-n16r8 -t upload`.
 3. Hızlı Yükleme’de `build/RAMDENEME.elf` dosyasını seç; istersen normal yükleme düğmesini kullan, istersen doğrudan Canlı İzleme’ye geç.
 4. Hızlı Yükleme’de ELF’i seçmek bile Canlı İzleme → Değişkenler’e aktarılması için yeterlidir. Manuel yükleme zorunlu değildir; seçilmiş dosya henüz karta yazılmış sayılmaz.
-5. `watch_random` ara, Ekle, İzlemeyi başlat. İstenirse `watch_counter`, `watch_temperature`, `watch_signed` ekle. Doğrulanmış ELF uyumsuzluğunda seçilen yazılım otomatik yüklenir; mevcut firmware değişir ve hedef yeniden başlar. Bildirimler ve yükleme ilerlemesi gösterilir; ardından flash yeniden doğrulanır.
+5. Live Expressions alanına `watch_random` yazıp Enter’a bas; ilk değişkenle izleme otomatik başlar. İstenirse `watch_counter`, `watch_temperature`, `watch_signed` aynı şekilde eklenir. Doğrulanmış ELF uyumsuzluğunda seçilen yazılım otomatik yüklenir; mevcut firmware değişir ve hedef yeniden başlar. Bildirimler ve yükleme ilerlemesi gösterilir; ardından flash yeniden doğrulanır.
+
+İzleme sürerken değişken eklenebilir veya satırdaki çarpıyla çıkarılabilir;
+son değişken çıkarılınca izleme durur. Devam eden okuma kendi değişken
+listesiyle çözülür; düzenleme sonraki isteğe uygulanır. Aynı donanım kilidi
+ve doğrulanmış oturum korunur. İsimler tam ve büyük/küçük harfe duyarlıdır;
+hesaplama ifadeleri desteklenmez. Bulunamayan, aynı adlı birden çok kaydı
+olan veya zaten ekli değişkenler açık hatayla reddedilir. İsim çakışmasında
+`ELF’ten seç` listesindeki adres kullanılabilir. Grafikler her satırın altında,
+teknik açıklamalar `Oturum bilgisi` içinde açılır. CSV, örnek aralığı, manuel
+ELF değiştirme ve Hızlı Yükleme ELF’ine dönme seçenekleri korunur.
 
 UART veya sensör kablosu eklenmez; mevcut SWD hattı kullanılır. Önce flash
 SHA-256 özeti kontrol edilir, ardından ELF/DWARF’tan çıkarılan RAM adresleri

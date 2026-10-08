@@ -33,7 +33,8 @@ try {
           if (args.path === '/api/watch/read') {
             window.watchMock.calls++;
             const value = (++counter).toString(16).padStart(8, '0').match(/../g).reverse().join('');
-            return JSON.stringify({ valid: true, uid, sha256: hash, session: 'session', values: [{ address: variables[0].address, hex: value, stable: true }] });
+            const requested = JSON.parse(args.body).addresses.split(',').map(item => Number(item.split(':')[0]));
+            return JSON.stringify({ valid: true, uid, sha256: hash, session: 'session', values: requested.map(address => ({ address, hex: address === variables[0].address ? value : '0000c841', stable: true })) });
           }
         }
         return null;
@@ -76,9 +77,12 @@ try {
   // Replacing firmware must also update an already populated monitor tab.
   await upload('RAMDENEME-v2.elf');
   await page.evaluate(() => { window.watchMock.mismatch = true; window.watchMock.confirmed = true; });
+  await monitor.getByLabel('Global değişken ara').fill('unknown_variable');
+  await monitor.getByLabel('Global değişken ara').press('Enter');
+  await monitor.getByRole('alert').filter({ hasText: 'bulunamadı' }).waitFor();
+  assert.equal(await page.evaluate(() => window.watchMock.flashes), 2);
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
-  await monitor.getByRole('button', { name: 'EKLE', exact: true }).click();
-  await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT' }).click();
+  await monitor.getByLabel('Global değişken ara').press('Enter');
   await page.waitForFunction(() => window.watchMock.calls >= 3);
   assert.equal(await page.evaluate(() => window.watchMock.flashes), 3);
   await page.evaluate(() => { window.watchMock.confirmed = false; });
@@ -86,6 +90,18 @@ try {
   assert.match(await monitor.locator('.live-value strong').innerText(), /^\d+$/);
   assert.equal(await monitor.getByText('CANLI', { exact: true }).count(), 1);
   assert.equal(await monitor.locator('.watch-chart path').count(), 1);
+  await monitor.locator('.watch-graph summary').click();
+  await monitor.locator('.watch-chart svg').waitFor({ state: 'visible' });
+  await monitor.locator('.watch-graph summary').click();
+  await monitor.getByLabel('Global değişken ara').fill('watch_random');
+  await monitor.getByLabel('Global değişken ara').press('Enter');
+  await monitor.getByRole('alert').filter({ hasText: 'zaten' }).waitFor();
+  await monitor.getByLabel('Global değişken ara').fill('watch_temperature');
+  await monitor.getByLabel('Global değişken ara').press('Enter');
+  await monitor.locator('.live-channel').filter({ hasText: 'watch_temperature' }).locator('.live-value strong').filter({ hasText: '25' }).waitFor();
+  assert.equal(await page.evaluate(() => window.watchMock.flashes), 3);
+  await monitor.getByRole('button', { name: 'watch_temperature izlemeyi kaldır', exact: true }).click();
+  assert.equal(await monitor.locator('.live-channel').count(), 1);
   await monitor.getByRole('button', { name: 'DURDUR', exact: true }).click();
   await monitor.getByRole('button', { name: 'CSV', exact: true }).click();
   await page.waitForFunction(() => window.watchMock.exports.length === 1);
@@ -102,6 +118,11 @@ try {
   const count = await page.evaluate(() => window.watchMock.calls);
   await page.waitForTimeout(1100);
   assert.equal(await page.evaluate(() => window.watchMock.calls), count);
+  await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
+  await monitor.locator('.watch-picker summary').click();
+  await monitor.getByLabel('İzlenecek global değişken').waitFor({ state: 'visible' });
+  await monitor.locator('.watch-picker summary').click();
+  await page.screenshot({ path: '/tmp/stardrop-live-expressions.png', fullPage: true });
   assert.deepEqual(errors, []);
-  console.log('Global watch: yüklenen ELF aktarımı, yeni firmware, ek ELF, seçim, grafik, CSV ve güvenli durdurma geçti');
+  console.log('Global watch: ELF aktarımı, Enter ile izleme, canlı liste düzenleme, grafik, CSV ve güvenli durdurma geçti');
 } finally { await browser.close(); }
