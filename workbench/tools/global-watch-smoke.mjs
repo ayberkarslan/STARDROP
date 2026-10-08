@@ -127,6 +127,9 @@ try {
   await monitor.locator('.watch-picker summary').click();
   await monitor.getByLabel('İzlenecek global değişken').waitFor({ state: 'visible' });
   await monitor.locator('.watch-picker summary').click();
+  const cardBox = await monitor.getByRole('group', { name: 'Çalışılan kart' }).boundingBox();
+  const sourceBox = await monitor.locator('.watch-source').boundingBox();
+  assert.ok(cardBox.y + cardBox.height < sourceBox.y, 'kart bilgisi ELF araçlarının üzerine taşmamalı');
   await page.screenshot({ path: '/tmp/stardrop-live-expressions.png', fullPage: true });
   assert.deepEqual(errors, []);
   console.log('Global watch: ELF aktarımı, Enter ile izleme, canlı liste düzenleme, grafik, CSV ve güvenli durdurma geçti');
