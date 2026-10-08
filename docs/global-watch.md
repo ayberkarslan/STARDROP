@@ -15,8 +15,10 @@ listesiyle çözülür; düzenleme sonraki isteğe uygulanır. Aynı donanım ki
 ve doğrulanmış oturum korunur. İsimler tam ve büyük/küçük harfe duyarlıdır;
 hesaplama ifadeleri desteklenmez. Bulunamayan, aynı adlı birden çok kaydı
 olan veya zaten ekli değişkenler açık hatayla reddedilir. İsim çakışmasında
-`ELF’ten seç` listesindeki adres kullanılabilir. Grafikler her satırın altında,
-teknik açıklamalar `Oturum bilgisi` içinde açılır. CSV, örnek aralığı, manuel
+`ELF’ten seç` listesindeki adres kullanılabilir. Grafikler her satırın altında
+açılır; teknik sınırlar bu belgede tutulur. Çalışılan kartın adı, modeli ve
+kısa UID'si başlık altında gösterilir; tam UID kart alanının açıklamasındadır.
+ELF uyumsuzluğu yalnız gerçekten tespit edildiğinde bildirilir. CSV, örnek aralığı, manuel
 ELF değiştirme ve Hızlı Yükleme ELF’ine dönme seçenekleri korunur.
 
 UART veya sensör kablosu eklenmez; mevcut SWD hattı kullanılır. Önce flash
