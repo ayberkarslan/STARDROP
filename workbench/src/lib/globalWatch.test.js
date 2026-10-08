@@ -73,3 +73,31 @@ test('CSV preserves identity and avoids formula injection', () => {
   const csv = globalWatchCsv([{ receivedAt: 0, uid, values: [{ ...variable, name: '=run()', value: 999, valid: true }] }]);
   assert.match(csv, /uid.*name/); assert.match(csv, /'=run\(\)/); assert.match(csv, /999/);
 });
+test('confirmed mismatch reloads once under the same lease and re-verifies before reading', async () => {
+  let verifies = 0, reloads = 0;
+  const mismatch = { valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: true, uid, sha256: hash };
+  const item = setup({ verify: async () => ++verifies === 1 ? mismatch : identity,
+    reloadFirmware: async (lease, isStopped) => { reloads++; assert.ok(item.hardware.owns(lease)); assert.equal(isStopped(), false); } });
+  await item.session.start(); await flush();
+  assert.equal(reloads, 1); assert.equal(verifies, 2); assert.equal(item.frames.length, 1);
+  item.session.stop();
+});
+test('unknown read failures, unconfirmed mismatch and wrong identity cannot cause flashing', async () => {
+  for (const result of [
+    { valid: false, reason: 'FLASH_READ_FAILED' },
+    { valid: false, reason: 'ELF_FIRMWARE_MISMATCH' },
+    { valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: true, uid: 'a'.repeat(24), sha256: hash },
+  ]) {
+    let reloads = 0;
+    const item = setup({ verify: async () => result, reloadFirmware: async () => { reloads++; } });
+    await item.session.start(); assert.equal(reloads, 0); assert.equal(item.frames.length, 0); assert.equal(item.hardware.current, null);
+  }
+});
+test('failed reload or repeated mismatch never loops or reads RAM', async () => {
+  for (const fails of [true, false]) {
+    let reloads = 0;
+    const item = setup({ verify: async () => ({ valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: true, uid, sha256: hash }),
+      reloadFirmware: async () => { reloads++; if (fails) throw new Error('Yükleme hatası'); } });
+    await item.session.start(); assert.equal(reloads, 1); assert.equal(item.frames.length, 0); assert.equal(item.hardware.current, null); assert.equal(item.states.at(-1).status, 'error');
+  }
+});

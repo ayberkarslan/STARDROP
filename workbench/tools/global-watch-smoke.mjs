@@ -5,10 +5,10 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
-    const secrets = new Map(), uid = '001300155231501920323239', hash = 'a'.repeat(64);
+    const secrets = new Map(), uid = '001300155231501920323239', hash = 'f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b';
     let counter = 10;
     localStorage.setItem('stardrop.bridge', 'http://192.168.1.3');
-    window.watchMock = { calls: 0, mismatch: false, exports: [], failFlash: false };
+    window.watchMock = { calls: 0, mismatch: false, confirmed: false, exports: [], failFlash: false, flashes: 0 };
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     const variables = [{ name: 'watch_random', address: 0x20000004, size: 4, kind: 'unsigned', typeName: 'unsigned int' }, { name: 'watch_temperature', address: 0x20000008, size: 4, kind: 'float', typeName: 'float' }];
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' } }, transformCallback: () => 1, unregisterCallback: () => {},
@@ -21,15 +21,15 @@ try {
         if (command === 'target_registry_load') return {};
         if (command === 'discover_esp') return [{ ip: '192.168.1.3', replyAddress: '192.168.1.3' }];
         if (command === 'code_repo_status') return { activeSha: null };
-        if (command === 'esp_stream') return JSON.stringify(window.watchMock.failFlash ? { error: true, msg: 'Mock yükleme hatası' } : { done: true, pct: 100 });
-        if (command === 'inspect_watch_elf') return { variables, imageSha256: hash, imageSize: 4000 };
+        if (command === 'esp_stream') { window.watchMock.flashes++; await new Promise(resolve => setTimeout(resolve, 200)); if (!window.watchMock.failFlash) window.watchMock.mismatch = false; return JSON.stringify(window.watchMock.failFlash ? { error: true, msg: 'Mock yükleme hatası' } : { done: true, pct: 100 }); }
+        if (command === 'inspect_watch_elf') return { variables, imageSha256: hash, imageSize: 64 };
         if (command === 'telemetry_export_csv') { window.watchMock.exports.push(args.csv); return '/tmp/watch-mock.csv'; }
         if (command === 'esp_http') {
           if (args.path === '/ping') return JSON.stringify({ status: 'ok' });
           if (args.path === '/api/wifi/status') return JSON.stringify({ connected: true, ssid: 'Mock', ip: '192.168.1.3', rssi: -40 });
           if (args.path === '/api/programmer/status') return JSON.stringify({ watchAvailable: true, telemetryAvailable: true });
           if (args.path === '/api/target/status') return JSON.stringify({ connected: true, uid, model: 'STM32F446', flashSizeKb: 512 });
-          if (args.path === '/api/watch/verify') return JSON.stringify(window.watchMock.mismatch ? { valid: false, reason: 'ELF_FIRMWARE_MISMATCH' } : { valid: true, uid, sha256: hash, session: 'session' });
+          if (args.path === '/api/watch/verify') return JSON.stringify(window.watchMock.mismatch ? { valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: window.watchMock.confirmed, uid, sha256: hash } : { valid: true, uid, sha256: hash, session: 'session' });
           if (args.path === '/api/watch/read') {
             window.watchMock.calls++;
             const value = (++counter).toString(16).padStart(8, '0').match(/../g).reverse().join('');
@@ -47,10 +47,16 @@ try {
   await page.getByRole('button', { name: 'Değişkenler', exact: true }).click();
   const monitor = page.locator('.global-watch:visible');
   // A minimal ELF image exercises the real upload conversion; transport stays mocked.
-  const image = Buffer.alloc(128);
+  const image = Buffer.alloc(160);
   image.set([0x7f, 0x45, 0x4c, 0x46, 1, 1]); image.writeUInt16LE(40, 18);
   image.writeUInt32LE(52, 28); image.writeUInt16LE(32, 42); image.writeUInt16LE(1, 44);
-  image.writeUInt32LE(1, 52); image.writeUInt32LE(96, 56); image.writeUInt32LE(0x08000000, 64); image.writeUInt32LE(4, 68);
+  image.writeUInt32LE(1, 52); image.writeUInt32LE(96, 56); image.writeUInt32LE(0x08000000, 64); image.writeUInt32LE(64, 68);
+  // Selection alone must be enough: no flash button click before opening monitor.
+  await page.locator('[data-rail-tool="flash"]:visible').click();
+  await page.locator('.firmware-select:visible input').setInputFiles({ name: 'SELECTED.elf', mimeType: 'application/octet-stream', buffer: image });
+  await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
+  await monitor.getByText('SELECTED.elf · Seçilen ELF · 2 değişken', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => window.watchMock.flashes), 0);
   const upload = async name => {
     await page.locator('[data-rail-tool="flash"]:visible').click();
     await page.locator('.firmware-select:visible input').setInputFiles({ name, mimeType: 'application/octet-stream', buffer: image });
@@ -65,14 +71,17 @@ try {
   await page.locator('[data-rail-tool="devices"]:visible').click();
   await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
   assert.equal(await monitor.getByText('EXTRA.elf · 2 değişken', { exact: true }).count(), 1);
-  await monitor.getByRole('button', { name: 'SON YÜKLENEN ELF', exact: true }).click();
+  await monitor.getByRole('button', { name: 'HIZLI YÜKLEME ELF’İ', exact: true }).click();
   await monitor.getByText('RAMDENEME.elf · Son yüklenen ELF · 2 değişken', { exact: true }).waitFor();
   // Replacing firmware must also update an already populated monitor tab.
   await upload('RAMDENEME-v2.elf');
+  await page.evaluate(() => { window.watchMock.mismatch = true; window.watchMock.confirmed = true; });
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
   await monitor.getByRole('button', { name: 'EKLE', exact: true }).click();
   await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT' }).click();
   await page.waitForFunction(() => window.watchMock.calls >= 3);
+  assert.equal(await page.evaluate(() => window.watchMock.flashes), 3);
+  await page.evaluate(() => { window.watchMock.confirmed = false; });
   assert.equal(await monitor.locator('.live-channel h2').innerText(), 'watch_random');
   assert.match(await monitor.locator('.live-value strong').innerText(), /^\d+$/);
   assert.equal(await monitor.getByText('CANLI', { exact: true }).count(), 1);

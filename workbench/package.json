@@ -24,7 +24,7 @@
     "test:firmware": "node src/lib/diagnosticPipeline.test.js",
     "test:bmp180": "node tools/bmp180-smoke.mjs",
     "test:telemetry": "node --test src/lib/telemetry.test.js",
-    "test:watch": "node --test src/lib/globalWatch.test.js",
+    "test:watch": "node --test src/lib/globalWatch.test.js src/lib/watchFirmware.test.js",
     "test:settings": "node --test src/lib/settings.test.js",
     "test:ui": "node --test src/lib/workspaceTabs.test.js src/lib/hardwareGate.test.js src/lib/libraryFilters.test.js src/lib/wiringGuide.test.js src/lib/targetRegistry.test.js"
   }
