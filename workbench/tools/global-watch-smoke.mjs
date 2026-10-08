@@ -28,7 +28,7 @@ try {
           if (args.path === '/ping') return JSON.stringify({ status: 'ok' });
           if (args.path === '/api/wifi/status') return JSON.stringify({ connected: true, ssid: 'Mock', ip: '192.168.1.3', rssi: -40 });
           if (args.path === '/api/programmer/status') return JSON.stringify({ watchAvailable: true, telemetryAvailable: true });
-          if (args.path === '/api/target/status') return JSON.stringify({ connected: true, uid, model: 'STM32F446', flashSizeKb: 512 });
+          if (args.path === '/api/target/status') return JSON.stringify({ connected: true, uid, label: 'Atölye kartı', model: 'STM32F446', flashSizeKb: 512 });
           if (args.path === '/api/watch/verify') return JSON.stringify(window.watchMock.mismatch ? { valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: window.watchMock.confirmed, uid, sha256: hash } : { valid: true, uid, sha256: hash, session: 'session' });
           if (args.path === '/api/watch/read') {
             window.watchMock.calls++;
@@ -89,6 +89,11 @@ try {
   assert.equal(await monitor.locator('.live-channel h2').innerText(), 'watch_random');
   assert.match(await monitor.locator('.live-value strong').innerText(), /^\d+$/);
   assert.equal(await monitor.getByText('CANLI', { exact: true }).count(), 1);
+  assert.equal(await monitor.getByRole('group', { name: 'Çalışılan kart' }).getByText('Atölye kartı', { exact: true }).count(), 1);
+  assert.equal(await monitor.getByText('ELF farklıysa izlemeye başlamadan önce karta yüklenir.', { exact: true }).count(), 0);
+  assert.equal(await monitor.getByText('Oturum bilgisi', { exact: true }).count(), 0);
+  assert.equal(await monitor.getByRole('status').count(), 0);
+  assert.equal(await monitor.getByRole('region', { name: 'İzlenen değişkenler' }).locator('.live-channel').count(), 1);
   assert.equal(await monitor.locator('.watch-chart path').count(), 1);
   await monitor.locator('.watch-graph summary').click();
   await monitor.locator('.watch-chart svg').waitFor({ state: 'visible' });
