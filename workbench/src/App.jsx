@@ -8,6 +8,7 @@ import TestLibrary from './TestLibrary.jsx';
 import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
 import NotificationCenter, { useNoticeHistory } from './NotificationCenter.jsx';
+import PanelResize, { usePanelWidth } from './PanelResize.jsx';
 import WorkspaceTabs, { useWorkspaceTabs } from './WorkspaceTabs.jsx';
 import WelcomeStars from './WelcomeStars.jsx';
 import { workspaceLabels } from './lib/workspaceTabs.js';
@@ -65,6 +66,7 @@ function RailTool({ tool, Icon, workspace, drag, onOpen }) {
 }
 
 export default function App() {
+  const railSize = usePanelWidth('rail');
   const [debugArtifacts, setDebugArtifacts] = useState({});
   const onFirmwareLoaded = (uid, file) => setDebugArtifacts(current => ({ ...current, [uid]: file ? { file, status: 'loaded' } : null }));
   const onFirmwareSelected = (uid, file) => setDebugArtifacts(current => ({ ...current, [uid]: file ? { file, status: 'selected' } : null }));
@@ -609,18 +611,23 @@ export default function App() {
         <SettingsPage services={settingsServices} account={githubUser?.login}/>}
     </section>;
   };
-  const notificationCenter = <NotificationCenter esp={esp} notice={notice} entries={noticeHistory} onRetry={autoConnect} disabled={Boolean(hardwareBusy)}
+  const account = <div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}
+    <div><span>{githubUser ? '@' + githubUser.login : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions">
+      <button disabled={Boolean(hardwareBusy)} onClick={() => setSession('welcome')}>Girişe dön</button>
+      <button onClick={logoutGithub} disabled={githubLogoutBusy || Boolean(hardwareBusy)}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button>
+    </div></div></div>;
+  const notificationCenter = <NotificationCenter esp={esp} notice={notice} entries={noticeHistory} onRetry={autoConnect} disabled={Boolean(hardwareBusy)} account={session === 'github' ? account : null}
     recoveryCount={(session === 'guest' ? guestWorkspace : workspace).state.recovery.length}
-    onRecover={() => { (session === 'guest' ? guestWorkspace : workspace).undo(); setNotice('Önceki çalışma ayrı sekmede geri açıldı.'); }}/>;
+    onRecover={() => { (session === 'guest' ? guestWorkspace : workspace).undo(); setNotice('Önceki çalışma ayrı sekmede geri açıldı.'); }}/>
 
   const startContent = <StartContent user={githubUser} busy={githubLoginBusy}
     onGithub={() => { if (githubUser) { setSession('github'); if (preferences.startPage === 'empty') workspace.create(); else setMode(preferences.startPage); } else startGithubLogin(); }}
     onGuest={() => { setSession('guest'); guestWorkspace.open('flash'); }}
     error={githubLoginError} preparing={githubLoginBusy && !deviceLogin}/>;
-  const welcomeView = <div className="welcome-screen"><WelcomeStars /><aside className="welcome-sidebar">
+  const welcomeView = <div className="welcome-screen resizable-shell" style={{ '--rail-width': `${railSize.width}px` }}><WelcomeStars /><aside className="welcome-sidebar">
     <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
     <div className="welcome-footer"><span>YILDIZ ROKET TAKIMI</span>{notificationCenter}</div>
-    </aside><main className="welcome-content">{startContent}</main></div>;
+    <PanelResize panel={railSize} label="Sol menü genişliği"/></aside><main className="welcome-content">{startContent}</main></div>;
 
   const guestView = <div className="guest-layout"><header className="guest-header"><div className="brand"><strong>STARDROP</strong></div>
     <div className="guest-header-actions"><button disabled={Boolean(hardwareBusy)} onClick={() => setSession('welcome')}>Girişe dön</button></div></header>
@@ -629,7 +636,7 @@ export default function App() {
     {guestWorkspace.state.documents.map((doc) => renderDocument(doc, guestWorkspace.state.activeId, guestWorkspace))}
     <div className="guest-notification-center">{notificationCenter}</div><DragPreview preview={guestDrag.preview}/></div>;
 
-  const signedView = <div className="app-shell">
+  const signedView = <div className="app-shell resizable-shell" style={{ '--rail-width': `${railSize.width}px` }}>
     <aside className="rail">
       <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
       <nav>
@@ -641,11 +648,8 @@ export default function App() {
         {catalogAdmin && <RailTool tool="admin" Icon={ShieldCheck} workspace={workspace} drag={drag}/>}
         <RailTool tool="settings" Icon={Settings} workspace={workspace} drag={drag}/>
       </nav>
-      <div className="rail-footer"><div className="rail-account">{githubUser?.avatar_url && <img className="rail-avatar" src={githubUser.avatar_url} alt="" referrerPolicy="no-referrer" />}
-        <div><span>{githubUser ? '@' + githubUser.login : 'MİSAFİR OTURUMU'}</span><div className="rail-account-actions">
-          <button disabled={Boolean(hardwareBusy)} onClick={() => setSession('welcome')}>Girişe dön</button>
-          <button onClick={logoutGithub} disabled={githubLogoutBusy || Boolean(hardwareBusy)}>{githubLogoutBusy ? 'Çıkılıyor…' : 'Çıkış yap'}</button>
-        </div></div></div></div>{notificationCenter}
+      <div className="rail-footer">{notificationCenter}</div>
+      <PanelResize panel={railSize} label="Sol menü genişliği"/>
     </aside>
     <main>
       <WorkspaceTabs workspace={workspace} lockedIds={lockedIds} drag={drag} titles={titles}/>

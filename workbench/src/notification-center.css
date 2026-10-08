@@ -17,6 +17,7 @@
 .connection-copy strong{font-size:10px;font-weight:500}
 .connection-copy small{color:#888;font-size:9px;overflow-wrap:anywhere}
 .connection-status>svg{flex:none;margin-top:3px;color:#888}
+.notification-announcement{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;pointer-events:none}
 .notification-details{margin-top:12px}
 .notification-details summary{display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 0;color:#aaa;list-style:none}
 .notification-details summary::-webkit-details-marker{display:none}
