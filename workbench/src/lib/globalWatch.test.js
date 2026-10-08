@@ -101,3 +101,11 @@ test('failed reload or repeated mismatch never loops or reads RAM', async () => 
     await item.session.start(); assert.equal(reloads, 1); assert.equal(item.frames.length, 0); assert.equal(item.hardware.current, null); assert.equal(item.states.at(-1).status, 'error');
   }
 });
+test('stopping during reload retains lease until it finishes and skips RAM reads', async () => {
+  let finish;
+  const item = setup({ verify: async () => ({ valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: true, uid, sha256: hash }),
+    reloadFirmware: () => new Promise(resolve => { finish = resolve; }) });
+  const pending = item.session.start(); await flush(); item.session.stop();
+  assert.ok(item.hardware.current); assert.throws(() => item.hardware.acquire('other', 'flash'), /Başka/);
+  finish(); await pending; assert.equal(item.hardware.current, null); assert.equal(item.frames.length, 0);
+});

@@ -5,7 +5,7 @@ Asıl çalışma projesi: `/home/ayberk/YRT_Projects/RAMDENEME`.
 
 1. `make -j4` ile F446 firmware’ini derle.
 2. ESP32-S3 yazılımını güncelle: kök dizinde `pio run -e esp32-s3-n16r8 -t upload`.
-3. Hızlı Yükleme’de aynı derlemenin `build/RAMDENEME.elf` dosyasını seç ve yükle.
+3. Hızlı Yükleme’de `build/RAMDENEME.elf` dosyasını seç; istersen normal yükleme düğmesini kullan, istersen doğrudan Canlı İzleme’ye geç.
 4. Hızlı Yükleme’de ELF’i seçmek bile Canlı İzleme → Değişkenler’e aktarılması için yeterlidir. Manuel yükleme zorunlu değildir; seçilmiş dosya henüz karta yazılmış sayılmaz.
 5. `watch_random` ara, Ekle, İzlemeyi başlat. İstenirse `watch_counter`, `watch_temperature`, `watch_signed` ekle. Doğrulanmış ELF uyumsuzluğunda seçilen yazılım otomatik yüklenir; mevcut firmware değişir ve hedef yeniden başlar. Bildirimler ve yükleme ilerlemesi gösterilir; ardından flash yeniden doğrulanır.
 

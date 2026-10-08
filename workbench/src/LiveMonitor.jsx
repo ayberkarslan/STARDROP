@@ -66,6 +66,13 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   const mounted = useRef(true), lastMessage = useRef('');
   const expectedUid = initialData?.uid || target?.uid;
   const running = ['connecting', 'live', 'stale', 'retrying', 'sensor-error'].includes(state.status);
+  const offeredElf = useRef(null);
+  useEffect(() => {
+    const file = services.debugArtifact?.file;
+    if (file && file !== offeredElf.current && active && !running && !initialData?.expected) {
+      offeredElf.current = file; setMode('variables');
+    }
+  }, [services.debugArtifact?.file, active, running, initialData?.expected]);
   useEffect(() => { if (!running) setIntervalMs(String(preferences.intervalMs)); }, [preferences.intervalMs]);
   const sampleAge = latest ? (latest.ageMs ?? 0) + Math.max(0, now - latest.receivedAt) : null;
   const status = state.status === 'live' && sampleAge > Math.max(2000, Number(interval) * 3) ? 'stale' : state.status;
