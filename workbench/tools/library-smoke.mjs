@@ -11,7 +11,7 @@ try {
   await page.addInitScript(() => {
     const secrets = new Map();
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' } }, invoke: async (command, args = {}) => {
-      if (command === 'github_device_start') return JSON.stringify({ user_code: 'MOCK', device_code: 'mock', expires_in: 900, interval: 5 });
+      if (command === 'github_device_start') return JSON.stringify({ user_code: 'MOCK-CODE', device_code: 'mock', expires_in: 900, interval: 5 });
       if (command === 'github_device_poll') return JSON.stringify({ access_token: 'mock-not-a-token' });
       if (command === 'load_secret') return secrets.get(args.key) || null;
       if (command === 'save_secret') { secrets.set(args.key, args.value); return 'memory'; }

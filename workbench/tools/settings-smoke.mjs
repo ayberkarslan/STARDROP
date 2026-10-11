@@ -19,7 +19,7 @@ try {
       persisted.delete('github_repo_token'); volatile.delete('github_repo_token');
       (args.remember ? persisted : volatile).set('github_repo_token', args.value); return args.remember ? 'os' : 'memory';
     }
-    if (command === 'github_device_start') return JSON.stringify({ user_code: 'MOCK', device_code: 'mock', expires_in: 900, interval: 5 });
+    if (command === 'github_device_start') return JSON.stringify({ user_code: 'MOCK-CODE', device_code: 'mock', expires_in: 900, interval: 5 });
     if (command === 'github_device_poll') return JSON.stringify({ access_token: 'mock-not-a-token' });
     if (command === 'discover_esp') return [];
     if (command === 'esp_http') throw Error('Mock ESP offline');

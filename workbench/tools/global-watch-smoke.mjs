@@ -14,7 +14,7 @@ try {
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' } }, transformCallback: () => 1, unregisterCallback: () => {},
       invoke: async (command, args = {}) => {
         if (command === 'plugin:event|listen') return 1;
-        if (command === 'github_device_start') return JSON.stringify({ user_code: 'MOCK', device_code: 'mock', expires_in: 900, interval: 5 });
+        if (command === 'github_device_start') return JSON.stringify({ user_code: 'MOCK-CODE', device_code: 'mock', expires_in: 900, interval: 5 });
         if (command === 'github_device_poll') return JSON.stringify({ access_token: 'mock' });
         if (command === 'load_secret') return secrets.get(args.key) || null;
         if (command === 'save_secret') { secrets.set(args.key, args.value); return 'memory'; }
