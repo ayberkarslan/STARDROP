@@ -9,6 +9,7 @@ import SelectMenu from './SelectMenu.jsx';
 import DeviceLogin from './DeviceLogin.jsx';
 import NotificationCenter, { useNoticeHistory } from './NotificationCenter.jsx';
 import PanelResize, { usePanelWidth } from './PanelResize.jsx';
+import { deviceUserCode } from './lib/deviceCode.js';
 import WorkspaceTabs, { useWorkspaceTabs } from './WorkspaceTabs.jsx';
 import WelcomeStars from './WelcomeStars.jsx';
 import { workspaceLabels } from './lib/workspaceTabs.js';
@@ -396,7 +397,7 @@ export default function App() {
       const expiresIn = Math.min(Math.max(Number(challenge.expires_in) || 900, 60), 900);
       const deadline = Date.now() + expiresIn * 1000;
       let interval = Math.min(Math.max(Number(challenge.interval) || 5, 5), 30);
-      setDeviceLogin({ userCode: challenge.user_code, expiresIn });
+      setDeviceLogin({ userCode: deviceUserCode(challenge.user_code), expiresIn });
       setNotice('GitHub doğrulama kodunu onaylamanı bekliyorum.');
       let result;
       while (Date.now() < deadline && attempt === loginAttempt.current) {

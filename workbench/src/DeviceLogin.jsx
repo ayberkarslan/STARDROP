@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Github } from 'lucide-react';
 import Popup from './Popup.jsx';
+import { copyDeviceCode } from './lib/deviceCode.js';
 
 export default function DeviceLogin({ challenge, onOpen, onCancel }) {
   const [feedback, setFeedback] = useState('');
@@ -8,7 +9,7 @@ export default function DeviceLogin({ challenge, onOpen, onCancel }) {
 
   const copyCode = async () => {
     try {
-      await navigator.clipboard.writeText(challenge.userCode);
+      await copyDeviceCode(challenge.userCode);
       setFeedback('Kod kopyalandı.');
     } catch {
       setFeedback('Kopyalanamadı; kodu seçip elle kopyalayabilirsin.');
