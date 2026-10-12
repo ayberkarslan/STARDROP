@@ -2,6 +2,11 @@
   "schemaVersion": 2,
   "devices": [
     {
+      "id": "bmp581", "name": "Bosch BMP581", "matchParts": ["BMP581"],
+      "interfaces": [{ "protocol": "I2C", "requiredRoles": ["SCL", "SDA"], "optionalRoles": ["INT"] }],
+      "electricalNotes": ["CSB yüksek olmalı. SDO adresi 0x46/0x47 seçer; fiziksel köprüleri kontrol et. OBC PA8/PB4 bağlantısı yazılımsal I²C gerektirir."]
+    },
+    {
       "id": "bmp180",
       "name": "Bosch BMP180",
       "matchParts": ["BMP180"],
@@ -27,6 +32,13 @@
     }
   ],
   "tests": [
+    {
+      "id": "bmp581-f446", "deviceId": "bmp581", "name": "BMP581 · basınç",
+      "description": "Bosch sürücüsüyle basınç/sıcaklık; pressure_pa globali ve SWD canlı kanallar. Derleme doğrulandı, fiziksel kart testi bekliyor.",
+      "status": "ready", "protocol": "I2C", "matchParts": ["BMP581"], "supportedMcu": ["STM32F446RE"],
+      "sourcePath": "tests/bmp581-f446/stardrop-project.json", "build": "stm32-hal-v1",
+      "result": "sram", "telemetryAbi": 1, "requiredRoles": ["SCL", "SDA"]
+    },
     {
       "id": "bmp180-f446",
       "deviceId": "bmp180",

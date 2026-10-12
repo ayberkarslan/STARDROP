@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "capabilities": ["i2c-hardware-software-v1", "swd-telemetry-v1"],
+  "target": "STM32F446xx",
+  "linkerScript": "@repo/tests/bmp180-f446/STM32F446xx_FLASH.ld",
+  "cpu": "cortex-m4", "fpu": "fpv4-sp-d16", "floatAbi": "hard",
+  "defines": ["USE_HAL_DRIVER", "STM32F446xx"],
+  "includeDirs": [
+    "Inc", "vendor/bosch", "@repo/tests/bmp180-f446/Inc",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Inc",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy",
+    "@repo/tests/led-blink-f446/Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+    "@repo/tests/led-blink-f446/Drivers/CMSIS/Include"
+  ],
+  "sources": [
+    "Src/main.c", "Src/bmp581_port.c", "vendor/bosch/bmp5.c",
+    "@repo/tests/bmp180-f446/Src/stardrop_i2c.c",
+    "@repo/tests/bmp180-f446/Src/stardrop_telemetry.c",
+    "@repo/tests/bmp180-f446/Src/stardrop_diagnostic_report.c",
+    "@repo/tests/bmp180-f446/Src/stm32f4xx_it.c",
+    "@repo/tests/bmp180-f446/Src/stm32f4xx_hal_msp.c",
+    "@repo/tests/bmp180-f446/Src/system_stm32f4xx.c",
+    "@repo/tests/bmp180-f446/Src/sysmem.c",
+    "@repo/tests/bmp180-f446/Src/syscalls.c",
+    "@repo/tests/bmp180-f446/startup_stm32f446xx.s",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ramfunc.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma_ex.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_exti.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c.c",
+    "@repo/tests/led-blink-f446/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_i2c_ex.c"
+  ]
+}

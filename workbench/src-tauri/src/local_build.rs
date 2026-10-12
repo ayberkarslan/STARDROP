@@ -802,6 +802,35 @@ mod tests {
     }
 
     #[test]
+    fn bmp581_catalog_builds_obc_software_and_hardware_i2c() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../code-repo");
+        let gcc = PathBuf::from("/usr/bin/arm-none-eabi-gcc");
+        if !gcc.is_file() { return; }
+        let objcopy = gcc.with_file_name("arm-none-eabi-objcopy");
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive_test_tree(&repo, &repo, &mut zip, "stardrop/");
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        extract_code_archive(zip.finish().unwrap().into_inner(), root.path(), &source).unwrap();
+        let mut hashes = std::collections::HashSet::new();
+        for (bus, scl, sda) in [("SOFT_I2C_2", "PA8", "PB4"), ("I2C3", "PA8", "PC9")] {
+            let mut request = bmp_request(bus, scl, sda);
+            request.test_id = "bmp581-f446".into();
+            let mut profile: serde_json::Value = serde_json::from_str(&request.profile_json).unwrap();
+            profile["components"][0]["part"] = serde_json::json!("BMP581");
+            request.profile_json = profile.to_string();
+            let built = compile_code_test_at(&source, &gcc, &objcopy, request, "bmp581-source".into()).unwrap();
+            assert!(built.bytes.len() > 64 && built.bytes.len() < 512 * 1024);
+            assert!(hashes.insert(built.sha256));
+            let elf = object::File::parse(built.elf_bytes.as_slice()).unwrap();
+            use object::{Object, ObjectSymbol};
+            for name in ["pressure_pa", "temperature_c", "sensor_status", "sensor_error", "sample_counter"] {
+                assert!(elf.symbols().any(|symbol| symbol.name().ok() == Some(name)), "missing global {name}");
+            }
+        }
+    }
+
+    #[test]
     fn bmp180_cpp_catalog_builds_hardware_and_software_pin_variants() {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../code-repo");
         let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("toolchain/bin/arm-none-eabi-gcc");
