@@ -45,6 +45,11 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
     stopped = true; cancel(timer); timer = null; if (!inflight) release(); onState?.({ status, message });
   };
   const validate = raw => {
+    if (raw.reason === 'WATCH_REQUEST_INVALID') {
+      const details = { UID_FORMAT_INVALID: 'STM32 UID biçimi', HASH_FORMAT_INVALID: 'ELF SHA-256 özeti', IMAGE_SIZE_INVALID: 'ELF flash boyutu', BODY_TOO_LARGE: 'istek boyutu' };
+      throw new Error(raw.requestVersion === 2 ? `ESP32 isteği reddetti: ${details[raw.detail] || raw.detail || 'bilinmeyen alan'} geçersiz.`
+        : 'ESP32 eski izleme isteği doğrulamasını kullanıyor. S3 firmware’ini güncelle; sürüm watch-uid-case-v2 olmalı.');
+    }
     if (!raw.valid) throw new Error(WATCH_REASONS[raw.reason] || `RAM okuması geçersiz: ${raw.reason || 'bilinmiyor'}`);
     if (raw.uid !== uid || raw.sha256 !== elf.imageSha256 || typeof raw.session !== 'string' || !raw.session) throw new Error('Hedef veya ELF kimliği değişti; izleme durduruldu.');
   };

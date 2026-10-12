@@ -8,6 +8,16 @@ const variable = { name: 'watch_random', address: 0x20000004, size: 4, kind: 'un
 const elf = { imageSha256: hash, imageSize: 4000, variables: [variable] };
 const identity = { valid: true, uid, sha256: hash, session: 'test-session' };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('verification errors distinguish old firmware from malformed fields', async () => {
+  for (const [result, message] of [
+    [{ valid: false, reason: 'WATCH_REQUEST_INVALID' }, /eski izleme/],
+    [{ valid: false, reason: 'WATCH_REQUEST_INVALID', requestVersion: 2, detail: 'UID_FORMAT_INVALID' }, /UID biçimi/],
+  ]) {
+    const item = setup({ verify: async () => result });
+    await item.session.start();
+    assert.match(item.states.at(-1).message, message); assert.equal(item.hardware.current, null);
+  }
+});
 test('uppercase and mixed-case factory UIDs are accepted without rewriting identity', async () => {
   for (const boardUid of ['002C00343232511232323432', '002c00343232511232323432', 'ABCDEF1234567890abcdef12']) {
     const response = { ...identity, uid: boardUid };
