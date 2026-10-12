@@ -8,6 +8,21 @@ const variable = { name: 'watch_random', address: 0x20000004, size: 4, kind: 'un
 const elf = { imageSha256: hash, imageSize: 4000, variables: [variable] };
 const identity = { valid: true, uid, sha256: hash, session: 'test-session' };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('uppercase and mixed-case factory UIDs are accepted without rewriting identity', async () => {
+  for (const boardUid of ['002C00343232511232323432', '002c00343232511232323432', 'ABCDEF1234567890abcdef12']) {
+    const response = { ...identity, uid: boardUid };
+    const item = setup({ uid: boardUid, verify: async () => response,
+      read: async () => ({ ...response, values: [{ address: variable.address, hex: 'e7030000', stable: true }] }) });
+    await item.session.start(); await flush();
+    assert.equal(item.frames[0].uid, boardUid); item.session.stop();
+  }
+});
+test('invalid and erased UIDs fail before acquiring the hardware lease', async () => {
+  for (const uid of ['0'.repeat(24), 'F'.repeat(24), 'Z'.repeat(24), '1234']) {
+    const item = setup({ uid });
+    await assert.rejects(item.session.start(), /STM32 UID/); assert.equal(item.hardware.current, null);
+  }
+});
 test('typed names resolve exactly, reject missing and ambiguous symbols', () => {
   assert.equal(resolveWatchName(elf, '  watch_random '), variable);
   assert.throws(() => resolveWatchName(elf, 'watch_rand'), /bulunamadı/);

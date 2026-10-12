@@ -5,7 +5,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
-    const secrets = new Map(), uid = '001300155231501920323239', hash = 'f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b';
+    const secrets = new Map(), uid = '002C00343232511232323432', hash = 'f5a5fd42d16a20302798ef6ed309979b43003d2320d9f0e8ea9831a92759fb4b';
     let counter = 10;
     localStorage.setItem('stardrop.bridge', 'http://192.168.1.3');
     window.watchMock = { calls: 0, mismatch: false, confirmed: false, exports: [], failFlash: false, flashes: 0 };
