@@ -6,6 +6,7 @@ import { espJson } from './lib/espTransport.js';
 import { createGlobalWatch, globalWatchCsv, variableId, resolveWatchName } from './lib/globalWatch.js';
 import { DEFAULT_SETTINGS } from './lib/settings.js';
 import { reloadWatchFirmware } from './lib/watchFirmware.js';
+import { inspectWatchFile } from './lib/watchElfImport.js';
 
 const labels = { idle: 'Hazır', verifying: 'Doğrulanıyor', programming: 'Yükleniyor', live: 'Canlı', paused: 'Durduruldu', retrying: 'Bağlantı kontrolü', error: 'İzleme durdu' };
 const valueText = v => !v?.valid ? '—' : v.kind === 'bool' ? v.value ? 'true' : 'false' : typeof v.value === 'number' ? v.value.toLocaleString('tr-TR', { maximumFractionDigits: 6 }) : v.value;
@@ -33,7 +34,9 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   const running = ['verifying', 'programming', 'live', 'retrying'].includes(state.status);
   const uid = initialData?.uid || target?.uid;
   const stop = message => controller.current?.stop(message);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; ++importId.current; stop(); }; }, []);
+  // StrictMode replays effects on first mount. Keep the same pending import
+  // valid across that replay; real unmounts are guarded by alive=false.
+  useEffect(() => { alive.current = true; return () => { alive.current = false; stop(); }; }, []);
   useEffect(() => { if (!active || esp.status !== 'online') stop(!active ? 'Sekme arka planda; okuma durduruldu.' : 'ESP32 bağlantısı kesildi.'); }, [active, esp.status]);
   useEffect(() => () => stop('ESP adresi değişti; okuma durduruldu.'), [activeBridge]);
   useEffect(() => { if (running) { const timer = window.setInterval(() => setNow(Date.now()), 500); return () => window.clearInterval(timer); } }, [running]);
@@ -47,7 +50,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     try {
       if (!/\.elf$/i.test(file.name) || file.size > 16 * 1024 * 1024) throw new Error('Debug bilgili .ELF seç; en fazla 16 MB. BIN değişken adlarını taşımaz.');
       if (!window.__TAURI_INTERNALS__) throw new Error('ELF çözümleme masaüstü uygulamasında kullanılabilir.');
-      const info = await invoke('inspect_watch_elf', { bytes: Array.from(new Uint8Array(await file.arrayBuffer())) });
+      const info = await inspectWatchFile(file, invoke);
       if (!alive.current || id !== importId.current) return;
       setElf(info); setFileName(file.name); setChoice(info.variables[0] ? variableId(info.variables[0]) : '');
       setState({ status: 'idle', message: `${info.variables.length} RAM değişkeni bulundu. İzleme başlatıldığında flash eşleşmesi kontrol edilir.` });
