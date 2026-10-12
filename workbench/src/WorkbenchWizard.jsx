@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeft, ArrowRight, Cpu, Download, FileUp, RefreshCw, Send, ShieldCheck } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, Cpu, Download, FileUp, Lightbulb, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 import { addManualPeripheral, newBoardProfile, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { buildableTargetPart, testsForComponent } from './lib/testCatalog.js';
 import SelectMenu from './SelectMenu.jsx';
@@ -133,9 +133,10 @@ export default function WorkbenchWizard({ onShare, preset, profile, setProfile, 
       {step === 'component' && profile && <>
         <span className="eyebrow">2 / BİLEŞEN</span><h2>{flow === 'net' ? 'Neyi denemek istersin?' : 'Neyi bağladın?'}</h2>
         <p>{profile.mcu.part} · {profile.name}</p>
-        {profile.components.length > 0 && <div className="wizard-components">{profile.components.map((component) => {
+        {profile.components.length > 0 && <div className="wizard-components">{[...profile.components].sort((a, b) =>
+          (a.powerOnly ? 2 : a.part === 'LED' ? 0 : 1) - (b.powerOnly ? 2 : b.part === 'LED' ? 0 : 1)).map((component) => {
           const gpio = profile.connections.find(connection => connection.componentRef === component.ref && connection.role === 'LED')?.mcuPin;
-          return <button key={component.ref} disabled={component.powerOnly} title={component.detectionNote || ''} onClick={() => chooseComponent(component.ref)}><Activity size={18}/><span>
+          return <button key={component.ref} disabled={component.powerOnly} title={component.detectionNote || ''} onClick={() => chooseComponent(component.ref)}>{component.part === 'LED' ? <Lightbulb size={18}/> : <Activity size={18}/>}<span>
             <strong>{component.part === 'LED' ? component.displayName || 'LED' : component.part}</strong>
             <small>{component.ref} · {component.powerOnly ? 'Güç LED’i · yazılımla kontrol edilmez' : component.part === 'LED' ? `LED · ${gpio || 'Bağlantıyı kontrol et'}` : component.protocol}</small>
           </span><ArrowRight size={16}/></button>;
