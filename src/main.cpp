@@ -599,6 +599,8 @@ void handleProgrammerStatus() {
     json += "\"statusEventsAvailable\":true,";
     json += "\"telemetryAvailable\":true,\"telemetryAbi\":1,\"telemetryMinIntervalMs\":200,";
     json += "\"watchAvailable\":true,\"watchVersion\":1,\"watchMaxVariables\":16,";
+    json += "\"watchRequestVersion\":2,\"firmwareRevision\":\"watch-uid-case-v2\",";
+    json += "\"firmwareBuild\":\"" + String(__DATE__) + " " + String(__TIME__) + "\",";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
     json += "\"psramBytes\":" + String(ESP.getPsramSize()) + ",";
@@ -955,7 +957,14 @@ void handleWatchVerify() {
     const String body = server.arg("plain");
     const String uid = watchField(body, "uid"), hash = watchField(body, "sha256"), sizeText = watchField(body, "size");
     uint32_t size = 0; const char *cursor = sizeText.c_str();
-    if (body.length() > 2048 || !watchHex(uid, 24) || !watchHex(hash, 64) || !Watch::decimal(cursor, size) || *cursor || size < 64 || size > 1024 * 1024) { watchError("WATCH_REQUEST_INVALID"); return; }
+    const char *invalid = body.length() > 2048 ? "BODY_TOO_LARGE"
+        : !watchHex(uid, 24) ? "UID_FORMAT_INVALID"
+        : !watchHex(hash, 64) ? "HASH_FORMAT_INVALID"
+        : !Watch::decimal(cursor, size) || *cursor || size < 64 || size > 1024 * 1024 ? "IMAGE_SIZE_INVALID" : nullptr;
+    if (invalid) {
+        server.send(200, "application/json", "{\"valid\":false,\"reason\":\"WATCH_REQUEST_INVALID\",\"detail\":\"" + String(invalid) + "\",\"requestVersion\":2}");
+        return;
+    }
     swd.setSpeedProfile(SwdSpeedProfile::FAST); swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
     TargetProbeInfo target;
     if (!swd.probe(&target, true)) { watchError("TARGET_OFFLINE"); return; }
