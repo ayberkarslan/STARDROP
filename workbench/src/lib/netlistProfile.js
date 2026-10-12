@@ -1,5 +1,6 @@
 import { DeterministicBoardParser } from './deterministicNetlistParser.js';
 import { confidenceForConnection, newBoardProfile, supportedPeripheral } from './boardProfile.js';
+import { netlistLeds } from './netlistLeds.js';
 
 function roleFor(protocol, role) {
   if (protocol === 'I2C') return role === 'SCK' ? 'SCL' : role === 'SDI' ? 'SDA' : role;
@@ -62,5 +63,9 @@ export function profileFromNetlist(netlist, { name, netlistName = 'board.NET', b
     };
     return { ...connection, confidence: confidenceForConnection(connection) };
   }));
+  const outputs = netlistLeds(parser, analysis.mcu_ref || parser.findMcu()[0]);
+  profile.components.push(...outputs.components);
+  profile.connections.push(...outputs.connections);
+  analysis.detected_outputs = outputs.components;
   return { profile, analysis };
 }

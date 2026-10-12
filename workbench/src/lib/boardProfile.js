@@ -197,6 +197,11 @@ export function validateBoardProfile(profile) {
   }
   if (!profile.name?.trim()) errors.push('Kart adı zorunludur.');
   if (canonicalMcu(profile.mcu?.part) === 'UNKNOWN') errors.push('MCU modeli seçilmelidir.');
+  for (const component of profile.components || []) {
+    if (component.part === 'LED' && component.polaritySource === 'UNKNOWN' && typeof component.activeLow !== 'boolean') {
+      errors.push(`${component.ref}: LED yönünü seç; NET dosyasında kesin belirlenemedi.`);
+    }
+  }
 
   const occupiedPins = new Map();
   for (const connection of profile.connections || []) {

@@ -56,5 +56,65 @@ test('BHI360 fixture is detected but not claimed as a runnable hardware test', (
   for (const pin of analysis.detected_sensors.find((item) => item.ref_designator === bhi.ref).pins) {
     assert.equal(pinNumberFor(profile.mcu.part, pin.mcu_pin_name), Number(pin.mcu_pin_num));
   }
+  assert.deepEqual(Object.fromEntries(profile.connections.filter(connection => connection.role === 'LED' && connection.mcuPin)
+    .map(connection => [connection.componentRef, connection.mcuPin])), { D6: 'PA15', D7: 'PB7' });
+  assert.equal(profile.components.find(component => component.ref === 'D6').activeLow, false);
   assert.equal(validateTestTarget(profile, bhi.ref).valid, false);
+});
+
+const ledNet = (gpioSide = 'A', railSide = 'GND', via = true) => `Wire List
+<<< Component List >>>
+STM32F446RET6 U1 MCU
+GREEN LD2 User LED
+330R R1 Resistor
+1N4148 D3 Protection diode
+<<< Wire List >>>
+[00001] USER_LED
+ U1 21 PA5 PASSIVE STM32F446RET6
+ ${via ? 'R1 1 1 PASSIVE 330R' : `LD2 1 ${gpioSide} PASSIVE GREEN`}
+${via ? `[00002] LED_ANODE
+ R1 2 2 PASSIVE 330R
+ LD2 1 ${gpioSide} PASSIVE GREEN` : ''}
+[00003] ${railSide}
+ LD2 2 ${gpioSide === 'A' ? 'K' : 'A'} PASSIVE GREEN
+ D3 1 K PASSIVE 1N4148
+`;
+
+test('user LED through a series resistor becomes a GPIO test with detected polarity', () => {
+  const { profile } = profileFromNetlist(ledNet());
+  const led = profile.components.find(component => component.ref === 'LD2');
+  assert.equal(led.part, 'LED'); assert.equal(led.displayName, 'USER_LED');
+  assert.equal(led.activeLow, false);
+  assert.equal(profile.components.some(component => component.ref === 'D3'), false);
+  assert.equal(profile.connections[0].mcuPin, 'PA5');
+  assert.deepEqual(profile.connections[0].path, ['LED_ANODE', 'R1', 'USER_LED']);
+  assert.equal(profile.connections[0].evidence.seriesResistor, true);
+  assert.equal(validateTestTarget(profile, 'LD2').valid, false);
+  profile.connections[0].approved = true;
+  assert.equal(validateTestTarget(profile, 'LD2').valid, true);
+});
+
+test('cathode-driven LED detects active low rather than choosing by MCU model', () => {
+  const { profile } = profileFromNetlist(ledNet('K', '+3V3', false));
+  assert.equal(profile.components[0].activeLow, true);
+  assert.equal(profile.connections[0].mcuPin, 'PA5');
+});
+
+test('unknown polarity requires a deliberate user choice', () => {
+  const { profile } = profileFromNetlist(ledNet().replace('LD2 1 A', 'LD2 1 1').replace('LD2 2 K', 'LD2 2 2'));
+  profile.connections[0].approved = true;
+  assert.equal(profile.components[0].activeLow, undefined);
+  assert.equal(validateTestTarget(profile, 'LD2').valid, false);
+  profile.components[0].activeLow = false;
+  assert.equal(validateTestTarget(profile, 'LD2').valid, true);
+});
+
+test('multiple GPIOs, supply-only LEDs and transistor paths never become automatic outputs', () => {
+  for (const net of [ledNet().replace('U1 21 PA5 PASSIVE STM32F446RET6', 'U1 21 PA5 PASSIVE STM32F446RET6\n U1 22 PA6 PASSIVE STM32F446RET6'),
+    ledNet().replace('[00001] USER_LED', '[00001] +3V3'),
+    ledNet().replaceAll('R1', 'Q1').replace('330R Q1 Resistor', 'MOSFET Q1 Transistor')]) {
+    const { profile } = profileFromNetlist(net);
+    assert.equal(profile.connections.find(connection => connection.componentRef === 'LD2').mcuPin, null);
+    assert.equal(validateTestTarget(profile, 'LD2').valid, false);
+  }
 });
