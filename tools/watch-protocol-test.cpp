@@ -2,6 +2,11 @@
 #include <cassert>
 #include <string>
 int main() {
+    assert(Watch::hex("002C00343232511232323432", 24));
+    assert(Watch::hex("002c00343232511232323432", 24));
+    assert(!Watch::hex("002G00343232511232323432", 24));
+    assert(!Watch::hex("002C", 24)); assert(!Watch::hex(nullptr, 24));
+    assert(!Watch::hex("002C003432325112323234321", 24));
     Watch::Address items[16]; unsigned count = 0;
     const auto valid = [&](const char *text, uint32_t end = 0x20020000) { return Watch::addresses(text, items, count, end); };
     assert(valid("536870912:4,536870920:8")); assert(count == 2);
