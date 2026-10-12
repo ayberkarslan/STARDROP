@@ -921,9 +921,7 @@ String watchField(const String &body, const char *name) {
     return end < 0 ? "" : body.substring(start + 1, end);
 }
 bool watchHex(const String &value, unsigned length) {
-    if (value.length() != length) return false;
-    for (unsigned i = 0; i < length; ++i) if (!((value[i] >= '0' && value[i] <= '9') || (value[i] >= 'a' && value[i] <= 'f'))) return false;
-    return true;
+    return value.length() == length && Watch::hex(value.c_str(), length);
 }
 bool watchFlashMatches(bool *readOk = nullptr) {
     if (readOk) *readOk = false;

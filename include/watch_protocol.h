@@ -3,6 +3,14 @@
 namespace Watch {
 constexpr unsigned maxVariables = 16;
 struct Address { uint32_t address; unsigned size; };
+inline bool hex(const char *text, unsigned length) {
+    if (!text) return false;
+    for (unsigned i = 0; i < length; ++i) {
+        const char c = text[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+    }
+    return text[length] == '\0';
+}
 inline bool decimal(const char *&text, uint32_t &value) {
     value = 0; unsigned digits = 0;
     while (*text >= '0' && *text <= '9') {
