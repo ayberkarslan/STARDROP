@@ -135,9 +135,9 @@ export default function WorkbenchWizard({ onShare, preset, profile, setProfile, 
         <p>{profile.mcu.part} · {profile.name}</p>
         {profile.components.length > 0 && <div className="wizard-components">{profile.components.map((component) => {
           const gpio = profile.connections.find(connection => connection.componentRef === component.ref && connection.role === 'LED')?.mcuPin;
-          return <button key={component.ref} onClick={() => chooseComponent(component.ref)}><Activity size={18}/><span>
+          return <button key={component.ref} disabled={component.powerOnly} title={component.detectionNote || ''} onClick={() => chooseComponent(component.ref)}><Activity size={18}/><span>
             <strong>{component.part === 'LED' ? component.displayName || 'LED' : component.part}</strong>
-            <small>{component.ref} · {component.part === 'LED' ? `LED · ${gpio || 'Bağlantıyı kontrol et'}` : component.protocol}</small>
+            <small>{component.ref} · {component.powerOnly ? 'Güç LED’i · yazılımla kontrol edilmez' : component.part === 'LED' ? `LED · ${gpio || 'Bağlantıyı kontrol et'}` : component.protocol}</small>
           </span><ArrowRight size={16}/></button>;
         })}</div>}
         {(flow === 'net' || profile.components.length > 0) && <button className="wizard-text-button" onClick={startMissingComponent}>Başka bileşen ekle</button>}
@@ -157,7 +157,7 @@ export default function WorkbenchWizard({ onShare, preset, profile, setProfile, 
       {step === 'pins' && activeSensor && <>
         <span className="eyebrow">4 / PİNLER</span>
         <h2>{activeSensor.part} bağlantıları</h2>
-        <p>{activeSensor.ref} için bulunan bağlantıları kontrol et. Sensör hattını ve ardından STM32 paketindeki bacağı seç. SWD ve pakette olmayan pinler reddedilir.</p>
+        <p>{activeSensor.protocol === 'GPIO' ? `${activeSensor.ref} · Pini ve yanma/sönme sürelerini kontrol et.` : `${activeSensor.ref} · Bağlantıları kontrol et; gerekirse paket üzerinden pini değiştir.`}</p>
         {['I2C', 'SPI'].includes(activeSensor.protocol) && <div className="wizard-fields">
           <label>Bağlantı bus’ı<SelectMenu ariaLabel="Bağlantı bus’ı" value={currentConnections[0]?.peripheral || ''}
             options={(activeSensor.protocol === 'I2C' ? ['SOFT_I2C_1', 'I2C1', 'I2C2', 'I2C3'] : ['SPI1', 'SPI2', 'SPI3']).map((value) => ({ value, label: value === 'SOFT_I2C_1' ? 'Yazılımsal I²C · esnek GPIO' : value }))}

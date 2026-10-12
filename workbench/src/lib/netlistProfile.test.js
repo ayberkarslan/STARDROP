@@ -59,6 +59,7 @@ test('BHI360 fixture is detected but not claimed as a runnable hardware test', (
   assert.deepEqual(Object.fromEntries(profile.connections.filter(connection => connection.role === 'LED' && connection.mcuPin)
     .map(connection => [connection.componentRef, connection.mcuPin])), { D6: 'PA15', D7: 'PB7' });
   assert.equal(profile.components.find(component => component.ref === 'D6').activeLow, false);
+  assert.deepEqual(profile.components.filter(component => component.powerOnly).map(component => component.ref), ['D3', 'D4', 'D5']);
   assert.equal(validateTestTarget(profile, bhi.ref).valid, false);
 });
 

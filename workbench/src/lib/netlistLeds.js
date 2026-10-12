@@ -41,6 +41,8 @@ export function netlistLeds(parser, mcuRef) {
     // A rail tied to the GPIO side, multiple GPIOs, or an LED with >2 pins
     // needs manual inspection; do not pretend an RGB/transistor circuit is a single GPIO.
     const candidate = gpioPaths[0];
+    const rails = new Set(endpoints.flatMap(endpoint => endpoint.paths.filter(path => path.rail).map(path => path.rail)));
+    const powerOnly = unique.length === 0 && rails.has('power') && rails.has('ground');
     const gpioSide = candidate && endpoints.find(endpoint => endpoint.pin.pinNumber === candidate.pin.pinNumber);
     const safe = new Set(pins.map(pin => pin.pinNumber)).size === 2 && unique.length === 1
       && !gpioSide.paths.some(path => path.rail);
@@ -51,12 +53,13 @@ export function netlistLeds(parser, mcuRef) {
     const polarity = safe && oppositeRails.length === 1 && (cathode && oppositeRails[0] === 'power' || anode && oppositeRails[0] === 'ground');
     const labels = [...(candidate?.path || []), ...pins.map(pin => pin.netName)];
     const label = labels.find(name => /USER[_ -]?LED/i.test(name)) || labels.find(name => /LED/i.test(name));
-    const note = !safe ? 'GPIO tekil olarak bulunamadı; bağlantıyı elle kontrol et.'
+    const note = powerOnly ? 'Güç LED’i; MCU’ya bağlı değil, yazılımla kontrol edilemez.'
+      : !safe ? 'GPIO tekil olarak bulunamadı; bağlantıyı elle kontrol et.'
       : !polarity ? 'GPIO bulundu; LED yönünü şemadan doğrula.' : null;
     components.push({ ref, part: 'LED', originalPart: part.partValue, displayName: label || part.description || 'LED',
       category: 'OUTPUT', protocol: 'GPIO', peripheral: 'GPIO', blinkMs: 500, onMs: 500, offMs: 500,
       ...(polarity ? { activeLow: cathode } : {}), detectionNote: note,
-      polaritySource: polarity ? 'NET' : 'UNKNOWN' });
+      polaritySource: polarity ? 'NET' : 'UNKNOWN', powerOnly });
     connections.push({ componentRef: ref, componentPart: 'LED', role: 'LED', sensorPin: candidate?.pin.pinName || 'LED',
       mcuPin: safe ? candidate.gpio : null, peripheral: 'GPIO', approved: false, source: 'NET',
       path: safe ? candidate.path : [], confidence: safe ? 60 : 0,
