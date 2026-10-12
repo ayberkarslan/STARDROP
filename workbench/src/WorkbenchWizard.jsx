@@ -7,6 +7,7 @@ import PackagePinout from './PackagePinout.jsx';
 import { deviceForComponent } from './lib/testCatalog.js';
 import { overallConfidence } from './lib/boardProfile.js';
 import BoardMap from './BoardMap.jsx';
+import SchematicEvidence from './SchematicEvidence.jsx';
 
 const models = ['STM32F401CCU6', 'STM32F401CDU6', 'STM32F401CEU6', 'STM32F446RET6'].map((value) => ({ value, label: value }));
 const protocols = [{ value: 'GPIO', label: 'LED · tek GPIO' }, { value: 'I2C', label: 'I²C sensör · SCL + SDA' }, { value: 'SPI', label: 'SPI sensör · SCK + MISO + MOSI + CS' }];
@@ -133,12 +134,16 @@ export default function WorkbenchWizard({ onShare, preset, profile, setProfile, 
       {step === 'component' && profile && <>
         <span className="eyebrow">2 / BİLEŞEN</span><h2>{flow === 'net' ? 'Neyi denemek istersin?' : 'Neyi bağladın?'}</h2>
         <p>{profile.mcu.part} · {profile.name}</p>
+        {flow === 'net' && <SchematicEvidence file={sources.schematic} profile={profile} setProfile={setProfile}
+          onFile={schematic => setSources(current => ({ ...current, schematic }))}/>}
         {profile.components.length > 0 && <div className="wizard-components">{[...profile.components].sort((a, b) =>
           (a.powerOnly ? 2 : a.part === 'LED' ? 0 : 1) - (b.powerOnly ? 2 : b.part === 'LED' ? 0 : 1)).map((component) => {
           const gpio = profile.connections.find(connection => connection.componentRef === component.ref && connection.role === 'LED')?.mcuPin;
           return <button key={component.ref} disabled={component.powerOnly} title={component.detectionNote || ''} onClick={() => chooseComponent(component.ref)}>{component.part === 'LED' ? <Lightbulb size={18}/> : <Activity size={18}/>}<span>
             <strong>{component.part === 'LED' ? component.displayName || 'LED' : component.part}</strong>
             <small>{component.ref} · {component.powerOnly ? 'Güç LED’i · yazılımla kontrol edilmez' : component.part === 'LED' ? `LED · ${gpio || 'Bağlantıyı kontrol et'}` : component.protocol}</small>
+            {profile.source?.schematicEvidence?.components.find(item => item.ref === component.ref && item.pages.length > 0) &&
+              <small>Şema · sayfa {profile.source.schematicEvidence.components.find(item => item.ref === component.ref).pages.join(', ')}</small>}
           </span><ArrowRight size={16}/></button>;
         })}</div>}
         {(flow === 'net' || profile.components.length > 0) && <button className="wizard-text-button" onClick={startMissingComponent}>Başka bileşen ekle</button>}

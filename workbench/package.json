@@ -7,6 +7,7 @@
     "@tauri-apps/api": "^2.8.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
+    "pdfjs-dist": "5.4.296",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -23,9 +24,10 @@
     "test:core": "node src/lib/targetPins.test.js && node src/lib/boardProfile.test.js && node src/lib/netlistProfile.test.js && node src/lib/projectArchive.test.js && node src/lib/aiReview.test.js && node src/lib/githubClient.test.js && node src/lib/githubAuth.test.js && node src/lib/diagnosticArtifact.test.js && node src/lib/testCatalog.test.js && node src/lib/testLibrary.test.js && node src/lib/firmwareImage.test.js && node src/lib/espConnection.test.js && node src/lib/espTransport.test.js",
     "test:firmware": "node src/lib/diagnosticPipeline.test.js",
     "test:bmp180": "node tools/bmp180-smoke.mjs",
+    "test:bmp581": "node tools/bmp581-smoke.mjs && node --test src/lib/bmp581Catalog.test.js",
     "test:telemetry": "node --test src/lib/telemetry.test.js",
     "test:watch": "node --test src/lib/globalWatch.test.js src/lib/watchFirmware.test.js",
     "test:settings": "node --test src/lib/settings.test.js",
-    "test:ui": "node --test src/lib/workspaceTabs.test.js src/lib/hardwareGate.test.js src/lib/libraryFilters.test.js src/lib/wiringGuide.test.js src/lib/targetRegistry.test.js src/lib/panelSize.test.js src/lib/deviceCode.test.js"
+    "test:ui": "node --test src/lib/workspaceTabs.test.js src/lib/hardwareGate.test.js src/lib/libraryFilters.test.js src/lib/wiringGuide.test.js src/lib/targetRegistry.test.js src/lib/panelSize.test.js src/lib/deviceCode.test.js src/lib/schematicEvidence.test.js"
   }
 }

@@ -31,6 +31,11 @@ try {
   assert.equal(await cards.filter({ hasText: /LED · PB7/ }).count(), 1);
   assert.equal(await cards.filter({ hasText: /Güç LED’i/ }).count(), 3);
   assert.equal(await cards.filter({ hasText: /D3 · Güç LED’i/ }).isDisabled(), true);
+  if (process.env.SCHEMATIC_PDF) {
+    await page.locator('.workspace-panel:visible input[aria-label="Kart şeması PDF"]').setInputFiles(process.env.SCHEMATIC_PDF);
+    await page.getByRole('status').filter({ hasText: /^Şema: / }).waitFor({ timeout: 30000 });
+    assert.match(await cards.filter({ hasText: /IC6 · I2C/ }).innerText(), /Şema · sayfa 2/);
+  }
   await cards.filter({ hasText: /D6 · LED · PA15/ }).click();
   await page.getByRole('button', { name: 'GERİ', exact: true }).click();
   await page.getByRole('heading', { name: 'Neyi denemek istersin?' }).waitFor();
