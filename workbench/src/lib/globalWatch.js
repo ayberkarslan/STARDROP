@@ -72,9 +72,11 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
   return {
     async start() {
       if (!stopped || lease) throw new Error('İzleme zaten sürüyor.');
-      if (!/^[a-f0-9]{24}$/.test(uid || '') || /^(0{24}|f{24})$/.test(uid) || !variables.length || variables.length > 16 || new Set(variables.map(variableId)).size !== variables.length
-        || !/^[a-f0-9]{64}$/.test(elf?.imageSha256 || '') || !Number.isInteger(elf.imageSize) || elf.imageSize < 64 || elf.imageSize > 1048576
-        || variables.some(v => !elf.variables.some(item => variableId(item) === variableId(v) && item.kind === v.kind && item.size === v.size))) throw new Error('ELF ve 1–16 geçerli global değişken seç.');
+      // ESP uses uppercase hex for UID. Keep wire identity unchanged.
+      if (!/^[a-f0-9]{24}$/i.test(uid || '') || /^(0{24}|f{24})$/i.test(uid)) throw new Error('STM32 UID geçersiz; hedef bağlantısını yenile.');
+      if (!/^[a-f0-9]{64}$/.test(elf?.imageSha256 || '') || !Number.isInteger(elf.imageSize) || elf.imageSize < 64 || elf.imageSize > 1048576
+        || !Array.isArray(elf.variables)) throw new Error('ELF flash bilgisi geçersiz; dosyayı yeniden seç.');
+      checkVariables(variables);
       lease = hardware.acquire(ownerId, 'Global değişken izleme'); stopped = false; inflight = true;
       onState?.({ status: 'verifying', message: 'ELF flash’taki yazılımla karşılaştırılıyor; STM32 durdurulmuyor…' });
       try {
