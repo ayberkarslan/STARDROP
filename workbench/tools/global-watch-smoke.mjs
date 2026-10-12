@@ -22,7 +22,10 @@ try {
         if (command === 'discover_esp') return [{ ip: '192.168.1.3', replyAddress: '192.168.1.3' }];
         if (command === 'code_repo_status') return { activeSha: null };
         if (command === 'esp_stream') { window.watchMock.flashes++; await new Promise(resolve => setTimeout(resolve, 200)); if (!window.watchMock.failFlash) window.watchMock.mismatch = false; return JSON.stringify(window.watchMock.failFlash ? { error: true, msg: 'Mock yükleme hatası' } : { done: true, pct: 100 }); }
-        if (command === 'inspect_watch_elf') return { variables, imageSha256: hash, imageSize: 64 };
+        if (command === 'inspect_watch_elf') {
+          await new Promise(resolve => setTimeout(resolve, 50));
+          return { variables, imageSha256: hash, imageSize: 64 };
+        }
         if (command === 'telemetry_export_csv') { window.watchMock.exports.push(args.csv); return '/tmp/watch-mock.csv'; }
         if (command === 'esp_http') {
           if (args.path === '/ping') return JSON.stringify({ status: 'ok' });
@@ -44,8 +47,6 @@ try {
   await page.goto(process.env.UI_URL || 'http://127.0.0.1:1420');
   await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
   await page.locator('[data-rail-tool="monitor"]:visible').waitFor({ timeout: 15000 });
-  await page.locator('[data-rail-tool="monitor"]:visible').click();
-  await page.getByRole('button', { name: 'Değişkenler', exact: true }).click();
   const monitor = page.locator('.global-watch:visible');
   // A minimal ELF image exercises the real upload conversion; transport stays mocked.
   const image = Buffer.alloc(160);
@@ -55,7 +56,10 @@ try {
   // Selection alone must be enough: no flash button click before opening monitor.
   await page.locator('[data-rail-tool="flash"]:visible').click();
   await page.locator('.firmware-select:visible input').setInputFiles({ name: 'SELECTED.elf', mimeType: 'application/octet-stream', buffer: image });
-  await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
+  // Mount the variables view only after an ELF is already selected. This
+  // exercises StrictMode's initial effect replay, not just later imports.
+  await page.locator('[data-rail-tool="monitor"]:visible').click();
+  await page.getByRole('button', { name: 'Değişkenler', exact: true }).click();
   await monitor.getByText('SELECTED.elf · Seçilen ELF · 2 değişken', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.watchMock.flashes), 0);
   const upload = async name => {

@@ -823,6 +823,8 @@ mod tests {
             assert!(built.bytes.len() > 64 && built.bytes.len() < 512 * 1024);
             assert!(hashes.insert(built.sha256));
             let elf = object::File::parse(built.elf_bytes.as_slice()).unwrap();
+            let watch = crate::elf_watch::inspect(&built.elf_bytes).unwrap();
+            assert!(watch.variables.iter().any(|variable| variable.name == "pressure_pa" && variable.kind == "float"));
             use object::{Object, ObjectSymbol};
             for name in ["pressure_pa", "temperature_c", "sensor_status", "sensor_error", "sample_counter"] {
                 assert!(elf.symbols().any(|symbol| symbol.name().ok() == Some(name)), "missing global {name}");
