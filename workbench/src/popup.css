@@ -17,3 +17,8 @@
 .ui-popup-backdrop .device-login-code{background:#000;border-color:#444;color:#fff}
 .ui-popup-backdrop .device-login-actions .welcome-guest{background:#000;color:#ddd;border-color:#444}
 .ui-popup-backdrop .discovered-list{padding-top:18px}
+.ui-popup-backdrop.ui-popup-drawer .drawer-title{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:30px 26px 22px;border-bottom:1px solid var(--popup-border);background:#000}
+.ui-popup-backdrop.ui-popup-drawer .drawer-title h2{margin:0;font-size:21px;line-height:1.5;color:#fff}
+.ui-popup-backdrop.ui-popup-drawer .drawer-title>button{display:grid;place-items:center;width:36px;height:36px;flex-shrink:0;margin:0;padding:0;border:1px solid transparent;border-radius:6px;background:#000;color:#fff}
+.ui-popup-backdrop.ui-popup-drawer .drawer-title>button:hover{border-color:#777}
+.ui-popup-backdrop.ui-popup-drawer .drawer-body{padding:24px 26px 40px;background:#000}
