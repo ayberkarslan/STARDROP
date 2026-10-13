@@ -5,6 +5,9 @@ import { DEFAULT_SETTINGS, validateSettings, redact, measurement, makeBackup, pa
 test('defaults preserve the trusted repository and reject unsupported settings', () => {
   assert.deepEqual(validateSettings(), DEFAULT_SETTINGS);
   assert.throws(() => validateSettings({ intervalMs: 1 }));
+  assert.equal(validateSettings({ intervalMs: 1000 }).watchIntervalMs, 250);
+  assert.equal(validateSettings({ watchIntervalMs: 225 }).intervalMs, 500);
+  assert.throws(() => validateSettings({ watchIntervalMs: 50 }));
   assert.throws(() => validateSettings({ trustedRepository: '../outside' }));
   assert.throws(() => validateSettings({ exportDirectory: '\0' }));
   assert.equal(validateSettings({ token: 'never store' }).token, undefined);

@@ -1,11 +1,11 @@
 export const SETTINGS_KEY = 'stardrop.preferences.v1';
-export const DEFAULT_SETTINGS = Object.freeze({ rememberRepo: false, intervalMs: 500, recordLimit: 2000,
+export const DEFAULT_SETTINGS = Object.freeze({ rememberRepo: false, intervalMs: 500, watchIntervalMs: 250, recordLimit: 2000,
   exportDirectory: '', temperatureUnit: 'C', pressureUnit: 'Pa', fontScale: 1, uiScale: 1,
   reducedMotion: false, startPage: 'workbench', trustedRepository: 'ayberkarslan/stardrop-code-repo', });
 export function validateSettings(input = {}) {
   const result = { ...DEFAULT_SETTINGS };
   for (const key of ['rememberRepo', 'reducedMotion']) if (typeof input[key] === 'boolean') result[key] = input[key];
-  for (const [key, choices] of Object.entries({ intervalMs: [250, 500, 1000], recordLimit: [500, 1000, 2000],
+  for (const [key, choices] of Object.entries({ intervalMs: [250, 500, 1000], watchIntervalMs: [225, 250, 500, 1000], recordLimit: [500, 1000, 2000],
     temperatureUnit: ['C', 'F'], pressureUnit: ['Pa', 'hPa', 'kPa'], fontScale: [1, 1.1, 1.2], uiScale: [0.9, 1, 1.1],
     startPage: ['workbench', 'flash', 'library', 'devices', 'monitor', 'empty'] })) {
     if (input[key] !== undefined && !choices.includes(input[key])) throw new Error(`Geçersiz ayar: ${key}`);

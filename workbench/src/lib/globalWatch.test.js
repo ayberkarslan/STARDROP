@@ -1,13 +1,40 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHardwareGate } from './hardwareGate.js';
-import { createGlobalWatch, decodeVariable, globalWatchCsv, resolveWatchName } from './globalWatch.js';
+import { createGlobalWatch, decodeVariable, globalWatchCsv, resolveWatchName, watchDelay, watchFreshness } from './globalWatch.js';
 
 const uid = '001300155231501920323239', hash = 'a'.repeat(64);
 const variable = { name: 'watch_random', address: 0x20000004, size: 4, kind: 'unsigned', typeName: 'uint32_t' };
 const elf = { imageSha256: hash, imageSize: 4000, variables: [variable] };
 const identity = { valid: true, uid, sha256: hash, session: 'test-session' };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+test('cadence accounts for response time without violating ESP guard or bursting', () => {
+  assert.equal(watchDelay(250, 10), 240);
+  assert.equal(watchDelay(250, 100), 225);
+  assert.equal(watchDelay(250, 8000), 225);
+  assert.equal(watchDelay(225, 0), 225);
+  assert.equal(watchDelay(1, 0), 225);
+  assert.equal(watchDelay(1000, 300), 700);
+  assert.equal(watchDelay(250, 50, true), 500);
+});
+test('freshness uses successful replies, distinguishes delayed data and tolerates slow verification', () => {
+  assert.deepEqual(watchFreshness(null, 2000), { ageMs: null, fresh: false });
+  const frame = { receivedAt: 1000, readDurationMs: 40 };
+  assert.deepEqual(watchFreshness(frame, 1200), { ageMs: 200, fresh: true });
+  assert.equal(watchFreshness(frame, 2001).fresh, false);
+  assert.equal(watchFreshness({ ...frame, readDurationMs: 1500 }, 2500).fresh, true);
+});
+test('measured round-trip drives the next delay; no read starts while pending', async () => {
+  let now = 1000, finish, wait;
+  const item = setup({ clock: () => now, schedule: (callback, delay) => { wait = delay; return callback; },
+    read: () => new Promise(resolve => { finish = resolve; }) });
+  await item.session.start();
+  assert.equal(wait, undefined);
+  now = 1010; finish({ ...identity, values: [{ address: variable.address, hex: '01000000', stable: true }] });
+  await flush();
+  assert.equal(item.frames[0].readDurationMs, 10); assert.equal(wait, 240);
+  item.session.stop();
+});
 test('verification errors distinguish old firmware from malformed fields', async () => {
   for (const [result, message] of [
     [{ valid: false, reason: 'WATCH_REQUEST_INVALID' }, /eski izleme/],

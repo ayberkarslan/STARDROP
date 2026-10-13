@@ -8,6 +8,16 @@ export const WATCH_REASONS = {
   WATCH_RATE_LIMIT: 'RAM okuma aralığı çok kısa.', SRAM_READ_FAILED: 'SWD üzerinden RAM okunamadı.',
 };
 export function variableId(variable) { return `${variable.name}@${variable.address.toString(16)}`; }
+// ESP rejects reads less than 200 ms apart. Keep margin and never catch up
+// with a burst after a slow Wi-Fi response or periodic flash verification.
+export function watchDelay(intervalMs, durationMs, failed = false) {
+  const period = Math.max(225, Number(intervalMs) || 250);
+  return failed ? Math.max(500, period) : Math.max(225, period - Math.max(0, durationMs));
+}
+export function watchFreshness(frame, now, intervalMs = 250) {
+  const ageMs = frame ? Math.max(0, now - frame.receivedAt) : null;
+  return { ageMs, fresh: ageMs !== null && ageMs <= Math.max(1000, intervalMs * 3, (frame.readDurationMs || 0) * 2) };
+}
 export function resolveWatchName(elf, name) {
   const expression = name.trim();
   const matches = (elf?.variables || []).filter(variable => variable.name === expression);
@@ -33,7 +43,7 @@ export function decodeVariable(variable, raw) {
 
 /** The lease is held during verification and every pending read, even after stop. */
 export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, verify, read, onFrame, onState, reloadFirmware,
-  intervalMs = 500, schedule = setTimeout, cancel = clearTimeout, clock = Date.now }) {
+  intervalMs = 250, schedule = setTimeout, cancel = clearTimeout, clock = Date.now }) {
   let lease = null, timer = null, stopped = true, inflight = false, session = null, errors = 0;
   let watched = [...variables];
   let stopState = null, hasFrame = false;
@@ -61,7 +71,9 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
   const sample = async () => {
     if (stopped) return;
     inflight = true;
-    onState?.({ status: hasFrame ? 'live' : 'reading', pending: true, message: 'RAM’den ilk değerler bekleniyor…' });
+    const startedAt = clock();
+    let failed = false;
+    onState?.({ status: hasFrame ? 'live' : 'reading', pending: true, message: hasFrame ? 'Yeni RAM yanıtı bekleniyor…' : 'RAM’den ilk değerler bekleniyor…' });
     try {
       // Liste okuma sürerken değişebilir; cevabı isteğin kendi listesiyle çöz.
       const requested = [...watched];
@@ -69,16 +81,18 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
       if (stopped) return;
       validate(raw); if (raw.session !== session || !Array.isArray(raw.values) || raw.values.length !== requested.length) throw new Error('RAM oturumu veya değişken listesi değişti.');
       const values = requested.map((v, i) => decodeVariable(v, raw.values[i]));
-      errors = 0; hasFrame = true; onFrame?.({ receivedAt: clock(), uid, values });
+      const receivedAt = clock();
+      errors = 0; hasFrame = true; onFrame?.({ receivedAt, readDurationMs: Math.max(0, receivedAt - startedAt), uid, values });
       onState?.({ status: 'live', message: 'Global değişkenler RAM’den okunuyor. Değerlerin değişmemesi bağlantı kesildiği anlamına gelmez.' });
     } catch (error) {
+      failed = true;
       if (!stopped) {
         const message = messageOf(error);
         if (++errors >= 3 || /ELF|değişti|geçersiz|sınır|uyuşmuyor|tanımlı/.test(message)) stop(message, 'error');
         else onState?.({ status: 'retrying', message: `${message} · yeniden deneme ${errors}/3` });
       }
     } finally {
-      settled(); if (!stopped) timer = schedule(sample, intervalMs);
+      settled(); if (!stopped) timer = schedule(sample, watchDelay(intervalMs, clock() - startedAt, failed));
     }
   };
   return {
