@@ -3,13 +3,30 @@ import { invoke } from '@tauri-apps/api/core';
 import { Play, Pause, Plus, X, FileUp, Download, Activity } from 'lucide-react';
 import SelectMenu from './SelectMenu.jsx';
 import { espJson } from './lib/espTransport.js';
-import { createGlobalWatch, globalWatchCsv, variableId, resolveWatchName } from './lib/globalWatch.js';
+import { createGlobalWatch, globalWatchCsv, variableId, resolveWatchName, watchFreshness } from './lib/globalWatch.js';
 import { DEFAULT_SETTINGS } from './lib/settings.js';
 import { reloadWatchFirmware } from './lib/watchFirmware.js';
 import { inspectWatchFile } from './lib/watchElfImport.js';
 
 const labels = { idle: 'Hazır', verifying: 'ELF kontrolü', programming: 'Yükleniyor', reading: 'RAM bekleniyor', stopping: 'Durduruluyor', live: 'Canlı', paused: 'Durduruldu', retrying: 'Bağlantı kontrolü', error: 'İzleme durdu' };
 const valueText = v => !v?.valid ? '—' : v.kind === 'bool' ? v.value ? 'true' : 'false' : typeof v.value === 'number' ? v.value.toLocaleString('tr-TR', { maximumFractionDigits: 6 }) : v.value;
+// The small freshness clock re-renders only this indicator, not every chart
+// and variable card. It uses real RAM replies, not extra heartbeat requests.
+function WatchSignal({ state, latest, interval }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (state.status !== 'live') return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(timer);
+  }, [state.status]);
+  const { ageMs, fresh } = watchFreshness(latest, Math.max(now, latest?.receivedAt || 0), interval);
+  const live = state.status === 'live';
+  return <div className="watch-signal" aria-label="RAM bağlantı durumu" title="Son başarılı RAM yanıtı bağlantıyı doğrular. Yanıt süresi Wi-Fi, HTTP, SWD ve varsa flash kontrolünü içerir; anlık fiziksel kopma garantisi değildir.">
+    <span className={`live-status status-${live && !fresh ? 'waiting' : state.status}`}><i/>{live ? fresh ? 'Canlı' : 'Yanıt gecikti' : labels[state.status]}</span>
+    {latest && <small>{live ? `Son yanıt ${Math.round(ageMs)} ms önce` : 'Son okuma saklandı'} · {latest.readDurationMs} ms yanıt</small>}
+  </div>;
+}
 function Sparkline({ frames, id }) {
   const points = frames.map(frame => frame.values.find(v => v.id === id)).map(v => v?.valid && Number.isFinite(v.value) ? v.value : null);
   const values = points.filter(v => v !== null);
@@ -19,6 +36,10 @@ function Sparkline({ frames, id }) {
   const path = points.map((v, i) => { if (v === null) { pen = false; return ''; } const part = `${pen ? 'L' : 'M'}${(i / Math.max(1, points.length - 1) * 600).toFixed(2)},${(95 - (v - min) / range * 80).toFixed(2)}`; pen = true; return part; }).join(' ');
   return <div className="watch-chart"><svg viewBox="0 0 600 110" role="img" aria-label="Global değişken zaman grafiği"><path d={path}/></svg><small>Min {min.toLocaleString('tr-TR')} · Max {max.toLocaleString('tr-TR')}</small></div>;
 }
+function WatchGraph({ frames, id }) {
+  const [open, setOpen] = useState(false);
+  return <details className="watch-graph" onToggle={event => setOpen(event.currentTarget.open)}><summary>Grafik</summary>{open && <Sparkline frames={frames} id={id}/>}</details>;
+}
 export default function GlobalWatch({ documentId, initialData, active, services }) {
   const { esp, target, activeBridge, hardware, hardwareBusy, setNotice, debugArtifact } = services;
   const preferences = services.preferences || DEFAULT_SETTINGS;
@@ -26,7 +47,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   const [query, setQuery] = useState(''), [choice, setChoice] = useState(''), [selected, setSelected] = useState([]);
   const [inputError, setInputError] = useState('');
   const [state, setState] = useState({ status: 'idle', message: 'Karta yüklenen yazılımın ELF’ini seç, ardından global değişken ekle.' });
-  const [frames, setFrames] = useState([]), [latest, setLatest] = useState(null), [interval, setIntervalMs] = useState(String(preferences.intervalMs));
+  const [frames, setFrames] = useState([]), [latest, setLatest] = useState(null), [interval, setIntervalMs] = useState(String(preferences.watchIntervalMs ?? 250));
   const [exporting, setExporting] = useState(false), [now, setNow] = useState(Date.now);
   const controller = useRef(null), alive = useRef(true), importId = useRef(0), history = useRef([]), limit = useRef(preferences.recordLimit);
   const uploadedFile = useRef(null), loadedSource = useRef('manual');
@@ -44,7 +65,7 @@ export default function GlobalWatch({ documentId, initialData, active, services 
   useEffect(() => { if (!active || esp.status !== 'online') stop(!active ? 'Sekme arka planda; okuma durduruldu.' : 'ESP32 bağlantısı kesildi.'); }, [active, esp.status]);
   useEffect(() => () => stop('ESP adresi değişti; okuma durduruldu.'), [activeBridge]);
   useEffect(() => { if (running) { const timer = window.setInterval(() => setNow(Date.now()), 500); return () => window.clearInterval(timer); } }, [running]);
-  useEffect(() => { if (!running) setIntervalMs(String(preferences.intervalMs)); }, [preferences.intervalMs]);
+  useEffect(() => { if (!running) setIntervalMs(String(preferences.watchIntervalMs ?? 250)); }, [preferences.watchIntervalMs]);
   useEffect(() => { stop('Hedef değişti; okuma durduruldu.'); setLatest(null); setFrames([]); }, [target?.uid]);
   const load = async (file, source = 'manual') => {
     if (!file || running || hardware.current) return;
@@ -131,12 +152,12 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     catch (error) { setNotice(`CSV kaydedilemedi: ${error.message || error}`); }
     finally { if (alive.current) setExporting(false); }
   };
-  const fresh = state.status === 'live' && latest && now - latest.receivedAt <= Math.max(2500, Number(interval) * 3);
+  const fresh = state.status === 'live' && watchFreshness(latest, now, Number(interval)).fresh;
   const automaticLabel = debugArtifact?.status === 'selected' ? 'Seçilen ELF' : 'Son yüklenen ELF';
   const preparing = ['verifying', 'programming', 'reading', 'retrying', 'stopping'].includes(state.status);
   const step = ['reading', 'retrying'].includes(state.status) ? 1 : 0;
   return <div className="live-monitor global-watch">
-    <header className="live-heading"><div><h1>Live Expressions</h1><div className="watch-target" role="group" aria-label="Çalışılan kart" title={uid ? `Hedef UID: ${uid}` : 'STM32 bağlı değil'}><span className={`watch-target-dot ${target?.connected && uid === target.uid ? 'is-connected' : ''}`}/><div><small>ÇALIŞILAN KART</small><strong>{target?.label || target?.model || 'STM32 bağlı değil'}</strong></div><span className="watch-target-model">{target?.label && target?.model ? target.model : ''}{uid && <code>#{uid.slice(-6)}</code>}</span></div></div><span className={`live-status status-${state.status}`}><i/>{fresh || state.status !== 'live' ? labels[state.status] : 'Okuma bekleniyor'}</span></header>
+    <header className="live-heading"><div><h1>Live Expressions</h1><div className="watch-target" role="group" aria-label="Çalışılan kart" title={uid ? `Hedef UID: ${uid}` : 'STM32 bağlı değil'}><span className={`watch-target-dot ${target?.connected && uid === target.uid ? 'is-connected' : ''}`}/><div><small>ÇALIŞILAN KART</small><strong>{target?.label || target?.model || 'STM32 bağlı değil'}</strong></div><span className="watch-target-model">{target?.label && target?.model ? target.model : ''}{uid && <code>#{uid.slice(-6)}</code>}</span></div></div><WatchSignal state={state} latest={latest} interval={Number(interval)}/></header>
     <div className="watch-source"><label className="secondary"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}<input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/></label>{elf && <span>{fileName} · {loadedSource.current === 'upload' ? `${automaticLabel} · ` : ''}{elf.variables.length} değişken</span>}{debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>HIZLI YÜKLEME ELF’İ</button>}</div>
     {elf && <div className="watch-entry"><form className="watch-expression" onSubmit={submitExpression}><input aria-label="Global değişken ara" placeholder="Değişken adı yaz ve Enter’a bas" autoComplete="off" spellCheck={false} value={query} disabled={loading || ['verifying', 'programming', 'retrying'].includes(state.status) || Boolean(hardwareBusy && !running)} onChange={e => { setQuery(e.target.value); setInputError(''); }}/><button className="secondary" type="submit" disabled={!query.trim() || selected.length >= 16 || loading || ['verifying', 'programming', 'retrying'].includes(state.status) || Boolean(hardwareBusy && !running)} aria-label="Değişkeni ekle ve izle"><Plus size={16}/></button></form>{inputError && <p role="alert" className="watch-input-error">{inputError}</p>}<details className="watch-picker"><summary>ELF’ten seç · {elf.variables.length}</summary><fieldset className="watch-add" disabled={loading || ['verifying', 'programming', 'retrying'].includes(state.status) || Boolean(hardwareBusy && !running)}><SelectMenu ariaLabel="İzlenecek global değişken" value={chosen ? variableId(chosen) : ''} options={filtered.map(v => ({ value: variableId(v), label: `${v.name} · ${v.typeName} · 0x${v.address.toString(16)}` }))} onChange={setChoice}/><button className="secondary" disabled={!chosen || selected.length >= 16} onClick={() => void addVariable(chosen)}><Plus size={15}/> EKLE</button></fieldset></details></div>}
     <div className="live-toolbar"><button className={running ? 'secondary' : 'primary'} title={!selected.length ? 'Önce değişken adını Enter ile veya ELF listesinden EKLE ile ekle.' : ''} disabled={state.status === 'stopping' || !running && (!elf || !selected.length || !active || esp.status !== 'online' || !uid || Boolean(hardwareBusy))} onClick={running ? () => stop() : () => start()}>{running ? <Pause size={15}/> : <Play size={15}/>} {state.status === 'stopping' ? 'DURDURULUYOR…' : running ? 'DURDUR' : 'İZLEMEYİ BAŞLAT'}</button><button className="secondary" disabled={!history.current.length || exporting} onClick={exportCsv}><Download size={15}/> CSV</button><span>{history.current.length} / {limit.current} kayıt</span></div>
@@ -147,9 +168,9 @@ export default function GlobalWatch({ documentId, initialData, active, services 
     </section>}
     {state.status === 'error' && <p role="status" className="live-message is-error">{state.message}</p>}
     {state.status === 'live' && state.pending && now - state.pendingSince >= 2000 && <p role="status" className="live-message">Yeni RAM yanıtı bekleniyor · {Math.floor((now - state.pendingSince) / 1000)} sn. Cihaz isteği zaman aşımında hata gösterecek.</p>}
-    <details className="watch-timing"><summary>Okuma ayarı</summary><p>RAM sorguları arasında bekleme; sensörün örnekleme hızını değiştirmez.</p><fieldset className="live-rate" disabled={running}><SelectMenu ariaLabel="Değişken okuma aralığı" value={interval} options={[{ value: '250', label: '250 ms' }, { value: '500', label: '500 ms · varsayılan' }, { value: '1000', label: '1 saniye' }]} onChange={setIntervalMs}/></fieldset></details>
+    <details className="watch-timing"><summary>Okuma ayarı</summary><p>Hedef aralık; gerçek hız ağ ve SWD’ye bağlıdır. Sensörün örnekleme hızını değiştirmez.</p><fieldset className="live-rate" disabled={running}><SelectMenu ariaLabel="Değişken okuma aralığı" value={interval} options={[{ value: '225', label: '225 ms · hızlı' }, { value: '250', label: '250 ms · varsayılan' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]} onChange={setIntervalMs}/></fieldset></details>
     {state.status === 'programming' && <div><progress aria-label="ELF yükleme ilerlemesi" max="100" value={state.progress}/>{Number.isFinite(state.progress) && <span> %{Math.round(state.progress)}</span>}<p className="live-update-note">İzlemeyi durdurmak başlamış flash yazımını kesmez; güvenli tamamlanması beklenir.</p></div>}
     {!esp.programmer?.watchAvailable && <p className="live-update-note">Bu özellik için güncel ESP firmware’i gerekir.</p>}
-    <section className="watch-results" aria-label="İzlenen değişkenler">{variables.length > 0 && <div className="watch-results-heading"><h2>İzlenen değişkenler</h2><span>{variables.length} / 16</span></div>}<div className="live-channels">{variables.map(variable => { const v = latest?.values.find(v => v.id === variableId(variable)); return <article className={`live-channel ${fresh && v?.valid ? 'channel-live' : 'channel-inactive'}`} key={variableId(variable)}><div className="live-channel-heading"><div><h2>{variable.name}</h2><small>{variable.typeName} · 0x{variable.address.toString(16)} · {variable.size} bayt</small></div><div className="live-value"><strong>{valueText(v)}</strong><small>{fresh && v?.valid ? 'CANLI' : v && !v.valid ? 'TUTARSIZ / GEÇERSİZ OKUMA' : 'SON OKUMA'}</small></div><button className="watch-remove" aria-label={`${variable.name} izlemeyi kaldır`} disabled={['verifying', 'programming'].includes(state.status)} onClick={() => removeVariable(variableId(variable))}><X size={15}/></button></div><details className="watch-graph"><summary>Grafik</summary><Sparkline frames={frames} id={variableId(variable)}/></details></article>; })}{!variables.length && <div className="live-empty"><Activity size={28}/><h2>Değişken adını yaz</h2><p>Enter ile izle · en fazla 16 değişken</p></div>}</div></section>
+    <section className="watch-results" aria-label="İzlenen değişkenler">{variables.length > 0 && <div className="watch-results-heading"><h2>İzlenen değişkenler</h2><span>{variables.length} / 16</span></div>}<div className="live-channels">{variables.map(variable => { const v = latest?.values.find(v => v.id === variableId(variable)); return <article className={`live-channel ${fresh && v?.valid ? 'channel-live' : 'channel-inactive'}`} key={variableId(variable)}><div className="live-channel-heading"><div><h2>{variable.name}</h2><small>{variable.typeName} · 0x{variable.address.toString(16)} · {variable.size} bayt</small></div><div className="live-value"><strong>{valueText(v)}</strong><small>{fresh && v?.valid ? 'CANLI' : v && !v.valid ? 'TUTARSIZ / GEÇERSİZ OKUMA' : 'SON OKUMA'}</small></div><button className="watch-remove" aria-label={`${variable.name} izlemeyi kaldır`} disabled={['verifying', 'programming'].includes(state.status)} onClick={() => removeVariable(variableId(variable))}><X size={15}/></button></div><WatchGraph frames={frames} id={variableId(variable)}/></article>; })}{!variables.length && <div className="live-empty"><Activity size={28}/><h2>Değişken adını yaz</h2><p>Enter ile izle · en fazla 16 değişken</p></div>}</div></section>
   </div>;
 }
