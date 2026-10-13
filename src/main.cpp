@@ -609,7 +609,10 @@ void handleProgrammerStatus() {
     json += "\"statusEventsAvailable\":true,";
     json += "\"telemetryAvailable\":true,\"telemetryAbi\":1,\"telemetryMinIntervalMs\":200,";
     json += "\"watchAvailable\":true,\"watchVersion\":1,\"watchMaxVariables\":16,";
-    json += "\"watchRequestVersion\":2,\"firmwareRevision\":\"watch-uid-case-v2\",";
+    json += "\"watchRequestVersion\":2,\"firmwareRevision\":\"watch-sliced-verify-v3\",";
+    json += "\"watchFlashCheckActive\":" + String(watchFlashSweep.active ? "true" : "false") + ",";
+    json += "\"watchFlashCheckBytes\":" + String(watchFlashSweep.offset) + ",";
+    json += "\"watchFlashCheckTotal\":" + String(watchBinding.size) + ",";
     json += "\"firmwareBuild\":\"" + String(__DATE__) + " " + String(__TIME__) + "\",";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
