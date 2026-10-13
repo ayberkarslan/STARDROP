@@ -26,6 +26,8 @@ struct WatchFlashSweep {
     uint32_t offset = 0;
     bool active = false;
 } watchFlashSweep;
+uint32_t httpSlowCount = 0, httpLastSlowMs = 0, httpMaxMs = 0;
+uint32_t loopSlowCount = 0, loopLastSlowMs = 0;
 void resetWatchFlashSweep() {
     if (watchFlashSweep.active) mbedtls_sha256_free(&watchFlashSweep.hash);
     watchFlashSweep.active = false;
@@ -624,6 +626,11 @@ void handleProgrammerStatus() {
     json += "\"statusSubscribers\":" + String(subscribers) + ",";
     json += "\"statusLastProbeMs\":" + String(lastPassiveProbeMs) + ",";
     json += "\"statusProbeCount\":" + String(passiveProbeCount) + ",";
+    json += "\"httpSlowCount\":" + String(httpSlowCount) + ",";
+    json += "\"httpLastSlowMs\":" + String(httpLastSlowMs) + ",";
+    json += "\"httpMaxMs\":" + String(httpMaxMs) + ",";
+    json += "\"loopSlowCount\":" + String(loopSlowCount) + ",";
+    json += "\"loopLastSlowMs\":" + String(loopLastSlowMs) + ",";
     json += "\"firmwareBuild\":\"" + String(__DATE__) + " " + String(__TIME__) + "\",";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
@@ -1429,12 +1436,19 @@ void setup() {
 }
 
 void loop() {
+    const uint32_t loopStarted = millis();
     if (apModeActive) {
         dnsServer.processNextRequest();
     }
+    const uint32_t httpStarted = millis();
     server.handleClient();
+    const uint32_t httpMs = millis() - httpStarted;
+    if (httpMs > httpMaxMs) httpMaxMs = httpMs;
+    if (httpMs >= 200) { ++httpSlowCount; httpLastSlowMs = httpMs; }
     handleDiscoveryService();
     handleStatusEvents();
+    const uint32_t loopMs = millis() - loopStarted;
+    if (loopMs >= 200 && httpMs < 200) { ++loopSlowCount; loopLastSlowMs = loopMs; }
 
     // Dinamik Ağ Geçiş Durum Makinesi
     if (doWifiSwitch) {
