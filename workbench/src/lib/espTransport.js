@@ -18,6 +18,12 @@ export async function espJson(base, path, { method = 'GET', body, timeoutMs = 10
   return result;
 }
 
+export async function espWatchRead(base, body, udpAvailable = false) {
+  if (!native() || !udpAvailable) return espJson(base, '/api/watch/read', { method: 'POST', body, timeoutMs: 40000 });
+  const { invoke } = await import('@tauri-apps/api/core');
+  return JSON.parse(await invoke('esp_watch_udp_read', { base, body: JSON.stringify(body) }));
+}
+
 export async function espUpload(base, file) {
   if (native()) {
     const { invoke } = await import('@tauri-apps/api/core');

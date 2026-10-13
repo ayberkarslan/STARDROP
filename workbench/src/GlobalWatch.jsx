@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Play, Pause, Plus, X, FileUp, Download, Activity, Settings } from 'lucide-react';
 import Popup from './Popup.jsx';
 import SelectMenu from './SelectMenu.jsx';
-import { espJson } from './lib/espTransport.js';
+import { espJson, espWatchRead } from './lib/espTransport.js';
 import { createGlobalWatch, globalWatchCsv, variableId, resolveWatchName, watchFreshness } from './lib/globalWatch.js';
 import { DEFAULT_SETTINGS } from './lib/settings.js';
 import { reloadWatchFirmware } from './lib/watchFirmware.js';
@@ -145,7 +145,7 @@ export default function GlobalWatch({ documentId, initialData, active, services,
           onProgress: next => { if (alive.current && !isStopped()) transition(next); },
           onLoaded: (id, file) => { uploadedFile.current = file; loadedSource.current = 'upload'; services.onFirmwareLoaded?.(id, file, { status: 'loaded', imageSha256: elf.imageSha256 }); loadedRevision.current = firmwareHistory(id).at(-1)?.id || null; },
         }),
-        read: (token, vars) => espJson(activeBridge, '/api/watch/read', { method: 'POST', body: { uid, session: token, addresses: vars.map(v => `${v.address}:${v.size}`).join(',') }, timeoutMs: 40000 }),
+        read: (token, vars) => espWatchRead(activeBridge, { uid, session: token, addresses: vars.map(v => `${v.address}:${v.size}`).join(',') }, esp.programmer?.watchUdpAvailable),
         onState: next => { if (alive.current) transition(next); if (next.status === 'error') setNotice(`İzleme başarısız: ${next.message}`); },
         onFrame: frame => { if (!alive.current) return; setLatest(frame); setNow(Date.now()); setFrames(current => [...current.slice(-239), frame]); if (history.current.length < limit.current) history.current.push(frame); },
       });
