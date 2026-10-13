@@ -182,15 +182,14 @@ export default function GlobalWatch({ documentId, initialData, active, services,
     finally { if (alive.current) setExporting(false); }
   };
   const fresh = state.status === 'live' && watchFreshness(latest, now, Number(interval)).fresh;
-  const automaticLabel = debugArtifact?.status === 'selected' ? 'Seçilen ELF' : 'Son yüklenen ELF';
   const preparing = ['verifying', 'programming', 'reading', 'retrying', 'stopping'].includes(state.status);
   const step = ['reading', 'retrying'].includes(state.status) ? 1 : 0;
   const closeDrawer = () => { setDrawer(false); setTelemetryOpen(false); };
   const locked = loading || ['verifying', 'programming', 'retrying', 'stopping'].includes(state.status) || Boolean(hardwareBusy && !running);
   const source = <div className="watch-source">
     <label className="watch-elf-control">
-      <span className="watch-elf-action"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}</span>
-      {elf && <span className="watch-elf-file" title={fileName}>{fileName}{loadedSource.current === 'upload' ? ' · ' + automaticLabel : loadedSource.current === 'saved' ? ' · Kayıtlı ELF' : ''}</span>}
+      {elf && <span className="watch-elf-file" title={fileName}>{fileName}</span>}
+      <span className="watch-elf-action"><FileUp size={14}/>{loading ? 'Okunuyor…' : elf ? 'Değiştir' : 'ELF seç'}</span>
       <input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/>
     </label>
     {debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>HIZLI YÜKLEME ELF’İ</button>}

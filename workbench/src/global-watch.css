@@ -33,10 +33,12 @@
 .compact-watch .watch-target>.watch-signal{flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;border-left:1px solid #555;padding-left:16px;max-width:290px}
 .compact-watch .watch-target .watch-signal small{font:10px/1.4 ui-monospace,monospace;letter-spacing:0;white-space:normal}
 .compact-watch .watch-target .watch-pending{position:static;color:#fff}
-.compact-watch .watch-source{align-items:stretch;min-width:260px;max-width:640px}
-.compact-watch .watch-source .watch-elf-control{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;min-height:64px;box-sizing:border-box;margin:0;padding:10px 14px;background:#000;border:1px solid #555;border-radius:7px;flex:1;min-width:0}
-.compact-watch .watch-source .watch-elf-action{display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:11px;font-weight:400;line-height:1.5;letter-spacing:0;color:#fff;max-width:none;flex-shrink:0;overflow:visible}
-.compact-watch .watch-source .watch-elf-file{font:11px/1.5 ui-monospace,monospace;white-space:normal;overflow-wrap:anywhere;max-width:none;flex:1;min-width:130px;border-left:1px solid #555;padding-left:16px;box-sizing:border-box}
+.compact-watch .watch-source{align-items:center;min-width:260px;max-width:640px}
+.compact-watch .watch-source .watch-elf-control{display:inline-flex;align-items:center;gap:14px;min-height:40px;box-sizing:border-box;margin:0;padding:0;background:transparent;border:0;border-radius:0;flex:none;min-width:0;max-width:100%}
+.compact-watch .watch-source .watch-elf-action{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:10px;font-weight:400;line-height:1.5;letter-spacing:0;color:#fff;max-width:none;flex-shrink:0;overflow:visible}
+.compact-watch .watch-source .watch-elf-file{font:12px/1.5 ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(36vw,360px);min-width:0;flex:0 1 auto;border:0;padding:0;box-sizing:border-box}
+.compact-watch .watch-source .watch-elf-file+.watch-elf-action{border-left:1px solid #555;padding-left:14px}
+.compact-watch .watch-source .watch-elf-control:hover .watch-elf-action{text-decoration:underline;text-underline-offset:4px}
 .compact-watch .watch-target .live-status{font-size:10px}
 .watch-drawer .drawer-body>.watch-timing{margin:0 0 24px}
 @media(max-width:850px){.compact-watch .watch-source{max-width:none}.compact-watch .watch-target>.watch-signal{max-width:220px}}
