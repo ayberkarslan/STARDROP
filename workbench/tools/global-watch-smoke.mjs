@@ -121,10 +121,17 @@ try {
   assert.equal(await monitor.getByText('ELF farklıysa izlemeye başlamadan önce karta yüklenir.', { exact: true }).count(), 0);
   assert.equal(await monitor.getByText('Oturum bilgisi', { exact: true }).count(), 0);
   assert.equal(await monitor.getByRole('status').count(), 0);
+  await page.evaluate(() => { delete window.watchMock.finishRead; window.watchMock.holdRead = true; });
+  await page.waitForFunction(() => Boolean(window.watchMock.finishRead));
+  await monitor.getByLabel('RAM bağlantı durumu').getByText('Yanıt gecikti', { exact: true }).waitFor();
+  await page.evaluate(() => window.watchMock.finishRead());
+  await monitor.getByLabel('RAM bağlantı durumu').getByText('Canlı', { exact: true }).waitFor();
   assert.equal(await monitor.getByRole('region', { name: 'İzlenen değişkenler' }).locator('.live-channel').count(), 1);
-  assert.equal(await monitor.locator('.watch-chart path').count(), 1);
+  assert.equal(await monitor.locator('.watch-chart path').count(), 0);
+  assert.match(await monitor.getByLabel('RAM bağlantı durumu').innerText(), /Son yanıt \d+ ms önce/);
   await monitor.locator('.watch-graph summary').click();
   await monitor.locator('.watch-chart svg').waitFor({ state: 'visible' });
+  assert.equal(await monitor.locator('.watch-chart path').count(), 1);
   await monitor.locator('.watch-graph summary').click();
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
   await monitor.getByLabel('Global değişken ara').press('Enter');

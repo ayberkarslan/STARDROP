@@ -23,6 +23,7 @@ test('freshness uses successful replies, distinguishes delayed data and tolerate
   assert.deepEqual(watchFreshness(frame, 1200), { ageMs: 200, fresh: true });
   assert.equal(watchFreshness(frame, 2001).fresh, false);
   assert.equal(watchFreshness({ ...frame, readDurationMs: 1500 }, 2500).fresh, true);
+  assert.equal(watchFreshness({ ...frame, readDurationMs: 40000 }, 4001).fresh, false);
 });
 test('measured round-trip drives the next delay; no read starts while pending', async () => {
   let now = 1000, finish, wait;

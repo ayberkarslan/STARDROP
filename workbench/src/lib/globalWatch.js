@@ -16,7 +16,7 @@ export function watchDelay(intervalMs, durationMs, failed = false) {
 }
 export function watchFreshness(frame, now, intervalMs = 250) {
   const ageMs = frame ? Math.max(0, now - frame.receivedAt) : null;
-  return { ageMs, fresh: ageMs !== null && ageMs <= Math.max(1000, intervalMs * 3, (frame.readDurationMs || 0) * 2) };
+  return { ageMs, fresh: ageMs !== null && ageMs <= Math.max(1000, intervalMs * 3, Math.min(3000, (frame.readDurationMs || 0) * 2)) };
 }
 export function resolveWatchName(elf, name) {
   const expression = name.trim();
