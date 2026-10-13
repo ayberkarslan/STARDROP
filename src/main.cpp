@@ -28,6 +28,7 @@ struct WatchFlashSweep {
 } watchFlashSweep;
 uint32_t httpSlowCount = 0, httpLastSlowMs = 0, httpMaxMs = 0;
 uint32_t loopSlowCount = 0, loopLastSlowMs = 0;
+uint32_t watchUdpReads = 0, watchUdpReplays = 0;
 void resetWatchFlashSweep() {
     if (watchFlashSweep.active) mbedtls_sha256_free(&watchFlashSweep.hash);
     watchFlashSweep.active = false;
@@ -43,6 +44,7 @@ const char* FALLBACK_AP_PASS = "12345678";
 const char* MDNS_HOSTNAME    = "stardrop"; // http://stardrop.local
 const byte  DNS_PORT         = 53;
 const uint16_t DISCOVERY_PORT = 4210;
+const uint16_t WATCH_PORT = 4211;
 const char* DISCOVERY_REQUEST = "STARDROP_DISCOVER_V1";
 
 // ==============================================================================
@@ -86,6 +88,7 @@ WebServer server(80);
 DNSServer dnsServer;
 Preferences prefs;
 WiFiUDP discoveryUdp;
+WiFiUDP watchUdp;
 
 struct SavedNetwork {
     String ssid;
@@ -332,6 +335,7 @@ void initDiscoveryService() {
     } else {
         Serial.println("[DISCOVERY] UDP portu açılamadı!");
     }
+    if (!watchUdp.begin(WATCH_PORT)) Serial.println("[WATCH] UDP portu açılamadı!");
 }
 
 struct StatusSubscriber { IPAddress ip; uint16_t port = 0; uint32_t seen = 0; };
@@ -612,7 +616,10 @@ void handleProgrammerStatus() {
     json += "\"statusEventsAvailable\":true,";
     json += "\"telemetryAvailable\":true,\"telemetryAbi\":1,\"telemetryMinIntervalMs\":200,";
     json += "\"watchAvailable\":true,\"watchVersion\":1,\"watchMaxVariables\":16,";
-    json += "\"watchRequestVersion\":2,\"firmwareRevision\":\"watch-sliced-verify-v3\",";
+    json += "\"watchRequestVersion\":2,\"firmwareRevision\":\"watch-udp-v4\",";
+    json += "\"watchUdpAvailable\":true,";
+    json += "\"watchUdpReads\":" + String(watchUdpReads) + ",";
+    json += "\"watchUdpReplays\":" + String(watchUdpReplays) + ",";
     json += "\"watchFlashCheckActive\":" + String(watchFlashSweep.active ? "true" : "false") + ",";
     json += "\"watchFlashCheckBytes\":" + String(watchFlashSweep.offset) + ",";
     json += "\"watchFlashCheckTotal\":" + String(watchBinding.size) + ",";
@@ -1012,10 +1019,13 @@ WatchFlashCheck checkWatchFlashChunk() {
     for (unsigned i = 0; i < 32; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
     return watchBinding.hash == hex ? WatchFlashCheck::MATCHED : WatchFlashCheck::MISMATCH;
 }
-void watchError(const char *reason) {
+String watchErrorResult(const char *reason) {
     watchBinding.lastError = reason;
     ++watchBinding.errorCount;
-    server.send(200, "application/json", "{\"valid\":false,\"reason\":\"" + String(reason) + "\"}");
+    return "{\"valid\":false,\"reason\":\"" + String(reason) + "\"}";
+}
+void watchError(const char *reason) {
+    server.send(200, "application/json", watchErrorResult(reason));
 }
 void handleWatchVerify() {
     invalidateWatch();
@@ -1052,20 +1062,18 @@ void handleWatchVerify() {
     watchBinding.readCount = 0; watchBinding.errorCount = 0; watchBinding.lastError = "";
     server.send(200, "application/json", "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + watchBinding.session + "\",\"sha256\":\"" + hash + "\"}");
 }
-void handleWatchRead() {
-    server.sendHeader("Cache-Control", "no-store");
-    const String body = server.arg("plain");
-    if (body.length() > 2048) { watchError("WATCH_REQUEST_INVALID"); return; }
+String watchReadResult(const String &body) {
+    if (body.length() > 2048) return watchErrorResult("WATCH_REQUEST_INVALID");
     const String uid = watchField(body, "uid"), session = watchField(body, "session"), addresses = watchField(body, "addresses");
-    if (!watchBinding.session.length() || session != watchBinding.session || uid != watchBinding.uid) { watchError("WATCH_SESSION_INVALID"); return; }
-    if (watchBinding.lastRead && millis() - watchBinding.lastRead < 200) { watchError("WATCH_RATE_LIMIT"); return; }
+    if (!watchBinding.session.length() || session != watchBinding.session || uid != watchBinding.uid) return watchErrorResult("WATCH_SESSION_INVALID");
+    if (watchBinding.lastRead && millis() - watchBinding.lastRead < 200) return watchErrorResult("WATCH_RATE_LIMIT");
     const uint32_t started = millis();
     watchBinding.lastRead = millis();
     swd.setSpeedProfile(SwdSpeedProfile::FAST); swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
     TargetProbeInfo target;
-    if (!swd.probe(&target, true) || formatTargetUid(target) != uid) { invalidateWatch(); watchError("TARGET_CHANGED"); return; }
+    if (!swd.probe(&target, true) || formatTargetUid(target) != uid) { invalidateWatch(); return watchErrorResult("TARGET_CHANGED"); }
     Watch::Address items[Watch::maxVariables]; unsigned count = 0;
-    if (!Watch::addresses(addresses.c_str(), items, count, Watch::ramEnd(target.deviceId))) { watchError("WATCH_ADDRESS_INVALID"); return; }
+    if (!Watch::addresses(addresses.c_str(), items, count, Watch::ramEnd(target.deviceId))) return watchErrorResult("WATCH_ADDRESS_INVALID");
     // Periodic full-image verification also detects changes by another programmer.
     if (watchFlashSweep.active || millis() - watchBinding.verifiedAt >= 5000) {
         const uint32_t flashStarted = millis();
@@ -1073,8 +1081,7 @@ void handleWatchRead() {
         watchBinding.lastFlashChunkMs = millis() - flashStarted;
         if (check == WatchFlashCheck::READ_FAILED || check == WatchFlashCheck::MISMATCH) {
             invalidateWatch();
-            watchError(check == WatchFlashCheck::MISMATCH ? "ELF_FIRMWARE_MISMATCH" : "FLASH_READ_FAILED");
-            return;
+            return watchErrorResult(check == WatchFlashCheck::MISMATCH ? "ELF_FIRMWARE_MISMATCH" : "FLASH_READ_FAILED");
         }
         if (check == WatchFlashCheck::MATCHED) watchBinding.verifiedAt = millis();
     } else watchBinding.lastFlashChunkMs = 0;
@@ -1086,14 +1093,14 @@ void handleWatchRead() {
         // Never cross the AP's 1 KB auto-increment boundary, including unaligned values.
         for (unsigned offset = 0; offset < length; offset += 4) {
             uint32_t word;
-            if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); watchError("SRAM_READ_FAILED"); return; }
+            if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); return watchErrorResult("SRAM_READ_FAILED"); }
             memcpy(bytes + offset, &word, 4);
         }
         bool stable = true;
         if (skip + items[i].size > 4) {
             for (unsigned offset = 0; offset < length; offset += 4) {
                 uint32_t word;
-                if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); watchError("SRAM_READ_FAILED"); return; }
+                if (!swd.readMem32Checked(base + offset, &word)) { invalidateWatch(); return watchErrorResult("SRAM_READ_FAILED"); }
                 memcpy(again + offset, &word, 4);
             }
             stable = memcmp(bytes + skip, again + skip, items[i].size) == 0;
@@ -1104,10 +1111,47 @@ void handleWatchRead() {
         json += "{\"address\":" + String(items[i].address) + ",\"hex\":\"" + hex + "\",\"stable\":" + String(stable ? "true" : "false") + "}";
     }
     TargetProbeInfo confirm;
-    if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { invalidateWatch(); watchError("TARGET_CHANGED"); return; }
+    if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { invalidateWatch(); return watchErrorResult("TARGET_CHANGED"); }
     watchBinding.lastReadMs = millis() - started;
     ++watchBinding.readCount;
-    json += "]}"; server.send(200, "application/json", json);
+    json += "]}";
+    return json;
+}
+void handleWatchRead() {
+    server.sendHeader("Cache-Control", "no-store");
+    server.send(200, "application/json", watchReadResult(server.arg("plain")));
+}
+
+void handleWatchUdp() {
+    const int packetSize = watchUdp.parsePacket();
+    if (packetSize <= 0) return;
+    if (packetSize > 1024) {
+        while (watchUdp.available()) watchUdp.read();
+        return;
+    }
+    char packet[1025] = {};
+    if (watchUdp.read(packet, packetSize) != packetSize) return;
+    const String request(packet);
+    if (!request.startsWith("STARDROP_WATCH_V1 ") || request.length() < 28 || request[26] != '\n') return;
+    const String sequence = request.substring(18, 26);
+    if (!watchHex(sequence, 8)) return;
+    const String body = request.substring(27);
+    static IPAddress previousIp;
+    static uint16_t previousPort = 0;
+    static String previousRequest, previousReply;
+    const bool replay = previousRequest == request && previousIp == watchUdp.remoteIP()
+        && previousPort == watchUdp.remotePort() && watchBinding.session.length()
+        && watchField(body, "session") == watchBinding.session;
+    if (replay) ++watchUdpReplays;
+    else {
+        previousIp = watchUdp.remoteIP(); previousPort = watchUdp.remotePort();
+        previousRequest = request;
+        previousReply = "STARDROP_WATCH_V1 " + sequence + "\n" + watchReadResult(body);
+        ++watchUdpReads;
+    }
+    watchUdp.beginPacket(watchUdp.remoteIP(), watchUdp.remotePort());
+    watchUdp.print(previousReply);
+    watchUdp.endPacket();
 }
 
 void handleTelemetry() {
@@ -1446,6 +1490,7 @@ void loop() {
     if (httpMs > httpMaxMs) httpMaxMs = httpMs;
     if (httpMs >= 200) { ++httpSlowCount; httpLastSlowMs = httpMs; }
     handleDiscoveryService();
+    handleWatchUdp();
     handleStatusEvents();
     const uint32_t loopMs = millis() - loopStarted;
     if (loopMs >= 200 && httpMs < 200) { ++loopSlowCount; loopLastSlowMs = loopMs; }
