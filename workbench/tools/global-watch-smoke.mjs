@@ -32,12 +32,18 @@ try {
           if (args.path === '/api/wifi/status') return JSON.stringify({ connected: true, ssid: 'Mock', ip: '192.168.1.3', rssi: -40 });
           if (args.path === '/api/programmer/status') return JSON.stringify({ watchAvailable: true, telemetryAvailable: true });
           if (args.path === '/api/target/status') return JSON.stringify({ connected: true, uid, label: 'Atölye kartı', model: 'STM32F446', flashSizeKb: 512 });
-          if (args.path === '/api/watch/verify') return JSON.stringify(window.watchMock.mismatch ? { valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: window.watchMock.confirmed, uid, sha256: hash } : { valid: true, uid, sha256: hash, session: 'session' });
+          if (args.path === '/api/watch/verify') {
+            const result = JSON.stringify(window.watchMock.mismatch ? { valid: false, reason: 'ELF_FIRMWARE_MISMATCH', mismatchConfirmed: window.watchMock.confirmed, uid, sha256: hash } : { valid: true, uid, sha256: hash, session: 'session' });
+            if (window.watchMock.holdVerify) return new Promise(resolve => { window.watchMock.finishVerify = () => { window.watchMock.holdVerify = false; resolve(result); }; });
+            return result;
+          }
           if (args.path === '/api/watch/read') {
             window.watchMock.calls++;
             const value = (++counter).toString(16).padStart(8, '0').match(/../g).reverse().join('');
             const requested = JSON.parse(args.body).addresses.split(',').map(item => Number(item.split(':')[0]));
-            return JSON.stringify({ valid: true, uid, sha256: hash, session: 'session', values: requested.map(address => ({ address, hex: address === variables[0].address ? value : '0000c841', stable: true })) });
+            const result = JSON.stringify({ valid: true, uid, sha256: hash, session: 'session', values: requested.map(address => ({ address, hex: address === variables[0].address ? value : '0000c841', stable: true })) });
+            if (window.watchMock.holdRead) return new Promise(resolve => { window.watchMock.finishRead = () => { window.watchMock.holdRead = false; resolve(result); }; });
+            return result;
           }
         }
         return null;
@@ -80,6 +86,24 @@ try {
   await monitor.getByText('RAMDENEME.elf · Son yüklenen ELF · 2 değişken', { exact: true }).waitFor();
   // Replacing firmware must also update an already populated monitor tab.
   await upload('RAMDENEME-v2.elf');
+  assert.equal(await monitor.getByLabel('Değişken okuma aralığı').isVisible(), false);
+  await monitor.locator('.watch-timing summary').click();
+  assert.equal(await monitor.getByLabel('Değişken okuma aralığı').isVisible(), true);
+  await monitor.locator('.watch-timing summary').click();
+  await page.evaluate(() => { window.watchMock.holdVerify = true; window.watchMock.holdRead = true; });
+  await monitor.getByLabel('Global değişken ara').fill('watch_random');
+  await monitor.getByLabel('Global değişken ara').press('Enter');
+  await monitor.getByRole('region', { name: 'İzleme hazırlığı' }).waitFor();
+  assert.match(await monitor.getByRole('status').innerText(), /ELF flash/);
+  await page.evaluate(() => window.watchMock.finishVerify());
+  await monitor.getByRole('status').filter({ hasText: 'RAM’den ilk değerler' }).waitFor();
+  await monitor.getByRole('button', { name: 'DURDUR', exact: true }).click();
+  assert.equal(await monitor.getByRole('button', { name: 'DURDURULUYOR…', exact: true }).isDisabled(), true);
+  await page.evaluate(() => window.watchMock.finishRead());
+  await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).waitFor();
+  assert.equal(await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).isEnabled(), true);
+  assert.equal(await monitor.getByRole('region', { name: 'İzleme hazırlığı' }).count(), 0);
+  await monitor.getByRole('button', { name: 'watch_random izlemeyi kaldır', exact: true }).click();
   await page.evaluate(() => { window.watchMock.mismatch = true; window.watchMock.confirmed = true; });
   await monitor.getByLabel('Global değişken ara').fill('unknown_variable');
   await monitor.getByLabel('Global değişken ara').press('Enter');
@@ -87,7 +111,7 @@ try {
   assert.equal(await page.evaluate(() => window.watchMock.flashes), 2);
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
   await monitor.getByLabel('Global değişken ara').press('Enter');
-  await page.waitForFunction(() => window.watchMock.calls >= 3);
+  await page.waitForFunction(() => window.watchMock.calls >= 4);
   assert.equal(await page.evaluate(() => window.watchMock.flashes), 3);
   await page.evaluate(() => { window.watchMock.confirmed = false; });
   assert.equal(await monitor.locator('.live-channel h2').innerText(), 'watch_random');
