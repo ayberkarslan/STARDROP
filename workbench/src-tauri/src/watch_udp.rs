@@ -61,6 +61,7 @@ mod tests {
             let first = bytes[..first_size].to_vec();
             let (second_size, sender) = server.recv_from(&mut bytes).unwrap();
             assert_eq!(first, bytes[..second_size]);
+            server.send_to(b"STARDROP_WATCH_V1 deadbeef\n{\"valid\":true}", sender).unwrap();
             server.send_to(b"STARDROP_WATCH_V1 1234abcd\n{\"valid\":true}", sender).unwrap();
         });
         let client = UdpSocket::bind("127.0.0.1:0").unwrap();
