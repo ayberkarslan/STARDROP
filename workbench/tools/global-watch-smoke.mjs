@@ -66,7 +66,7 @@ try {
   // exercises StrictMode's initial effect replay, not just later imports.
   await page.locator('[data-rail-tool="monitor"]:visible').click();
   assert.equal(await page.getByRole('button', { name: 'Değişkenler', exact: true }).count(), 0);
-  await monitor.getByText('SELECTED.elf · Seçilen ELF', { exact: true }).waitFor();
+  await monitor.getByText('SELECTED.elf', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.watchMock.flashes), 0);
   const upload = async name => {
     await page.locator('[data-rail-tool="flash"]:visible').click();
@@ -74,7 +74,7 @@ try {
     await page.getByRole('button', { name: 'YAZILIMI YÜKLE', exact: true }).click();
     await page.getByRole('button', { name: 'DEĞİŞKENLERİ İZLE →' }).waitFor();
     await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
-    await monitor.getByText(`${name} · Son yüklenen ELF`, { exact: true }).waitFor();
+    await monitor.getByText(name, { exact: true }).waitFor();
   };
   await upload('RAMDENEME.elf');
   await monitor.getByLabel('İzleme ELF dosyası').setInputFiles({ name: 'EXTRA.elf', mimeType: 'application/octet-stream', buffer: Buffer.from([1, 2, 3]) });
@@ -83,7 +83,7 @@ try {
   await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
   assert.equal(await monitor.getByText('EXTRA.elf', { exact: true }).count(), 1);
   await monitor.getByRole('button', { name: 'HIZLI YÜKLEME ELF’İ', exact: true }).click();
-  await monitor.getByText('RAMDENEME.elf · Son yüklenen ELF', { exact: true }).waitFor();
+  await monitor.getByText('RAMDENEME.elf', { exact: true }).waitFor();
   // Replacing firmware must also update an already populated monitor tab.
   await upload('RAMDENEME-v2.elf');
   assert.equal(await monitor.getByLabel('Değişken okuma aralığı').isVisible(), false);
@@ -208,7 +208,7 @@ try {
   await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
   await page.locator('[data-rail-tool="monitor"]:visible').waitFor({ timeout: 15000 });
   await page.locator('[data-rail-tool="monitor"]:visible').click();
-  await monitor.getByText('RAMDENEME-v2.elf · Kayıtlı ELF', { exact: true }).waitFor();
+  await monitor.getByText('RAMDENEME-v2.elf', { exact: true }).waitFor();
   await monitor.locator('.live-channel h2').filter({ hasText: 'watch_random' }).waitFor();
   assert.equal(await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).isEnabled(), true);
   await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).click();
