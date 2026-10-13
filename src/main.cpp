@@ -337,6 +337,7 @@ StatusSubscriber statusSubscribers[4];
 String watchedTarget = "{\"connected\":false}";
 String previousStatusPacket;
 uint32_t lastPassiveProbe = 0, lastStatusHeartbeat = 0;
+uint32_t lastPassiveProbeMs = 0, passiveProbeCount = 0;
 String buildTargetStatus(bool passive = false);
 String statusJsonEscape(String value) {
     value.replace("\\", "\\\\"); value.replace("\"", "\\\"");
@@ -618,6 +619,11 @@ void handleProgrammerStatus() {
     json += "\"watchReadCount\":" + String(watchBinding.readCount) + ",";
     json += "\"watchErrorCount\":" + String(watchBinding.errorCount) + ",";
     json += "\"watchLastError\":\"" + watchBinding.lastError + "\",";
+    unsigned subscribers = 0;
+    for (const auto& subscriber : statusSubscribers) if (subscriber.port && millis() - subscriber.seen <= 30000) ++subscribers;
+    json += "\"statusSubscribers\":" + String(subscribers) + ",";
+    json += "\"statusLastProbeMs\":" + String(lastPassiveProbeMs) + ",";
+    json += "\"statusProbeCount\":" + String(passiveProbeCount) + ",";
     json += "\"firmwareBuild\":\"" + String(__DATE__) + " " + String(__TIME__) + "\",";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
@@ -728,11 +734,17 @@ void handleStatusEvents() {
         subscribed |= subscriber.port != 0;
     }
     if (!subscribed) return;
-    // Runs only between synchronous HTTP operations. Never resets or halts the CPU.
-    if (millis() - lastPassiveProbe >= 1500) {
+    // A live watch probes the target on every read. Avoid a second SWD scan
+    // that would block the synchronous HTTP server between samples.
+    const bool liveWatch = watchBinding.session.length() &&
+        watchBinding.lastRead && millis() - watchBinding.lastRead < 3000;
+    if (!liveWatch && millis() - lastPassiveProbe >= 1500) {
         lastPassiveProbe = millis();
+        const uint32_t probeStarted = millis();
         static uint8_t misses = 0;
         String next = buildTargetStatus(true);
+        lastPassiveProbeMs = millis() - probeStarted;
+        ++passiveProbeCount;
         pinMode(SWD_CLK_PIN, INPUT); pinMode(SWD_DIO_PIN, INPUT);
         if (next.indexOf("\"connected\":true") >= 0) { misses = 0; watchedTarget = next; }
         else if (++misses >= 2) { misses = 2; watchedTarget = next; }
