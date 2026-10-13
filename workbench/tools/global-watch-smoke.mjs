@@ -65,7 +65,7 @@ try {
   // Mount the variables view only after an ELF is already selected. This
   // exercises StrictMode's initial effect replay, not just later imports.
   await page.locator('[data-rail-tool="monitor"]:visible').click();
-  await page.getByRole('button', { name: 'Değişkenler', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Değişkenler', exact: true }).count(), 0);
   await monitor.getByText('SELECTED.elf · Seçilen ELF · 2 değişken', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.watchMock.flashes), 0);
   const upload = async name => {
@@ -87,9 +87,10 @@ try {
   // Replacing firmware must also update an already populated monitor tab.
   await upload('RAMDENEME-v2.elf');
   assert.equal(await monitor.getByLabel('Değişken okuma aralığı').isVisible(), false);
-  await monitor.locator('.watch-timing summary').click();
-  assert.equal(await monitor.getByLabel('Değişken okuma aralığı').isVisible(), true);
-  await monitor.locator('.watch-timing summary').click();
+  await monitor.getByRole('button', { name: 'İzleme ayarları', exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: 'İzleme ayarları' });
+  assert.equal(await drawer.getByLabel('Değişken okuma aralığı').isVisible(), true);
+  await drawer.getByRole('button', { name: 'Kapat', exact: true }).click();
   await page.evaluate(() => { window.watchMock.holdVerify = true; window.watchMock.holdRead = true; });
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
   await monitor.getByLabel('Global değişken ara').press('Enter');
@@ -159,13 +160,44 @@ try {
   await page.waitForTimeout(1100);
   assert.equal(await page.evaluate(() => window.watchMock.calls), count);
   await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
-  await monitor.locator('.watch-picker summary').click();
+  assert.equal(await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).isEnabled(), true);
   await monitor.getByLabel('İzlenecek global değişken').waitFor({ state: 'visible' });
-  await monitor.locator('.watch-picker summary').click();
+  await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).click();
+  await monitor.locator('.live-status.status-live').waitFor();
+  await monitor.getByRole('button', { name: 'DURDUR', exact: true }).click();
+  await monitor.getByLabel('İzlenecek global değişken', { exact: true }).click();
+  await monitor.getByLabel('İzlenecek global değişken içinde ara').fill('20000008');
+  assert.equal(await monitor.getByRole('option').count(), 1);
+  await monitor.getByRole('option').click();
   const cardBox = await monitor.getByRole('group', { name: 'Çalışılan kart' }).boundingBox();
   const sourceBox = await monitor.locator('.watch-source').boundingBox();
-  assert.ok(cardBox.y + cardBox.height < sourceBox.y, 'kart bilgisi ELF araçlarının üzerine taşmamalı');
+  assert.ok(Math.abs(cardBox.y - sourceBox.y) < 20, 'kart ve ELF aynı satırda olmalı');
+  const panel = page.locator('[role="tabpanel"]:visible');
+  assert.equal(await panel.evaluate(el => el.scrollHeight <= el.clientHeight + 2), true, 'az değişkende ekran kaydırma gerektirmemeli');
+  const ledger = await page.evaluate(() => JSON.parse(localStorage.getItem('stardrop.firmware-history.v1')));
+  assert.equal(Object.values(ledger)[0].at(-1).status, 'loaded');
   await page.screenshot({ path: '/tmp/stardrop-live-expressions.png', fullPage: true });
+  assert.deepEqual(errors, []);
+  await page.reload();
+  await page.getByRole('button', { name: /GitHub ile devam et/ }).click();
+  await page.locator('[data-rail-tool="monitor"]:visible').waitFor({ timeout: 15000 });
+  await page.locator('[data-rail-tool="monitor"]:visible').click();
+  await monitor.getByText('RAMDENEME-v2.elf · Kayıtlı ELF · 2 değişken', { exact: true }).waitFor();
+  await monitor.locator('.live-channel h2').filter({ hasText: 'watch_random' }).waitFor();
+  assert.equal(await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).isEnabled(), true);
+  await monitor.getByRole('button', { name: 'İZLEMEYİ BAŞLAT', exact: true }).click();
+  await monitor.locator('.live-status.status-live').waitFor();
+  assert.equal(await page.evaluate(() => window.watchMock.flashes), 0, 'kayıtlı ve eşleşen ELF yeniden yüklenmemeli');
+  await monitor.getByRole('button', { name: 'DURDUR', exact: true }).click();
+  const recalled = await page.evaluate(async () => {
+    const { recalledWatchSession, recordFirmware } = await import('/src/lib/watchMemory.js');
+    const uid = Object.keys(JSON.parse(localStorage.getItem('stardrop.firmware-history.v1')))[0];
+    const before = await recalledWatchSession(uid);
+    recordFirmware(uid, null, { status: 'loaded', name: 'different.bin' });
+    return { name: before.file.name, invalidated: await recalledWatchSession(uid) === null };
+  });
+  assert.equal(recalled.name, 'RAMDENEME-v2.elf');
+  assert.equal(recalled.invalidated, true, 'başka yüklemeden sonra eski ELF eşleşmesi kullanılmamalı');
   assert.deepEqual(errors, []);
   console.log('Global watch: ELF aktarımı, Enter ile izleme, canlı liste düzenleme, grafik, CSV ve güvenli durdurma geçti');
 } finally { await browser.close(); }

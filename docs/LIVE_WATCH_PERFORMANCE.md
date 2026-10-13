@@ -23,3 +23,13 @@
 Bu gerçek zaman garantili bir uçuş kayıt sistemi değildir. Ağdan milisaniyelik kesin kopma bilgisi veya arada gerçekleşen her değişken değişimini yakalama garantisi verilmez. Daha yüksek hız için ESP tarafında örnekleme + tampon + veri akışı ayrıca tasarlanmalı ve gerçek kartla ölçülmelidir; doğrulama kontrollerini kaldırmak hız çözümü değildir.
 
 Doğrulama: zamanlama/freshness testleri, tarayıcıda canlı gösterge ve açılır grafik, Rust istemci yeniden kullanım testi. Gerçek kart üzerinde yeni hızın gecikme ve SWD yük ölçümü bu değişiklikte yapılmadı. ESP firmware değişmedi.
+
+## Kompakt ekran ve devam etme
+
+Ana ekran yalnız Live Expressions gösterir. Kart/ELF aynı satırda; isimle ekleme ve aranabilir ELF listesi hemen altında. Okuma ayarı sağdaki ortak Popup panelindedir. Eski telemetri ABI kayıt/grafik/CSV araçları sekme olmaktan çıkarılıp bu panelde isteğe bağlı tutulur. Böylece sensör/değişken geçişinde GlobalWatch sökülmez.
+
+ELF dosyası ve seçili değişkenler IndexedDB'de UID ile saklanır. Sekme taslakları bellek içinde belge + UID ile ayrılır. Uygulama tekrar açıldığında kayıtlı ELF yeniden çözümlenir; otomatik okuma veya yükleme başlamaz. Kullanıcı izlemeyi başlatır ve gerçek flash eşleşmesi tekrar doğrulanır. Başka kartın dosyası kullanılmaz.
+
+Yerel `stardrop.firmware-history.v1` kaydı kart başına son 50 yükleme başlangıcı/başarı/hata olayını tutar: zaman, UID anahtarı, dosya adı, boyut, durum ve varsa flash SHA-256. Dosya seçmek yükleme başarısı sayılmaz. BIN yükleme veya yarım kalmış yazım eski saklanan ELF ilişkisinin otomatik kullanılmasını engeller. Harici programlayıcı değişikliklerini bu kayıt bilemez; bunun için flash doğrulaması korunur.
+
+Tarayıcı kontrolü sekmeden ayrılma/dönme, durdurma/yeniden başlatma, uygulama yenilemesi sonrası ELF/listenin geri gelmesi, yeniden flash atmadan izleme ve başka yüklemede ilişki geçersizleşmesini kapsar. Az değişkende kaydırma gerekmediği kontrol edilir; fazla kart ve açık grafikler gerektiğinde kaydırılabilir.
