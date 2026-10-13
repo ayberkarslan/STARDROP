@@ -90,7 +90,19 @@ try {
   await monitor.getByRole('button', { name: 'İzleme ayarları', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'İzleme ayarları' });
   assert.equal(await drawer.getByLabel('Değişken okuma aralığı').isVisible(), true);
+  const bodyPadding = await drawer.locator('.drawer-body').evaluate(el => getComputedStyle(el).padding);
+  assert.equal(bodyPadding, '24px 26px 40px');
+  const titleBox = await drawer.locator('.drawer-title h2').boundingBox();
+  const closeBox = await drawer.getByRole('button', { name: 'Kapat', exact: true }).boundingBox();
+  assert.ok(Math.abs(titleBox.y + titleBox.height / 2 - closeBox.y - closeBox.height / 2) < 1);
   await drawer.getByRole('button', { name: 'Kapat', exact: true }).click();
+  await page.locator('[data-rail-tool="flash"]:visible').click();
+  await page.getByRole('button', { name: 'ESP32 ayarları', exact: true }).click();
+  const flashDrawer = page.getByRole('dialog', { name: 'ESP32 ayarları', exact: true });
+  assert.equal(await flashDrawer.locator('.drawer-body').evaluate(el => getComputedStyle(el).padding), bodyPadding, 'yan paneller ortak içerik boşluklarını kullanmalı');
+  assert.equal(await flashDrawer.locator('.drawer-title').evaluate(el => getComputedStyle(el).padding), '30px 26px 22px');
+  await flashDrawer.getByRole('button', { name: 'Kapat', exact: true }).click();
+  await page.locator('.workspace-tab').filter({ hasText: 'Canlı İzleme' }).click();
   await page.evaluate(() => { window.watchMock.holdVerify = true; window.watchMock.holdRead = true; });
   await monitor.getByLabel('Global değişken ara').fill('watch_random');
   await monitor.getByLabel('Global değişken ara').press('Enter');
@@ -172,6 +184,18 @@ try {
   const cardBox = await monitor.getByRole('group', { name: 'Çalışılan kart' }).boundingBox();
   const sourceBox = await monitor.locator('.watch-source').boundingBox();
   assert.ok(Math.abs(cardBox.y - sourceBox.y) < 20, 'kart ve ELF aynı satırda olmalı');
+  assert.equal(await monitor.getByRole('group', { name: 'Çalışılan kart' }).getByLabel('RAM bağlantı durumu').count(), 1);
+  assert.equal(await monitor.locator('.watch-header-tools .watch-signal').count(), 0);
+  const fieldBoxes = await Promise.all([
+    monitor.locator('.watch-expression'), monitor.getByLabel('İzlenecek global değişken', { exact: true }),
+    monitor.getByRole('button', { name: 'ELF değişkenini ekle', exact: true }),
+  ].map(locator => locator.boundingBox()));
+  assert.ok(fieldBoxes.every(box => Math.abs(box.height - 48) < 1), 'tüm ekleme alanları 48px olmalı');
+  assert.ok(fieldBoxes.every(box => Math.abs(box.y - fieldBoxes[0].y) < 1), 'tüm ekleme alanları aynı hizada olmalı');
+  const actionBoxes = await Promise.all(['İZLEMEYİ BAŞLAT', 'CSV'].map(name => monitor.getByRole('button', { name, exact: true }).boundingBox()));
+  assert.ok(Math.abs(actionBoxes[0].height - actionBoxes[1].height) < 1);
+  assert.ok(Math.abs(actionBoxes[0].y - actionBoxes[1].y) < 1);
+  assert.equal(await monitor.locator('.watch-elf-control .watch-elf-file').count(), 1);
   const panel = page.locator('[role="tabpanel"]:visible');
   assert.equal(await panel.evaluate(el => el.scrollHeight <= el.clientHeight + 2), true, 'az değişkende ekran kaydırma gerektirmemeli');
   const ledger = await page.evaluate(() => JSON.parse(localStorage.getItem('stardrop.firmware-history.v1')));
