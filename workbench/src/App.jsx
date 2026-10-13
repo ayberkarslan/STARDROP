@@ -20,6 +20,7 @@ import { createHardwareGate } from './lib/hardwareGate.js';
 import TestSession from './TestSession.jsx';
 import FlashSession from './FlashSession.jsx';
 import LiveMonitor from './LiveMonitor.jsx';
+import { recordFirmware, rememberWatchElf } from './lib/watchMemory.js';
 import stardustWordmark from './assets/stardust-wordmark.png';
 import SettingsPage from './SettingsPage.jsx';
 import { loadSettings, SETTINGS_KEY, validateSettings } from './lib/settings.js';
@@ -69,7 +70,11 @@ function RailTool({ tool, Icon, workspace, drag, onOpen }) {
 export default function App() {
   const railSize = usePanelWidth('rail');
   const [debugArtifacts, setDebugArtifacts] = useState({});
-  const onFirmwareLoaded = (uid, file) => setDebugArtifacts(current => ({ ...current, [uid]: file ? { file, status: 'loaded' } : null }));
+  const onFirmwareLoaded = (uid, file, details = {}) => {
+    recordFirmware(uid, file, details);
+    if (file) void rememberWatchElf(uid, file).catch(() => {});
+    setDebugArtifacts(current => ({ ...current, [uid]: file ? { file, status: 'loaded' } : null }));
+  };
   const onFirmwareSelected = (uid, file) => setDebugArtifacts(current => ({ ...current, [uid]: file ? { file, status: 'selected' } : null }));
   const [preferences, setPreferences] = useState(loadSettings);
   const updatePreferences = updates => {

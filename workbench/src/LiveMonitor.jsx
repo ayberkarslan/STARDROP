@@ -48,8 +48,7 @@ function Trace({ samples, channel }) {
   </div>;
 }
 
-export default function LiveMonitor({ documentId, initialData, active, services }) {
-  const [mode, setMode] = useState(initialData?.mode || (initialData?.expected ? 'telemetry' : services.debugArtifact?.file ? 'variables' : 'telemetry'));
+export function TelemetryMonitor({ documentId, initialData, active, services }) {
   const { esp, target, activeBridge, hardware, hardwareBusy, setNotice } = services;
   const preferences = services.preferences || DEFAULT_SETTINGS;
   const recordLimit = useRef(preferences.recordLimit);
@@ -66,13 +65,6 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   const mounted = useRef(true), lastMessage = useRef('');
   const expectedUid = initialData?.uid || target?.uid;
   const running = ['connecting', 'live', 'stale', 'retrying', 'sensor-error'].includes(state.status);
-  const offeredElf = useRef(null);
-  useEffect(() => {
-    const file = services.debugArtifact?.file;
-    if (file && file !== offeredElf.current && active && !running && !initialData?.expected) {
-      offeredElf.current = file; setMode('variables');
-    }
-  }, [services.debugArtifact?.file, active, running, initialData?.expected]);
   useEffect(() => { if (!running) setIntervalMs(String(preferences.intervalMs)); }, [preferences.intervalMs]);
   const sampleAge = latest ? (latest.ageMs ?? 0) + Math.max(0, now - latest.receivedAt) : null;
   const status = state.status === 'live' && sampleAge > Math.max(2000, Number(interval) * 3) ? 'stale' : state.status;
@@ -83,8 +75,8 @@ export default function LiveMonitor({ documentId, initialData, active, services 
   };
   const stop = message => controller.current?.stop(message || 'İzleme durduruldu.');
   useEffect(() => {
-    if (!active || mode !== 'telemetry' || esp.status !== 'online') stop(!active || mode !== 'telemetry' ? 'İzleme ekranı değişti; SWD okuması durduruldu.' : 'ESP32 bağlantısı kesildi.');
-  }, [active, mode, esp.status]);
+    if (!active || esp.status !== 'online') stop(!active ? 'İzleme ekranı değişti; SWD okuması durduruldu.' : 'ESP32 bağlantısı kesildi.');
+  }, [active, esp.status]);
   useEffect(() => () => controller.current?.stop('ESP32 adresi veya sekme değişti; izleme durduruldu.'), [activeBridge]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; controller.current?.stop(); }; }, []);
   useEffect(() => {
@@ -134,9 +126,7 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     } catch (error) { setNotice(`CSV kaydedilemedi: ${error.message}`); addLog(error.message); }
     finally { if (mounted.current) setExporting(false); }
   };
-  const modes = <div className="live-mode-switch" aria-label="Canlı izleme türü"><button className={mode === 'telemetry' ? 'active' : ''} onClick={() => setMode('telemetry')}>Sensör verileri</button><button className={mode === 'variables' ? 'active' : ''} onClick={() => { stop(); setMode('variables'); }}>Değişkenler</button></div>;
-  if (mode === 'variables') return <>{modes}<GlobalWatch documentId={documentId} initialData={initialData} active={active} services={services}/></>;
-  return <>{modes}<div className="live-monitor">
+  return <div className="live-monitor">
     <header className="live-heading"><div><span className="eyebrow">SWD / SALT OKUNUR</span><h1>Canlı İzleme</h1><p>{initialData?.label || target?.label || latest?.model || target?.model || 'STM32'}{initialData?.testName && ` · ${initialData.testName}`}</p></div>
       <span className={`live-status status-${status}`}><i/>{stateLabels[status]}</span></header>
     <div className="live-toolbar">
@@ -161,5 +151,9 @@ export default function LiveMonitor({ documentId, initialData, active, services 
     <details className="live-details"><summary>Oturum ve veri bütünlüğü</summary><div className="live-integrity"><span>ABI {latest?.abi || '—'} · CRC ESP32’de doğrulanır</span><span>Test {hex(latest?.testIdHash)}</span><span>Profil {hex(latest?.profileHash)}</span><span>Çalıştırma {hex(latest?.runHash)}</span><span>RAM 0x20000200 · 400 bayt</span><span>SWD okuma {latest?.readMs ?? '—'} ms</span><span>Son örnek {latest?.ageMs === null || !latest ? '—' : `${latest.ageMs} ms önce`}</span><span>Grafik: son 240 okunan örnek · CSV: en fazla 2000 örnek</span></div></details>
     <div className="live-log" role="log" aria-label="Canlı izleme günlüğü"><h2>Olay günlüğü</h2>{logs.length ? logs.map((entry, index) => <p key={index}><time>{entry.at}</time><span>{entry.message}</span></p>) : <p>İzleme başlatılmadı.</p>}</div>
     <p className="live-footnote">Bu ekran canlı ölçüm izler; breakpoint koymaz, çekirdeği durdurmaz veya reset atmaz. Atlanan örnekler, okuma aralığı nedeniyle yakalanamayan MCU örnekleridir.</p>
-  </div></>;
+  </div>;
+}
+
+export default function LiveMonitor(props) {
+  return <GlobalWatch {...props} telemetryPanel={enabled => <TelemetryMonitor {...props} active={props.active && enabled}/>}/>;
 }

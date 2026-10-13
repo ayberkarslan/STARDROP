@@ -38,7 +38,7 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
       await espUpload(base, image);
       appendFlashLog(`Yazılım belleğe alındı. SWD Flash akışı başlıyor... (${selected.name}, ${image.size} bayt)`, 'success');
       stage = 'programming'; setFlashStage(stage);
-      onFirmwareLoaded?.(expectedUid, null);
+      onFirmwareLoaded?.(expectedUid, null, { status: 'programming', name: selected.name, size: image.size });
       await espStream(base, '/stream-flash', (event) => {
         if (event.msg) appendFlashLog(event.msg, event.type || 'info');
         if (Number.isFinite(event.pct)) setFlashProgress(event.pct);
@@ -47,10 +47,10 @@ export default function useFirmwareJob({ documentId, hardware, esp, activeBridge
       });
       setFlashStage('done'); setFlashProgress(100);
       appendFlashLog('STM32 başarıyla programlandı ve çalıştırıldı!', 'success');
-      onFirmwareLoaded?.(expectedUid, selected.debugElf || (/\.elf$/i.test(selected.name) ? selected : null));
+      onFirmwareLoaded?.(expectedUid, selected.debugElf || (/\.elf$/i.test(selected.name) ? selected : null), { status: 'loaded', name: selected.name, size: image.size });
       await refreshTargetAt(base);
       return true;
-    } catch (error) { const detail = error?.message || String(error); setFlashStage('error'); setFlashError({ message: detail, stage }); appendFlashLog(`Hata: ${detail}`, 'error'); setNotice(`Flash başarısız: ${detail}`); return false; }
+    } catch (error) { const detail = error?.message || String(error); if (['programming', 'restarting'].includes(stage)) onFirmwareLoaded?.(expectedUid, null, { status: 'error', name: selected.name, error: detail }); setFlashStage('error'); setFlashError({ message: detail, stage }); appendFlashLog(`Hata: ${detail}`, 'error'); setNotice(`Flash başarısız: ${detail}`); return false; }
     finally { setFlashBusy(false); if (!parentLease) hardware.release(lease); }
   };
   const selectFirmware = selected => {
