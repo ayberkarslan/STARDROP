@@ -52,6 +52,9 @@ render/performance sonucunu varsaymayıp hedef makinelerde test etmek gerekir.
 - **Ölçü/hiyerarşi:** yeni ekranlarda 8/16/24/32 px boşluk ölçeği, 40–48 px
   civarı rahat kontroller, 6–10 px ölçülü köşe yuvarlama başlangıç standardı olsun.
   Bunlar birleştirme önerisidir; mevcut bütün CSS'in tek ölçü sistemi olduğu iddiası değil.
+- **Görseller/hareket:** cihaz ekranlarında siyah zemine oturan statik PNG
+  görseller; her ekrana büyük hero görseli yok. Animasyon yalnız ilerleme,
+  taşıma ve durum geri bildirimi için; azaltılmış hareket tercihini destekle.
 - **Yıldızlar:** sabit, çok küçük, beyaz, düşük yoğunluklu SVG noktaları.
   Girişte belirgin, çalışma alanında çok hafif; veri yüzeyleri opak siyah.
   Animasyon döngüsü yok, fareyi yakalamaz, okunabilirliğin önüne geçmez.
