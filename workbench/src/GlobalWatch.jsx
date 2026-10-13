@@ -190,7 +190,7 @@ export default function GlobalWatch({ documentId, initialData, active, services,
   const source = <div className="watch-source">
     <label className="watch-elf-control">
       <span className="watch-elf-action"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}</span>
-      {elf && <span className="watch-elf-file" title={fileName}>{fileName} · {loadedSource.current === 'upload' ? automaticLabel + ' · ' : loadedSource.current === 'saved' ? 'Kayıtlı ELF · ' : ''}{elf.variables.length} değişken</span>}
+      {elf && <span className="watch-elf-file" title={fileName}>{fileName}{loadedSource.current === 'upload' ? ' · ' + automaticLabel : loadedSource.current === 'saved' ? ' · Kayıtlı ELF' : ''}</span>}
       <input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/>
     </label>
     {debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>HIZLI YÜKLEME ELF’İ</button>}
@@ -228,7 +228,7 @@ export default function GlobalWatch({ documentId, initialData, active, services,
         disabled={state.status === 'stopping' || !running && (!elf || !selected.length || !active || esp.status !== 'online' || !uid || Boolean(hardwareBusy))}
         onClick={running ? () => stop() : () => start()}>{running ? <Pause size={15}/> : <Play size={15}/>} {state.status === 'stopping' ? 'DURDURULUYOR…' : running ? 'DURDUR' : 'İZLEMEYİ BAŞLAT'}</button>
       <button className="secondary" disabled={!history.current.length || exporting} onClick={exportCsv}><Download size={15}/> CSV</button>
-      <span>{variables.length} / 16 değişken · {history.current.length} / {limit.current} kayıt</span>
+      {variables.length > 0 && <span>{variables.length} değişken izleniyor</span>}
     </div>
     {preparing && <section className="watch-preflight" aria-label="İzleme hazırlığı">
       {state.status !== 'stopping' && <ol>{['ELF eşleşmesi', 'İlk RAM okuması', 'Canlı'].map((name, index) => <li key={name} className={index === step ? 'current' : index < step ? 'done' : ''} aria-current={index === step ? 'step' : undefined}><i>{index < step ? '✓' : index + 1}</i>{name}</li>)}</ol>}
@@ -253,6 +253,7 @@ export default function GlobalWatch({ documentId, initialData, active, services,
     {drawer && <Popup variant="drawer" className="detail-drawer watch-drawer" ariaLabel="İzleme ayarları" onClose={closeDrawer}>
       <div className="drawer-title"><h2>İzleme ayarları</h2><button className="icon-link" aria-label="Kapat" onClick={closeDrawer}><X size={18}/></button></div>
       <div className="drawer-body">
+      <div className="watch-timing"><h3>Kayıt bilgisi</h3><p>{history.current.length} örnek saklandı · sınır {limit.current} örnek</p><p>Aynı anda en fazla 16 değişken izlenir. CSV bu oturumdaki saklanan örnekleri içerir.</p></div>
       <div className="watch-timing"><h3>Okuma hızı</h3><p>Hedef aralık; gerçek hız ağ ve SWD’ye bağlıdır.</p>
         <fieldset className="live-rate" disabled={running}><SelectMenu ariaLabel="Değişken okuma aralığı" value={interval}
           options={[{ value: '225', label: '225 ms · hızlı' }, { value: '250', label: '250 ms · varsayılan' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]} onChange={setIntervalMs}/></fieldset>
