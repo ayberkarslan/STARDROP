@@ -21,7 +21,17 @@ struct WatchBinding {
     String uid, hash, session;
     uint32_t size = 0, verifiedAt = 0, lastRead = 0;
 } watchBinding;
-void invalidateWatch() { watchBinding.session = ""; }
+struct WatchFlashSweep {
+    mbedtls_sha256_context hash;
+    uint32_t offset = 0;
+    bool active = false;
+} watchFlashSweep;
+void resetWatchFlashSweep() {
+    if (watchFlashSweep.active) mbedtls_sha256_free(&watchFlashSweep.hash);
+    watchFlashSweep.active = false;
+    watchFlashSweep.offset = 0;
+}
+void invalidateWatch() { resetWatchFlashSweep(); watchBinding.session = ""; }
 
 // ==============================================================================
 // 1. AYARLAR VE YAPILANDIRMA
@@ -948,6 +958,33 @@ bool watchFlashMatches(bool *readOk = nullptr) {
     for (unsigned i = 0; i < 32; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
     return watchBinding.hash == hex;
 }
+enum class WatchFlashCheck { PENDING, MATCHED, MISMATCH, READ_FAILED };
+WatchFlashCheck checkWatchFlashChunk() {
+    if (!watchFlashSweep.active) {
+        mbedtls_sha256_init(&watchFlashSweep.hash);
+        if (mbedtls_sha256_starts_ret(&watchFlashSweep.hash, 0) != 0) {
+            mbedtls_sha256_free(&watchFlashSweep.hash);
+            return WatchFlashCheck::READ_FAILED;
+        }
+        watchFlashSweep.offset = 0;
+        watchFlashSweep.active = true;
+    }
+    // One small SWD read per RAM reply keeps the synchronous HTTP server responsive.
+    alignas(4) uint8_t block[256];
+    const unsigned size = std::min<uint32_t>(sizeof(block), watchBinding.size - watchFlashSweep.offset);
+    const bool ok = swd.readBlock(0x08000000 + watchFlashSweep.offset, block, (size + 3U) & ~3U)
+        && mbedtls_sha256_update_ret(&watchFlashSweep.hash, block, size) == 0;
+    if (!ok) { resetWatchFlashSweep(); return WatchFlashCheck::READ_FAILED; }
+    watchFlashSweep.offset += size;
+    if (watchFlashSweep.offset < watchBinding.size) return WatchFlashCheck::PENDING;
+    uint8_t digest[32];
+    const bool finished = mbedtls_sha256_finish_ret(&watchFlashSweep.hash, digest) == 0;
+    resetWatchFlashSweep();
+    if (!finished) return WatchFlashCheck::READ_FAILED;
+    char hex[65];
+    for (unsigned i = 0; i < 32; ++i) snprintf(hex + i * 2, 3, "%02x", digest[i]);
+    return watchBinding.hash == hex ? WatchFlashCheck::MATCHED : WatchFlashCheck::MISMATCH;
+}
 void watchError(const char *reason) {
     server.send(200, "application/json", "{\"valid\":false,\"reason\":\"" + String(reason) + "\"}");
 }
@@ -998,10 +1035,14 @@ void handleWatchRead() {
     Watch::Address items[Watch::maxVariables]; unsigned count = 0;
     if (!Watch::addresses(addresses.c_str(), items, count, Watch::ramEnd(target.deviceId))) { watchError("WATCH_ADDRESS_INVALID"); return; }
     // Periodic full-image verification also detects changes by another programmer.
-    if (millis() - watchBinding.verifiedAt >= 5000) {
-        bool readOk = false;
-        if (!watchFlashMatches(&readOk)) { invalidateWatch(); watchError(readOk ? "ELF_FIRMWARE_MISMATCH" : "FLASH_READ_FAILED"); return; }
-        watchBinding.verifiedAt = millis();
+    if (watchFlashSweep.active || millis() - watchBinding.verifiedAt >= 5000) {
+        const WatchFlashCheck check = checkWatchFlashChunk();
+        if (check == WatchFlashCheck::READ_FAILED || check == WatchFlashCheck::MISMATCH) {
+            invalidateWatch();
+            watchError(check == WatchFlashCheck::MISMATCH ? "ELF_FIRMWARE_MISMATCH" : "FLASH_READ_FAILED");
+            return;
+        }
+        if (check == WatchFlashCheck::MATCHED) watchBinding.verifiedAt = millis();
     }
     String json = "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + session + "\",\"sha256\":\"" + watchBinding.hash + "\",\"values\":[";
     for (unsigned i = 0; i < count; ++i) {
