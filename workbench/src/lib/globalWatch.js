@@ -36,14 +36,19 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
   intervalMs = 500, schedule = setTimeout, cancel = clearTimeout, clock = Date.now }) {
   let lease = null, timer = null, stopped = true, inflight = false, session = null, errors = 0;
   let watched = [...variables];
+  let stopState = null, hasFrame = false;
+  const messageOf = error => error?.message || String(error);
   const checkVariables = next => {
     if (!next.length || next.length > 16 || new Set(next.map(variableId)).size !== next.length
       || next.some(v => !elf.variables.some(item => variableId(item) === variableId(v) && item.kind === v.kind && item.size === v.size))) throw new Error('ELF ve 1–16 geçerli global değişken seç.');
   };
   const release = () => { if (lease) { hardware.release(lease); lease = null; } };
   const stop = (message = 'Değişken izleme durduruldu.', status = 'paused') => {
-    stopped = true; cancel(timer); timer = null; if (!inflight) release(); onState?.({ status, message });
+    stopped = true; cancel(timer); timer = null; stopState = { status, message };
+    if (!inflight) { release(); onState?.(stopState); }
+    else onState?.(status === 'paused' ? { status: 'stopping', message: 'Durdurma istendi; devam eden cihaz isteğinin bitmesi bekleniyor. Yeni okuma başlatılmayacak.' } : stopState);
   };
+  const settled = () => { inflight = false; if (stopped) { release(); if (stopState) onState?.(stopState); } };
   const validate = raw => {
     if (raw.reason === 'WATCH_REQUEST_INVALID') {
       const details = { UID_FORMAT_INVALID: 'STM32 UID biçimi', HASH_FORMAT_INVALID: 'ELF SHA-256 özeti', IMAGE_SIZE_INVALID: 'ELF flash boyutu', BODY_TOO_LARGE: 'istek boyutu' };
@@ -56,6 +61,7 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
   const sample = async () => {
     if (stopped) return;
     inflight = true;
+    onState?.({ status: hasFrame ? 'live' : 'reading', pending: true, message: 'RAM’den ilk değerler bekleniyor…' });
     try {
       // Liste okuma sürerken değişebilir; cevabı isteğin kendi listesiyle çöz.
       const requested = [...watched];
@@ -63,15 +69,16 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
       if (stopped) return;
       validate(raw); if (raw.session !== session || !Array.isArray(raw.values) || raw.values.length !== requested.length) throw new Error('RAM oturumu veya değişken listesi değişti.');
       const values = requested.map((v, i) => decodeVariable(v, raw.values[i]));
-      errors = 0; onFrame?.({ receivedAt: clock(), uid, values });
+      errors = 0; hasFrame = true; onFrame?.({ receivedAt: clock(), uid, values });
       onState?.({ status: 'live', message: 'Global değişkenler RAM’den okunuyor. Değerlerin değişmemesi bağlantı kesildiği anlamına gelmez.' });
     } catch (error) {
       if (!stopped) {
-        if (++errors >= 3 || /ELF|değişti|geçersiz|sınır|uyuşmuyor|tanımlı/.test(error.message)) stop(error.message, 'error');
-        else onState?.({ status: 'retrying', message: error.message });
+        const message = messageOf(error);
+        if (++errors >= 3 || /ELF|değişti|geçersiz|sınır|uyuşmuyor|tanımlı/.test(message)) stop(message, 'error');
+        else onState?.({ status: 'retrying', message: `${message} · yeniden deneme ${errors}/3` });
       }
     } finally {
-      inflight = false; if (stopped) release(); else timer = schedule(sample, intervalMs);
+      settled(); if (!stopped) timer = schedule(sample, intervalMs);
     }
   };
   return {
@@ -82,7 +89,7 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
       if (!/^[a-f0-9]{64}$/.test(elf?.imageSha256 || '') || !Number.isInteger(elf.imageSize) || elf.imageSize < 64 || elf.imageSize > 1048576
         || !Array.isArray(elf.variables)) throw new Error('ELF flash bilgisi geçersiz; dosyayı yeniden seç.');
       checkVariables(variables);
-      lease = hardware.acquire(ownerId, 'Global değişken izleme'); stopped = false; inflight = true;
+      lease = hardware.acquire(ownerId, 'Global değişken izleme'); stopped = false; inflight = true; stopState = null; hasFrame = false;
       onState?.({ status: 'verifying', message: 'ELF flash’taki yazılımla karşılaştırılıyor; STM32 durdurulmuyor…' });
       try {
         let result = await verify();
@@ -97,8 +104,8 @@ export function createGlobalWatch({ hardware, ownerId, uid, elf, variables, veri
           if (stopped) return;
         }
         validate(result); session = result.session;
-      } catch (error) { if (!stopped) stop(error.message, 'error'); }
-      finally { inflight = false; if (stopped) release(); }
+      } catch (error) { if (!stopped) stop(messageOf(error), 'error'); }
+      finally { settled(); }
       if (!stopped) void sample();
     }, stop,
     updateVariables(next) { checkVariables(next); watched = [...next]; },

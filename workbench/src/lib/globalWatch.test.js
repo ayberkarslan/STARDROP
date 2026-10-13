@@ -98,6 +98,27 @@ test('stop retains the hardware lease until verification finishes', async () => 
   finish(identity); await start;
   assert.equal(hardware.current, null); assert.equal(frames.length, 0);
 });
+test('initial phases are visible and cancellation settles only after the device responds', async () => {
+  let verified, readDone;
+  const item = setup({ verify: () => new Promise(resolve => { verified = resolve; }), read: () => new Promise(resolve => { readDone = resolve; }) });
+  const start = item.session.start();
+  assert.equal(item.states.at(-1).status, 'verifying');
+  await assert.rejects(item.session.start(), /zaten/);
+  verified(identity); await start;
+  assert.equal(item.states.at(-1).status, 'reading');
+  item.session.stop();
+  assert.equal(item.states.at(-1).status, 'stopping'); assert.ok(item.hardware.current);
+  readDone({ ...identity, values: [{ address: variable.address, hex: 'e7030000', stable: true }] });
+  await flush();
+  assert.equal(item.states.at(-1).status, 'paused'); assert.equal(item.hardware.current, null);
+  assert.equal(item.frames.length, 0);
+});
+test('string transport errors remain readable and eventually free the lease', async () => {
+  const item = setup({ verify: async () => { throw 'ESP yanıtı zaman aşımı'; } });
+  await item.session.start();
+  assert.equal(item.states.at(-1).status, 'error');
+  assert.equal(item.states.at(-1).message, 'ESP yanıtı zaman aşımı'); assert.equal(item.hardware.current, null);
+});
 test('stop retains the lease until pending read finishes and discards its result', async () => {
   let finish; const { session, hardware, frames } = setup({ read: () => new Promise(resolve => { finish = resolve; }) });
   await session.start(); session.stop(); assert.ok(hardware.current);
