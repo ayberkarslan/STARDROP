@@ -18,8 +18,8 @@
 #include "mbedtls/sha256.h"
 
 struct WatchBinding {
-    String uid, hash, session;
-    uint32_t size = 0, verifiedAt = 0, lastRead = 0;
+    String uid, hash, session, lastError;
+    uint32_t size = 0, verifiedAt = 0, lastRead = 0, lastReadMs = 0, lastFlashChunkMs = 0, readCount = 0, errorCount = 0;
 } watchBinding;
 struct WatchFlashSweep {
     mbedtls_sha256_context hash;
@@ -613,6 +613,11 @@ void handleProgrammerStatus() {
     json += "\"watchFlashCheckActive\":" + String(watchFlashSweep.active ? "true" : "false") + ",";
     json += "\"watchFlashCheckBytes\":" + String(watchFlashSweep.offset) + ",";
     json += "\"watchFlashCheckTotal\":" + String(watchBinding.size) + ",";
+    json += "\"watchLastReadMs\":" + String(watchBinding.lastReadMs) + ",";
+    json += "\"watchLastFlashChunkMs\":" + String(watchBinding.lastFlashChunkMs) + ",";
+    json += "\"watchReadCount\":" + String(watchBinding.readCount) + ",";
+    json += "\"watchErrorCount\":" + String(watchBinding.errorCount) + ",";
+    json += "\"watchLastError\":\"" + watchBinding.lastError + "\",";
     json += "\"firmwareBuild\":\"" + String(__DATE__) + " " + String(__TIME__) + "\",";
     json += "\"chipModel\":\"" + String(ESP.getChipModel()) + "\",";
     json += "\"flashBytes\":" + String(ESP.getFlashChipSize()) + ",";
@@ -989,6 +994,8 @@ WatchFlashCheck checkWatchFlashChunk() {
     return watchBinding.hash == hex ? WatchFlashCheck::MATCHED : WatchFlashCheck::MISMATCH;
 }
 void watchError(const char *reason) {
+    watchBinding.lastError = reason;
+    ++watchBinding.errorCount;
     server.send(200, "application/json", "{\"valid\":false,\"reason\":\"" + String(reason) + "\"}");
 }
 void handleWatchVerify() {
@@ -1022,6 +1029,8 @@ void handleWatchVerify() {
     }
     watchBinding.session = String(esp_random(), HEX) + String(esp_random(), HEX);
     watchBinding.verifiedAt = millis(); watchBinding.lastRead = 0;
+    watchBinding.lastReadMs = 0; watchBinding.lastFlashChunkMs = 0;
+    watchBinding.readCount = 0; watchBinding.errorCount = 0; watchBinding.lastError = "";
     server.send(200, "application/json", "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + watchBinding.session + "\",\"sha256\":\"" + hash + "\"}");
 }
 void handleWatchRead() {
@@ -1031,6 +1040,7 @@ void handleWatchRead() {
     const String uid = watchField(body, "uid"), session = watchField(body, "session"), addresses = watchField(body, "addresses");
     if (!watchBinding.session.length() || session != watchBinding.session || uid != watchBinding.uid) { watchError("WATCH_SESSION_INVALID"); return; }
     if (watchBinding.lastRead && millis() - watchBinding.lastRead < 200) { watchError("WATCH_RATE_LIMIT"); return; }
+    const uint32_t started = millis();
     watchBinding.lastRead = millis();
     swd.setSpeedProfile(SwdSpeedProfile::FAST); swd.begin(SWD_CLK_PIN, SWD_DIO_PIN, -1);
     TargetProbeInfo target;
@@ -1039,14 +1049,16 @@ void handleWatchRead() {
     if (!Watch::addresses(addresses.c_str(), items, count, Watch::ramEnd(target.deviceId))) { watchError("WATCH_ADDRESS_INVALID"); return; }
     // Periodic full-image verification also detects changes by another programmer.
     if (watchFlashSweep.active || millis() - watchBinding.verifiedAt >= 5000) {
+        const uint32_t flashStarted = millis();
         const WatchFlashCheck check = checkWatchFlashChunk();
+        watchBinding.lastFlashChunkMs = millis() - flashStarted;
         if (check == WatchFlashCheck::READ_FAILED || check == WatchFlashCheck::MISMATCH) {
             invalidateWatch();
             watchError(check == WatchFlashCheck::MISMATCH ? "ELF_FIRMWARE_MISMATCH" : "FLASH_READ_FAILED");
             return;
         }
         if (check == WatchFlashCheck::MATCHED) watchBinding.verifiedAt = millis();
-    }
+    } else watchBinding.lastFlashChunkMs = 0;
     String json = "{\"valid\":true,\"uid\":\"" + uid + "\",\"session\":\"" + session + "\",\"sha256\":\"" + watchBinding.hash + "\",\"values\":[";
     for (unsigned i = 0; i < count; ++i) {
         const uint32_t base = items[i].address & ~3U; const unsigned skip = items[i].address & 3U;
@@ -1074,6 +1086,8 @@ void handleWatchRead() {
     }
     TargetProbeInfo confirm;
     if (!swd.probe(&confirm, true) || formatTargetUid(confirm) != uid) { invalidateWatch(); watchError("TARGET_CHANGED"); return; }
+    watchBinding.lastReadMs = millis() - started;
+    ++watchBinding.readCount;
     json += "]}"; server.send(200, "application/json", json);
 }
 
