@@ -168,8 +168,7 @@ fn esp_url(base: &str, path: &str) -> Result<reqwest::Url, String> {
 async fn esp_http(base: String, path: String, method: String, body: Option<String>, timeout_ms: Option<u64>) -> Result<String, String> {
     let url = esp_url(&base, &path)?;
     let maximum_timeout = if path == "/api/target/maintenance" { 180000 } else if path.starts_with("/api/watch/") { 60000 } else { 30000 };
-    let client = reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms.unwrap_or(10000).clamp(1000, maximum_timeout)))
-        .build().map_err(|error| error.to_string())?;
+    let client = esp_http_client()?;
     let request = match method.as_str() {
         "GET" if ESP_GET_PATHS.contains(&path.as_str()) => client.get(url),
         "POST" if ESP_POST_PATHS.contains(&path.as_str()) => {
@@ -179,12 +178,23 @@ async fn esp_http(base: String, path: String, method: String, body: Option<Strin
         }
         _ => return Err("ESP32 uç noktası izinli değil".into()),
     };
-    let response = request.send().await.map_err(|error| error.to_string())?;
+    let response = request.timeout(Duration::from_millis(timeout_ms.unwrap_or(10000).clamp(1000, maximum_timeout)))
+        .send().await.map_err(|error| error.to_string())?;
     let status = response.status();
     let text = response.text().await.map_err(|error| error.to_string())?;
     if !status.is_success() { return Err(format!("ESP32 HTTP {}: {}", status, text.chars().take(200).collect::<String>())); }
     if text.len() > 128 * 1024 { return Err("ESP32 yanıtı beklenenden büyük".into()); }
     Ok(text)
+}
+
+fn esp_http_client() -> Result<&'static reqwest::Client, String> {
+    // Reuse the LAN transport and its pool rather than rebuild it for each
+    // sample. Request timeouts remain independent; no polling tasks are added.
+    static CLIENT: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+    CLIENT.get_or_init(|| reqwest::Client::builder().no_proxy()
+        .redirect(reqwest::redirect::Policy::none()).tcp_nodelay(true)
+        .pool_idle_timeout(Duration::from_secs(30)).build().map_err(|error| error.to_string()))
+        .as_ref().map_err(Clone::clone)
 }
 
 #[tauri::command]
@@ -547,6 +557,11 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn esp_http_transport_is_reused_between_samples() {
+        assert!(std::ptr::eq(esp_http_client().unwrap(), esp_http_client().unwrap()));
+    }
 
     #[test]
     fn auth_worker_url_requires_https_origin() {
