@@ -26,7 +26,7 @@ function WatchSignal({ state, latest, interval, connected }) {
   const live = state.status === 'live';
   return <div className="watch-signal" aria-label="RAM bağlantı durumu" title="Son başarılı RAM yanıtı bağlantıyı doğrular. Yanıt süresi Wi-Fi, HTTP, SWD ve varsa flash kontrolünü içerir; anlık fiziksel kopma garantisi değildir.">
     <span className={`live-status status-${live && !fresh ? 'waiting' : state.status}`}><i/>{state.status === 'idle' ? connected ? 'Bağlı' : 'Bağlı değil' : live ? fresh ? 'Canlı' : 'Yanıt gecikti' : labels[state.status]}</span>
-    {latest && <small>{live ? `Son yanıt ${Math.round(ageMs)} ms önce` : 'Son okuma saklandı'} · {latest.readDurationMs} ms yanıt</small>}
+    {latest && <small>{live ? `Son yanıt ${Math.round(ageMs)} ms önce` : 'Son okuma saklandı'} · {latest.readDurationMs} ms sürdü</small>}
     {live && state.pending && now - state.pendingSince >= 2000 && <small className="watch-pending" role="status">Yeni RAM yanıtı bekleniyor · {Math.floor((now - state.pendingSince) / 1000)} sn</small>}
   </div>;
 }
