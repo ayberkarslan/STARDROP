@@ -14,7 +14,7 @@ const labels = { idle: 'Hazır', verifying: 'ELF kontrolü', programming: 'Yükl
 const valueText = v => !v?.valid ? '—' : v.kind === 'bool' ? v.value ? 'true' : 'false' : typeof v.value === 'number' ? v.value.toLocaleString('tr-TR', { maximumFractionDigits: 6 }) : v.value;
 // The small freshness clock re-renders only this indicator, not every chart
 // and variable card. It uses real RAM replies, not extra heartbeat requests.
-function WatchSignal({ state, latest, interval }) {
+function WatchSignal({ state, latest, interval, connected }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (state.status !== 'live') return;
@@ -25,8 +25,9 @@ function WatchSignal({ state, latest, interval }) {
   const { ageMs, fresh } = watchFreshness(latest, Math.max(now, latest?.receivedAt || 0), interval);
   const live = state.status === 'live';
   return <div className="watch-signal" aria-label="RAM bağlantı durumu" title="Son başarılı RAM yanıtı bağlantıyı doğrular. Yanıt süresi Wi-Fi, HTTP, SWD ve varsa flash kontrolünü içerir; anlık fiziksel kopma garantisi değildir.">
-    <span className={`live-status status-${live && !fresh ? 'waiting' : state.status}`}><i/>{live ? fresh ? 'Canlı' : 'Yanıt gecikti' : labels[state.status]}</span>
+    <span className={`live-status status-${live && !fresh ? 'waiting' : state.status}`}><i/>{state.status === 'idle' ? connected ? 'Bağlı' : 'Bağlı değil' : live ? fresh ? 'Canlı' : 'Yanıt gecikti' : labels[state.status]}</span>
     {latest && <small>{live ? `Son yanıt ${Math.round(ageMs)} ms önce` : 'Son okuma saklandı'} · {latest.readDurationMs} ms yanıt</small>}
+    {live && state.pending && now - state.pendingSince >= 2000 && <small className="watch-pending" role="status">Yeni RAM yanıtı bekleniyor · {Math.floor((now - state.pendingSince) / 1000)} sn</small>}
   </div>;
 }
 function Sparkline({ frames, id }) {
@@ -187,26 +188,25 @@ export default function GlobalWatch({ documentId, initialData, active, services,
   const closeDrawer = () => { setDrawer(false); setTelemetryOpen(false); };
   const locked = loading || ['verifying', 'programming', 'retrying', 'stopping'].includes(state.status) || Boolean(hardwareBusy && !running);
   const source = <div className="watch-source">
-    <label className="secondary"><FileUp size={15}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}
+    <label className="watch-elf-control">
+      <span className="watch-elf-action"><FileUp size={16}/>{loading ? 'ELF OKUNUYOR…' : elf ? 'ELF DEĞİŞTİR' : 'ELF SEÇ'}</span>
+      {elf && <span className="watch-elf-file" title={fileName}>{fileName} · {loadedSource.current === 'upload' ? automaticLabel + ' · ' : loadedSource.current === 'saved' ? 'Kayıtlı ELF · ' : ''}{elf.variables.length} değişken</span>}
       <input aria-label="İzleme ELF dosyası" type="file" accept=".elf" disabled={running || loading || Boolean(hardwareBusy)} onChange={e => { void load(e.target.files?.[0]); e.target.value = ''; }}/>
     </label>
-    {elf && <span title={fileName}>{fileName} · {loadedSource.current === 'upload' ? automaticLabel + ' · ' : loadedSource.current === 'saved' ? 'Kayıtlı ELF · ' : ''}{elf.variables.length} değişken</span>}
     {debugArtifact?.file && loadedSource.current === 'manual' && <button className="secondary" disabled={running || loading || Boolean(hardwareBusy)} onClick={() => { uploadedFile.current = debugArtifact.file; void load(debugArtifact.file, 'upload'); }}>HIZLI YÜKLEME ELF’İ</button>}
   </div>;
   return <div className="live-monitor global-watch compact-watch">
     <header className="live-heading">
       <h1>Live Expressions</h1>
       <div className="watch-header-tools">
-        <WatchSignal state={state} latest={latest} interval={Number(interval)}/>
-        {state.status === 'live' && state.pending && now - state.pendingSince >= 2000 && <small className="watch-pending" role="status">Yeni RAM yanıtı bekleniyor · {Math.floor((now - state.pendingSince) / 1000)} sn</small>}
         <button className="secondary watch-settings" aria-label="İzleme ayarları" onClick={() => setDrawer(true)}><Settings size={18}/></button>
       </div>
     </header>
     <div className="watch-context">
       <div className="watch-target" role="group" aria-label="Çalışılan kart" title={uid ? 'Hedef UID: ' + uid : 'STM32 bağlı değil'}>
-        <span className={'watch-target-dot ' + (target?.connected && uid === target.uid ? 'is-connected' : '')}/>
         <div><small>ÇALIŞILAN KART</small><strong>{target?.label || target?.model || 'STM32 bağlı değil'}</strong></div>
         <span className="watch-target-model">{target?.label && target?.model ? target.model : ''}{uid && <code>#{uid.slice(-6)}</code>}</span>
+        <WatchSignal state={state} latest={latest} interval={Number(interval)} connected={target?.connected && uid === target.uid}/>
       </div>
       {source}
     </div>
@@ -252,6 +252,7 @@ export default function GlobalWatch({ documentId, initialData, active, services,
     </section>
     {drawer && <Popup variant="drawer" className="detail-drawer watch-drawer" ariaLabel="İzleme ayarları" onClose={closeDrawer}>
       <div className="drawer-title"><h2>İzleme ayarları</h2><button className="icon-link" aria-label="Kapat" onClick={closeDrawer}><X size={18}/></button></div>
+      <div className="drawer-body">
       <div className="watch-timing"><h3>Okuma hızı</h3><p>Hedef aralık; gerçek hız ağ ve SWD’ye bağlıdır.</p>
         <fieldset className="live-rate" disabled={running}><SelectMenu ariaLabel="Değişken okuma aralığı" value={interval}
           options={[{ value: '225', label: '225 ms · hızlı' }, { value: '250', label: '250 ms · varsayılan' }, { value: '500', label: '500 ms' }, { value: '1000', label: '1 saniye' }]} onChange={setIntervalMs}/></fieldset>
@@ -261,6 +262,7 @@ export default function GlobalWatch({ documentId, initialData, active, services,
       {telemetryPanel && <details className="watch-legacy" onToggle={event => { setTelemetryOpen(event.currentTarget.open); if (event.currentTarget.open) stop(); }}>
         <summary>Telemetri ABI araçları</summary>{telemetryPanel(telemetryOpen)}
       </details>}
+      </div>
     </Popup>}
   </div>;
 }

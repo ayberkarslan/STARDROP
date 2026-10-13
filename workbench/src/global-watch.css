@@ -18,3 +18,25 @@
 @media(max-width:850px){.compact-watch{padding:18px}.compact-watch .watch-entry{grid-template-columns:1fr}.compact-watch .watch-source span{max-width:240px}.compact-watch .live-heading h1{font-size:20px}}@media(max-width:560px){.compact-watch .live-heading{align-items:start}.watch-header-tools{gap:8px}.watch-signal small{max-width:150px}.watch-header-tools .watch-pending{white-space:normal}.compact-watch .live-toolbar>span{width:auto;margin-left:auto}}
 .compact-watch .watch-picker .select-trigger .watch-symbol{font-size:12px;line-height:1.4;color:#fff}.compact-watch .watch-picker .select-trigger>span:last-child{color:#fff}
 .compact-watch .watch-results .live-channels{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:10px}.compact-watch .watch-results .live-empty{grid-column:1/-1}
+.compact-watch{--watch-control-height:48px}
+.compact-watch .watch-entry{align-items:center}
+.compact-watch .watch-expression,.compact-watch .watch-picker .select-trigger,.compact-watch .watch-picker>button{height:var(--watch-control-height);min-height:var(--watch-control-height);box-sizing:border-box;margin:0}
+.compact-watch .watch-expression{align-items:center}
+.compact-watch .watch-expression input{height:100%;padding:0 14px;line-height:1.4}
+.compact-watch .watch-expression>button{height:100%;align-self:stretch;display:grid;place-items:center}
+.compact-watch .watch-picker{align-items:center}
+.compact-watch .watch-picker .select-trigger{padding:6px 12px}
+.compact-watch .watch-picker>button{display:flex;align-items:center;justify-content:center;padding:0 14px}
+.compact-watch .live-toolbar>button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:40px;min-height:40px;margin:0;padding:0 14px;line-height:1;align-self:center}
+.compact-watch .watch-context{align-items:stretch}
+.compact-watch .watch-target{min-height:64px;box-sizing:border-box;gap:16px;flex-wrap:wrap}
+.compact-watch .watch-target>.watch-signal{flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;border-left:1px solid #555;padding-left:16px;max-width:290px}
+.compact-watch .watch-target .watch-signal small{font:10px/1.4 ui-monospace,monospace;letter-spacing:0;white-space:normal}
+.compact-watch .watch-target .watch-pending{position:static;color:#fff}
+.compact-watch .watch-source{align-items:stretch;min-width:260px;max-width:640px}
+.compact-watch .watch-source .watch-elf-control{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;min-height:64px;box-sizing:border-box;margin:0;padding:10px 14px;background:#000;border:1px solid #555;border-radius:7px;flex:1;min-width:0}
+.compact-watch .watch-source .watch-elf-action{display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:11px;font-weight:400;line-height:1.5;letter-spacing:0;color:#fff;max-width:none;flex-shrink:0;overflow:visible}
+.compact-watch .watch-source .watch-elf-file{font:11px/1.5 ui-monospace,monospace;white-space:normal;overflow-wrap:anywhere;max-width:none;flex:1;min-width:130px;border-left:1px solid #555;padding-left:16px;box-sizing:border-box}
+.compact-watch .watch-target .live-status{font-size:10px}
+.watch-drawer .drawer-body>.watch-timing{margin:0 0 24px}
+@media(max-width:850px){.compact-watch .watch-source{max-width:none}.compact-watch .watch-target>.watch-signal{max-width:220px}}
