@@ -8,7 +8,7 @@ import { createGlobalWatch, globalWatchCsv, variableId, resolveWatchName, watchF
 import { DEFAULT_SETTINGS } from './lib/settings.js';
 import { reloadWatchFirmware } from './lib/watchFirmware.js';
 import { inspectWatchFile } from './lib/watchElfImport.js';
-import { watchDraft, saveWatchDraft, rememberWatchElf, recalledWatchElf, firmwareHistory } from './lib/watchMemory.js';
+import { watchDraft, saveWatchDraft, rememberWatchElf, recalledWatchSession, rememberWatchSelection, firmwareHistory } from './lib/watchMemory.js';
 
 const labels = { idle: 'Hazır', verifying: 'ELF kontrolü', programming: 'Yükleniyor', reading: 'RAM bekleniyor', stopping: 'Durduruluyor', live: 'Canlı', paused: 'Durduruldu', retrying: 'Bağlantı kontrolü', error: 'İzleme durdu' };
 const valueText = v => !v?.valid ? '—' : v.kind === 'bool' ? v.value ? 'true' : 'false' : typeof v.value === 'number' ? v.value.toLocaleString('tr-TR', { maximumFractionDigits: 6 }) : v.value;
@@ -80,8 +80,11 @@ export default function GlobalWatch({ documentId, initialData, active, services,
     setLoading(false); setElf(null); setFileName(''); setSelected([]); setLatest(null); setFrames([]);
     fileRef.current = null; loadedUid.current = null; uploadedFile.current = null; restoredUid.current = null;
   }, [uid]);
-  useEffect(() => { if (elf && fileRef.current && loadedUid.current === uid) saveWatchDraft(documentId, uid, { elf, file: fileRef.current, selected, source: loadedSource.current, revision: loadedRevision.current }); }, [documentId, uid, elf, selected]);
-  const load = async (file, source = 'manual') => {
+  useEffect(() => { if (elf && fileRef.current && loadedUid.current === uid) {
+    saveWatchDraft(documentId, uid, { elf, file: fileRef.current, selected, source: loadedSource.current, revision: loadedRevision.current });
+    void rememberWatchSelection(uid, fileRef.current, selected, loadedRevision.current).catch(() => {});
+  } }, [documentId, uid, elf, selected, debugArtifact]);
+  const load = async (file, source = 'manual', restoredSelection = []) => {
     if (!file || running || hardware.current) return;
     const id = ++importId.current; setLoading(true); setElf(null); setSelected([]); setInputError(''); setQuery(''); setLatest(null); setFrames([]); history.current = [];
     loadedSource.current = source;
@@ -94,16 +97,17 @@ export default function GlobalWatch({ documentId, initialData, active, services,
       const info = await inspectWatchFile(file, invoke);
       if (!alive.current || id !== importId.current) return;
       setElf(info); setFileName(file.name); setChoice(info.variables[0] ? variableId(info.variables[0]) : '');
+      setSelected(info.variables.map(variableId).filter(id => restoredSelection.includes(id)).slice(0, 16));
       void rememberWatchElf(uid, file).catch(error => setNotice(`ELF bu oturumda tutuluyor; diske kaydedilemedi: ${error?.message || error}`));
       setState({ status: 'idle', message: `${info.variables.length} RAM değişkeni bulundu. İzleme başlatıldığında flash eşleşmesi kontrol edilir.` });
     } catch (error) { if (alive.current && id === importId.current) setState({ status: 'error', message: error.message || String(error) }); }
     finally { if (alive.current && id === importId.current) setLoading(false); }
   };
   useEffect(() => {
-    if (!uid || elf || loading || debugArtifact?.file || running || hardwareBusy || restoredUid.current === uid) return;
+    if (!active || !uid || elf || loading || debugArtifact?.file || running || hardwareBusy || restoredUid.current === uid) return;
     restoredUid.current = uid;
     let cancelled = false;
-    void recalledWatchElf(uid).then(file => { if (!cancelled && alive.current && file) void load(file, 'saved'); }).catch(() => {});
+    void recalledWatchSession(uid).then(stored => { if (!cancelled && alive.current && stored?.file) void load(stored.file, 'saved', stored.selected || []); }).catch(() => {});
     return () => { cancelled = true; restoredUid.current = null; };
   }, [uid, active, hardwareBusy, debugArtifact?.file]);
   useEffect(() => {

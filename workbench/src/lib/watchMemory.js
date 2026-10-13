@@ -46,11 +46,23 @@ export async function rememberWatchElf(uid, file) {
   const revision = firmwareHistory(uid).at(-1)?.id || null;
   await transaction('readwrite', store => store.put({ file, revision }, key(uid)));
 }
-export async function recalledWatchElf(uid) {
+export async function rememberWatchSelection(uid, file, selected, revision) {
+  if (!key(uid)) return;
+  await transaction('readwrite', store => {
+    const request = store.get(key(uid));
+    request.onsuccess = () => {
+      const current = request.result;
+      if (current?.revision === revision && current.file.name === file.name && current.file.size === file.size && current.file.lastModified === file.lastModified)
+        store.put({ ...current, selected: selected.slice(0, 16) }, key(uid));
+    };
+    return request;
+  });
+}
+export async function recalledWatchSession(uid) {
   if (!key(uid)) return null;
   const stored = await transaction('readonly', store => store.get(key(uid)));
   // Another local upload (including a BIN or failed partial write) invalidates
   // the remembered association. Hardware flash is still verified on each start.
   if (!stored || stored.revision !== (firmwareHistory(uid).at(-1)?.id || null)) return null;
-  return stored.file;
+  return stored;
 }
