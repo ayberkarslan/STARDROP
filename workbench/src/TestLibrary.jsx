@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Minus, Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { filterLibrary, SENSOR_GROUPS } from './lib/libraryFilters.js';
 import SelectMenu from './SelectMenu.jsx';
 import SensorFilter from './SensorFilter.jsx';
-import { ArrowLeft } from 'lucide-react';
 import { catalogLibraryEntries } from './lib/testLibrary.js';
 
 const resultLabel = { PASS: 'Başarılı', FAIL: 'Başarısız', NOT_RUN: 'Henüz denenmedi' };
 const results = [{ value: 'all', label: 'Tüm sonuçlar' }, ...Object.entries(resultLabel).map(([value, label]) => ({ value, label }))];
 
-export default function TestLibrary({ initialDraftId, entries, catalog, busy, error, refresh, publish, drafts = {}, documents = [], openEntry, sourceSha, startNewTest }) {
+export default function TestLibrary({ initialDraftId, entries, catalog, busy, error, refresh, publish, drafts = {}, documents = [], openEntry, sourceSha, startNewTest, onBack }) {
   const allEntries = useMemo(() => [...entries, ...catalogLibraryEntries(catalog)], [entries, catalog]);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(null);
@@ -40,7 +39,7 @@ export default function TestLibrary({ initialDraftId, entries, catalog, busy, er
   };
 
   return <div className="workspace library-workspace library-refined">
-    <div className="library-heading"><div className="library-title-row">{selected && <button className="icon-button" aria-label="Geri" title="Test listesine dön" onClick={() => setSelectedId(null)}><ArrowLeft size={19}/></button>}<h2>Test Kütüphanesi</h2></div><button className="icon-button library-refresh" onClick={refresh} disabled={busy} aria-label="Test kütüphanesini yenile" title="Yenile"><RefreshCw size={17} className={busy ? 'library-refreshing' : ''}/></button></div>
+    <div className="library-heading"><div className="library-title-row"><button type="button" className="library-back" aria-label={selected ? 'Test listesine dön' : 'Yeni Test sayfasına dön'} title={selected ? 'Test listesine dön' : 'Yeni Test sayfasına dön'} onClick={() => selected ? setSelectedId(null) : onBack?.()}><ArrowLeft size={21} strokeWidth={1.7}/></button><h2>Test Kütüphanesi</h2></div><button className="icon-button library-refresh" onClick={refresh} disabled={busy} aria-label="Test kütüphanesini yenile" title="Yenile"><RefreshCw size={17} className={busy ? 'library-refreshing' : ''}/></button></div>
     <div className="library-toolbar">
       <label className="library-search"><Search size={17}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Test, sensör veya pin ara…" aria-label="Test kütüphanesinde ara"/></label>
       <button className={'secondary library-filter-trigger' + (category !== 'all' || parts.length ? ' active' : '')} onClick={() => setFilterOpen(true)}><SlidersHorizontal size={15}/>Sensörler{parts.length > 0 && <span>{parts.length}</span>}</button>
