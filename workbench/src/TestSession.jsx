@@ -192,7 +192,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
         return;
       }
       setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
-        testId: selectedTest.id, targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
+        testId: selectedTest.id, testName: selectedTest.name, targetUid: live.uid, status: 'PENDING_VISUAL', sourceSha: built.sourceSha,
         firmwareSha256: built.sha256, pin: profile.connections.find((item) => item.componentRef === activeSensor.ref)?.mcuPin,
         blinkMs: activeSensor.blinkMs, onMs: activeSensor.onMs ?? activeSensor.blinkMs, offMs: activeSensor.offMs ?? activeSensor.blinkMs, confirmation: 'VISUAL_REQUIRED' }]);
       setVisualPending(requestId);
@@ -208,8 +208,9 @@ export default function TestSession({ documentId, initialData, services, onDraft
 
   const finishVisualTest = (passed) => {
     if (!visualPending) return;
-    if (target?.uid) void recordBoardEvent(target.uid, 'test', `${selectedTest?.name || 'Görsel test'}: ${passed ? 'başarılı' : 'başarısız'}`,
-      `${activeSensor?.ref || 'Bileşen'} · gözle doğrulandı`).catch(() => {});
+    const pendingRun = testHistory.find(item => item.requestId === visualPending);
+    if (pendingRun?.targetUid) void recordBoardEvent(pendingRun.targetUid, 'test', `${pendingRun.testName || pendingRun.testId || 'Görsel test'}: ${passed ? 'başarılı' : 'başarısız'}`,
+      `${pendingRun.componentRef || 'Bileşen'} · gözle doğrulandı`).catch(() => {});
     setTestHistory((items) => items.map((item) => item.requestId === visualPending && item.status === 'PENDING_VISUAL'
       ? { ...item, status: passed ? 'PASS' : 'FAIL', confirmedAt: new Date().toISOString(), confirmation: 'VISUAL' } : item));
     setVisualPending(null);
