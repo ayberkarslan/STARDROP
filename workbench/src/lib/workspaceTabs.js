@@ -1,7 +1,9 @@
 export const workspaceLabels = {
-  flash: 'Hızlı Yükleme', workbench: 'Yeni Test', library: 'Test Kütüphanesi',
+  flash: 'Hızlı Yükleme', tests: 'Yeni Test', workbench: 'Yeni Test', library: 'Test Kütüphanesi',
   devices: 'Cihazlar', boards: 'Kartlar', monitor: 'Canlı İzleme', admin: 'Test Yönetimi', settings: 'Ayarlar', empty: 'Yeni Sekme',
 };
+
+export const railToolForMode = mode => ['tests', 'workbench', 'library'].includes(mode) ? 'tests' : mode;
 
 export const initialWorkspace = {
   tabs: [{ id: 'initial-flash', documentId: 'initial-flash' }],

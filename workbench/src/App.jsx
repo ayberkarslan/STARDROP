@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, BookOpen, CircuitBoard, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
+import { Activity, CircuitBoard, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { deleteSecret, loadSecret, saveSecret, saveRepoSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, fetchLibraryProject, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
@@ -12,12 +12,13 @@ import PanelResize, { usePanelWidth } from './PanelResize.jsx';
 import { deviceUserCode } from './lib/deviceCode.js';
 import WorkspaceTabs, { useWorkspaceTabs } from './WorkspaceTabs.jsx';
 import WelcomeStars from './WelcomeStars.jsx';
-import { workspaceLabels } from './lib/workspaceTabs.js';
+import { railToolForMode, workspaceLabels } from './lib/workspaceTabs.js';
 import { validateBoardProfile } from './lib/boardProfile.js';
 import { libraryReadme, makeLibraryEntry, validateLibraryEntry } from './lib/testLibrary.js';
 import { exportStardropProject, importStardropProject } from './lib/projectArchive.js';
 import { createHardwareGate } from './lib/hardwareGate.js';
 import TestSession from './TestSession.jsx';
+import TestHome from './TestHome.jsx';
 import FlashSession from './FlashSession.jsx';
 import LiveMonitor from './LiveMonitor.jsx';
 import BoardProfiles from './BoardProfiles.jsx';
@@ -63,7 +64,7 @@ function EmptyWorkspace({ children }) {
 }
 
 function RailTool({ tool, Icon, workspace, drag, onOpen }) {
-  return <button className={(tool === 'settings' ? 'rail-settings ' : '') + (workspace.mode === tool ? 'active' : '')}
+  return <button className={(tool === 'settings' ? 'rail-settings ' : '') + (railToolForMode(workspace.mode) === tool ? 'active' : '')}
     data-rail-tool={tool} onPointerDown={(event) => drag.start(event, { kind: 'tool', tool, label: workspaceLabels[tool] })}
     onClick={() => { if (drag.suppressClick.current) return; workspace.open(tool); onOpen?.(); }}>
     <Icon/>{workspaceLabels[tool]}
@@ -154,7 +155,7 @@ export default function App() {
   useLayoutEffect(() => {
     const nav = railNavRef.current;
     if (!nav || session !== 'github') { setRailMarker(null); return; }
-    const active = Array.from(nav.querySelectorAll('[data-rail-tool]')).find(button => button.dataset.railTool === mode);
+    const active = Array.from(nav.querySelectorAll('[data-rail-tool]')).find(button => button.dataset.railTool === railToolForMode(mode));
     if (!active) { setRailMarker(null); return; }
     const measure = () => setRailMarker(previous => {
       const top = active.offsetTop;
@@ -643,6 +644,7 @@ export default function App() {
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
         mode === 'boards' ? <BoardProfiles records={targetRecords} target={target} saveTargetName={saveTargetName} setNotice={setNotice}/> :
         mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
+        mode === 'tests' ? <TestHome startNewTest={() => workspace.open('workbench', { fresh: true })} openLibrary={() => { workspace.open('library'); void refreshLibrary(); }}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
         mode === 'library' ? <TestLibrary initialDraftId={doc.initialData?.draftId} entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
           drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
@@ -682,8 +684,7 @@ export default function App() {
       <nav ref={railNavRef} className="rail-navigation">
         {railMarker && <span className="rail-active-marker" style={{ '--rail-marker-y': `${railMarker.top}px`, '--rail-marker-height': `${railMarker.height}px`, transition: railMarker.animate ? undefined : 'none' }} aria-hidden="true"/>}
         <RailTool tool="flash" Icon={Upload} workspace={workspace} drag={drag}/>
-        <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
-        <RailTool tool="library" Icon={BookOpen} workspace={workspace} drag={drag} onOpen={refreshLibrary}/>
+        <RailTool tool="tests" Icon={FlaskConical} workspace={workspace} drag={drag}/>
         <RailTool tool="devices" Icon={Cpu} workspace={workspace} drag={drag}/>
         <RailTool tool="boards" Icon={CircuitBoard} workspace={workspace} drag={drag}/>
         <RailTool tool="monitor" Icon={Activity} workspace={workspace} drag={drag}/>

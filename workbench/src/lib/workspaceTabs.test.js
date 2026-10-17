@@ -1,7 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { initialWorkspace, workspaceReducer as reduce } from './workspaceTabs.js';
+import { initialWorkspace, railToolForMode, workspaceReducer as reduce } from './workspaceTabs.js';
 const doc = (state, tabId = state.activeId) => state.documents.find(item => item.id === state.tabs.find(tab => tab.id === tabId)?.documentId);
+test('test entry stays selected in the hub, editor and library', () => {
+  assert.equal(railToolForMode('tests'), 'tests');
+  assert.equal(railToolForMode('workbench'), 'tests');
+  assert.equal(railToolForMode('library'), 'tests');
+  assert.equal(railToolForMode('flash'), 'flash');
+  const hub = reduce(initialWorkspace, { type: 'open', tool: 'tests', id: 'test-home' });
+  assert.equal(doc(hub).type, 'tests');
+  const editor = reduce(hub, { type: 'open', tool: 'workbench', id: 'new-test', fresh: true });
+  assert.equal(doc(editor).type, 'workbench');
+  assert.equal(editor.tabs.length, 3);
+});
 test('menu focuses a view; explicit requests create separate documents', () => {
   let state = reduce(initialWorkspace, { type: 'open', tool: 'workbench', id: 'a' });
   state = reduce(state, { type: 'open', tool: 'workbench', id: 'b', fresh: true });
