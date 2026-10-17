@@ -15,7 +15,7 @@ import useFirmwareJob from './useFirmwareJob.js';
 export default function TestSession({ documentId, initialData, services, onDraftChange }) {
   const { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy,
     refreshSource, activateSource, activeBridge, bridge, refreshTarget, setNotice,
-    aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy, preferences } = services;
+    aiConfig, updateAiConfig, aiKey, setAiKey, hardware, hardwareBusy, preferences, recordBoardEvent } = services;
   const [profile, setProfile] = useState(initialData?.profile || null);
   const [analysis, setAnalysis] = useState(null);
   const [sources, setSources] = useState(initialData?.sources || { netlist: null, schematic: null, bom: null, boardImage: null });
@@ -186,6 +186,8 @@ export default function TestSession({ documentId, initialData, services, onDraft
         setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
           testId: selectedTest.id, targetUid: live.uid, status: report.state, sourceSha: built.sourceSha,
           firmwareSha256: built.sha256, report }]);
+        void recordBoardEvent(live.uid, 'test', `${selectedTest.name}: ${report.state}`,
+          `${activeSensor.ref} · ${report.state === 'PASS' ? 'Başarılı' : 'Raporu incele'}`).catch(() => {});
         setTestStage(`STM32 test raporu: ${report.state}.`);
         return;
       }
@@ -200,11 +202,14 @@ export default function TestSession({ documentId, initialData, services, onDraft
       setNotice(`Donanım testi başarısız: ${error.message}`);
       setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
         testId: selectedTest.id, status: 'ERROR', error: error.message }]);
+      if (target?.uid) void recordBoardEvent(target.uid, 'test', `${selectedTest.name}: hata`, error.message).catch(() => {});
     } finally { setTestBusy(false); hardware.release(lease); }
   };
 
   const finishVisualTest = (passed) => {
     if (!visualPending) return;
+    if (target?.uid) void recordBoardEvent(target.uid, 'test', `${selectedTest?.name || 'Görsel test'}: ${passed ? 'başarılı' : 'başarısız'}`,
+      `${activeSensor?.ref || 'Bileşen'} · gözle doğrulandı`).catch(() => {});
     setTestHistory((items) => items.map((item) => item.requestId === visualPending && item.status === 'PENDING_VISUAL'
       ? { ...item, status: passed ? 'PASS' : 'FAIL', confirmedAt: new Date().toISOString(), confirmation: 'VISUAL' } : item));
     setVisualPending(null);

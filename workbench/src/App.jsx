@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Activity, BookOpen, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
+import { Activity, BookOpen, CircuitBoard, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { deleteSecret, loadSecret, saveSecret, saveRepoSecret } from './lib/secretStore.js';
 import { clearGitHubSession, saveGitHubSession, validGitHubToken } from './lib/githubAuth.js';
 import { catalogWritePermission, currentGitHubUser, fetchCatalogDocument, fetchLibraryProject, listLibraryEntries, publishLibraryEntry, saveCatalogDocument } from './lib/githubClient.js';
@@ -20,6 +20,9 @@ import { createHardwareGate } from './lib/hardwareGate.js';
 import TestSession from './TestSession.jsx';
 import FlashSession from './FlashSession.jsx';
 import LiveMonitor from './LiveMonitor.jsx';
+import BoardProfiles from './BoardProfiles.jsx';
+import { recordBoardEvent } from './lib/boardJournal.js';
+import { targetUid } from './lib/targetRegistry.js';
 import { recordFirmware, rememberWatchElf } from './lib/watchMemory.js';
 import stardustWordmark from './assets/stardust-wordmark.png';
 import SettingsPage from './SettingsPage.jsx';
@@ -72,6 +75,8 @@ export default function App() {
   const [debugArtifacts, setDebugArtifacts] = useState({});
   const onFirmwareLoaded = (uid, file, details = {}) => {
     recordFirmware(uid, file, details);
+    void recordBoardEvent(uid, 'flash', details.status === 'loaded' ? 'Yazılım yüklendi' : 'Yükleme denendi',
+      [details.name || file?.name, details.error].filter(Boolean).join(' · ')).catch(() => {});
     if (file) void rememberWatchElf(uid, file).catch(() => {});
     setDebugArtifacts(current => ({ ...current, [uid]: file ? { file, status: 'loaded' } : null }));
   };
@@ -112,6 +117,14 @@ export default function App() {
   const [notice, setNotice] = useState('ESP32 programlayıcı bekleniyor.');
   const { records: targetRecords, saveTargetName, saveTargetAnalysis, reloadRecords } = useTargetRegistry(rawTarget, setNotice);
   const target = namedTarget(rawTarget, targetRecords);
+  const lastConnectedUid = useRef(null);
+  useEffect(() => {
+    const uid = rawTarget?.connected ? targetUid(rawTarget.uid) : null;
+    if (uid && uid !== lastConnectedUid.current) {
+      void recordBoardEvent(uid, 'connected', 'Kart bağlandı', rawTarget.model || '').catch(() => {});
+    }
+    lastConnectedUid.current = uid;
+  }, [rawTarget?.connected, rawTarget?.uid, rawTarget?.model]);
   const noticeHistory = useNoticeHistory(notice);
   const [libraryEntries, setLibraryEntries] = useState([]);
   const [libraryBusy, setLibraryBusy] = useState(false);
@@ -588,6 +601,7 @@ export default function App() {
   };
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy, preferences,
     debugArtifact: debugArtifacts[target?.uid], onFirmwareLoaded, onFirmwareSelected,
+    recordBoardEvent,
     openTelemetry: data => workspace.open('monitor', { fresh: true, data }),
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,
@@ -608,6 +622,7 @@ export default function App() {
       id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
       {visible && <WelcomeStars subtle />}
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
+        mode === 'boards' ? <BoardProfiles records={targetRecords} target={target} saveTargetName={saveTargetName} setNotice={setNotice}/> :
         mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
         mode === 'library' ? <TestLibrary initialDraftId={doc.initialData?.draftId} entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
@@ -650,6 +665,7 @@ export default function App() {
         <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
         <RailTool tool="library" Icon={BookOpen} workspace={workspace} drag={drag} onOpen={refreshLibrary}/>
         <RailTool tool="devices" Icon={Cpu} workspace={workspace} drag={drag}/>
+        <RailTool tool="boards" Icon={CircuitBoard} workspace={workspace} drag={drag}/>
         <RailTool tool="monitor" Icon={Activity} workspace={workspace} drag={drag}/>
         {catalogAdmin && <RailTool tool="admin" Icon={ShieldCheck} workspace={workspace} drag={drag}/>}
         <RailTool tool="settings" Icon={Settings} workspace={workspace} drag={drag}/>

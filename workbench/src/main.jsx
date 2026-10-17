@@ -20,6 +20,7 @@ import './welcome-stars.css';
 import './live-monitor.css';
 import './settings-hub.css';
 import './global-watch.css';
+import './board-profiles.css';
 
 const removeDesktopInput = installDesktopInput(window);
 if (import.meta.hot) import.meta.hot.dispose(removeDesktopInput);

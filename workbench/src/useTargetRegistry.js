@@ -23,7 +23,7 @@ export default function useTargetRegistry(rawTarget, setNotice) {
   }, [ready, rawTarget, records, setNotice]);
 
   const saveTargetName = useCallback(async (target, label) => {
-    if (!target?.connected || !registry.current) throw new Error('Önce UID okunmuş bir STM32 bağla.');
+    if (!targetUid(target?.uid) || !registry.current) throw new Error('Önce UID okunmuş bir STM32 kaydı gerekli.');
     return registry.current.save(target.uid, label, target.model || '');
   }, []);
   const saveTargetAnalysis = useCallback(async (target, analysis) => {
