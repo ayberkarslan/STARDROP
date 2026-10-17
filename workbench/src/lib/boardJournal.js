@@ -107,22 +107,3 @@ export function boardTimeline(journal, firmware = [], analysis = null) {
   }
   return events.sort((a, b) => b.at - a.at);
 }
-
-export function timelineDays(events, locale = 'tr-TR') {
-  const groups = [];
-  for (const event of events) {
-    const day = new Date(event.at);
-    const key = `${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`;
-    if (groups.at(-1)?.key !== key) groups.push({ key, label: new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(day), events: [] });
-    groups.at(-1).events.push(event);
-  }
-  return groups;
-}
-
-export function timelineTone(event) {
-  if (event.kind === 'test') {
-    if (/başarısız|hata|\bfail\b|\bfatal\b|\berror\b/i.test(event.title)) return 'fail';
-    if (/başarılı|\bpass\b/i.test(event.title)) return 'pass';
-  }
-  return event.kind === 'issue' ? 'caution' : 'neutral';
-}

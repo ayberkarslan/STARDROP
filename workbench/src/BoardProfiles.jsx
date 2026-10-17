@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Camera, Check, CircleAlert, Clock3, Copy, Cpu, FlaskConical, Pencil, Search, StickyNote, Upload } from 'lucide-react';
-import { boardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, timelineDays, timelineTone, updateBoardJournal } from './lib/boardJournal.js';
+import { Camera, Check, CircleAlert, Clock3, Copy, Search, StickyNote } from 'lucide-react';
+import { boardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
 import { firmwareHistory } from './lib/watchMemory.js';
 import { targetUid } from './lib/targetRegistry.js';
 import { boardChoices, filterBoards } from './lib/boardFilters.js';
@@ -8,9 +8,7 @@ import SelectMenu from './SelectMenu.jsx';
 
 const statusLabels = { unknown: 'Durum bilinmiyor', healthy: 'Çalışıyor', check: 'Kontrol gerekli', faulty: 'Arızalı olabilir' };
 const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK', name: 'İSİM' };
-const eventIcons = { connected: Activity, flash: Upload, test: FlaskConical, note: StickyNote, issue: CircleAlert, analysis: Cpu, name: Pencil };
 const date = value => value ? new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Henüz kayıt yok';
-const time = value => new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 
 export default function BoardProfiles({ records, target, saveTargetName, setNotice }) {
   const [journals, setJournals] = useState({});
@@ -111,19 +109,9 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
         <div className="board-edit"><label>İsim<input value={name} maxLength={32} onChange={e => setName(e.target.value)} placeholder="Karta isim ver"/></label><button disabled={saving || !name.trim() || name.trim() === record?.label} onClick={saveName}>Kaydet</button>
           <div className="board-field"><span>Durum</span><SelectMenu ariaLabel="Kart durumu" value={journal?.status || 'unknown'} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} onChange={saveStatus}/></div></div>
         {!active && <p className="board-hint">Bu kart çevrimdışı. Profilini düzenleyebilir, donanım testini bağlandığında sürdürebilirsin.</p>}
-        <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>{timeline.length} olay</span></div>
+        <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>Yeni → eski</span></div>
           <form className="board-note-form" onSubmit={addNote}><textarea value={note} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="Bugün kartta ne denedin? Sonuç ve gözlemini yaz…" aria-label="Kart notu"/><div><SelectMenu ariaLabel="Kayıt türü" value={noteKind} options={[{ value: 'note', label: 'Not' }, { value: 'issue', label: 'Arıza şüphesi' }]} onChange={setNoteKind}/><button disabled={saving || !note.trim()}>Kaydet</button></div></form>
-          {timeline.length ? <div className="board-log">{timelineDays(timeline).map(day => <div className="board-log-day" key={day.key}>
-            <div className="board-day-label"><span>{day.label}</span><i/></div>
-            {day.events.map(event => {
-              const Icon = eventIcons[event.kind] || Activity;
-              return <article className={`board-event tone-${timelineTone(event)}`} key={event.id}>
-                <span className="board-event-node"><Icon size={14} strokeWidth={1.7}/></span>
-                <div className="board-event-card"><div className="board-event-top"><small>{eventLabels[event.kind] || 'KAYIT'}</small><time dateTime={new Date(event.at).toISOString()}>{time(event.at)}</time></div>
-                  <strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div>
-              </article>;
-            })}
-          </div>)}</div>
+          {timeline.length ? timeline.map(event => <article className="board-event" key={event.id}><span className="board-event-dot"/><div><div className="board-event-top"><small>{eventLabels[event.kind] || 'KAYIT'}</small><time dateTime={new Date(event.at).toISOString()}>{date(event.at)}</time></div><strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div></article>)
             : <div className="board-timeline-empty"><Check size={20}/> Henüz olay yok. İlk atölye notunu ekle.</div>}
         </section>
       </> : <div className="board-no-selection">Bir kart seç veya STM32 bağla.</div>}</main>
