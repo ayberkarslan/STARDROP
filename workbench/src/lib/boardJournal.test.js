@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boardEvent, boardTimeline } from './boardJournal.js';
+import { boardEvent, boardNameChange, boardTimeline } from './boardJournal.js';
 
 const uid = '001300155231501920323239';
 
@@ -11,6 +11,13 @@ test('journal rejects invalid identity and invalid entries', () => {
   assert.throws(() => boardEvent(uid, 'note', 'Test', 'x'.repeat(2001)));
   const entry = boardEvent(uid, 'note', 'Test', 'Çalıştı', 100);
   assert.equal(entry.kind, 'note'); assert.equal(entry.at, 100);
+});
+
+test('name history distinguishes first naming, real renames and unchanged saves', () => {
+  assert.deepEqual(boardNameChange('', 'OBC V2'), { title: 'Kart adlandırıldı', detail: 'OBC V2' });
+  assert.deepEqual(boardNameChange('OBC V2', 'OBC V3'), { title: 'Kart adı değiştirildi', detail: 'OBC V2 → OBC V3' });
+  assert.equal(boardNameChange('OBC V3', ' OBC V3 '), null);
+  assert.equal(boardNameChange('OBC V3', ''), null);
 });
 
 test('timeline merges historical flash and analysis without duplicating journal flash', () => {

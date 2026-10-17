@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTargetRegistry, targetRegistryStorage, targetUid } from './lib/targetRegistry.js';
-import { recordBoardEvent } from './lib/boardJournal.js';
+import { boardNameChange, recordBoardEvent } from './lib/boardJournal.js';
 
 export default function useTargetRegistry(rawTarget, setNotice) {
   const [records, setRecords] = useState({});
@@ -24,8 +24,16 @@ export default function useTargetRegistry(rawTarget, setNotice) {
   }, [ready, rawTarget, records, setNotice]);
 
   const saveTargetName = useCallback(async (target, label) => {
-    if (!targetUid(target?.uid) || !registry.current) throw new Error('Önce UID okunmuş bir STM32 kaydı gerekli.');
-    return registry.current.save(target.uid, label, target.model || '');
+    const uid = targetUid(target?.uid);
+    if (!uid || !registry.current) throw new Error('Önce UID okunmuş bir STM32 kaydı gerekli.');
+    const previous = (await targetRegistryStorage().load())[uid]?.label;
+    const saved = await registry.current.save(uid, label, target.model || '');
+    const change = boardNameChange(previous, saved.label);
+    if (change) {
+      try { await recordBoardEvent(uid, 'name', change.title, change.detail); }
+      catch (error) { throw new Error(`Kart adı kaydedildi, ancak isim geçmişi yazılamadı: ${String(error)}`); }
+    }
+    return saved;
   }, []);
   const saveTargetAnalysis = useCallback(async (target, analysis) => {
     if (!target?.connected || !registry.current) throw new Error('Önce UID okunmuş bir STM32 bağla.');

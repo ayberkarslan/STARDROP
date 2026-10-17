@@ -31,11 +31,19 @@ function transact(mode, operation) {
 export function boardEvent(uid, kind, title, detail = '', at = Date.now()) {
   const normalized = targetUid(uid);
   if (!normalized) throw new Error('Geçerli kart UID’si gerekli.');
-  if (!['connected', 'flash', 'test', 'note', 'issue', 'analysis'].includes(kind)) throw new Error('Olay türü geçersiz.');
+  if (!['connected', 'flash', 'test', 'note', 'issue', 'analysis', 'name'].includes(kind)) throw new Error('Olay türü geçersiz.');
   const cleanTitle = String(title || '').trim();
   const cleanDetail = String(detail || '').trim();
   if (!cleanTitle || cleanTitle.length > 120 || cleanDetail.length > 2000 || !Number.isFinite(at)) throw new Error('Olay kaydı geçersiz.');
   return { id: crypto.randomUUID(), kind, title: cleanTitle, detail: cleanDetail, at };
+}
+
+export function boardNameChange(previous, next) {
+  const oldName = String(previous || '').trim();
+  const newName = String(next || '').trim();
+  if (!newName || oldName === newName) return null;
+  return { title: oldName ? 'Kart adı değiştirildi' : 'Kart adlandırıldı',
+    detail: oldName ? `${oldName} → ${newName}` : newName };
 }
 
 export async function listBoardJournals() {

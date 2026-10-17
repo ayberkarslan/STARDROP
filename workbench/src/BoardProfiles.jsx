@@ -7,7 +7,7 @@ import { boardChoices, filterBoards } from './lib/boardFilters.js';
 import SelectMenu from './SelectMenu.jsx';
 
 const statusLabels = { unknown: 'Durum bilinmiyor', healthy: 'Çalışıyor', check: 'Kontrol gerekli', faulty: 'Arızalı olabilir' };
-const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK' };
+const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK', name: 'İSİM' };
 const date = value => value ? new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Henüz kayıt yok';
 
 export default function BoardProfiles({ records, target, saveTargetName, setNotice }) {
