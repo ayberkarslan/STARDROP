@@ -7,6 +7,12 @@
 .ui-choice-card:hover,.ui-choice-card:focus-visible{border-color:#aaa;transform:translateY(-2px)}
 .ui-sliding-nav{position:relative}
 .ui-sliding-marker{position:absolute;left:0;top:0;width:2px;height:var(--ui-marker-height);transform:translateY(var(--ui-marker-y));background:var(--ui-ink);box-shadow:0 0 5px #ffffff55;border-radius:0;pointer-events:none;z-index:1;transition:transform .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1)}
+/* Menus with a straight left marker keep only their right corners rounded. */
+.app-shell .rail-navigation>button,
+.settings-hub .settings-sections>button,
+.board-list-item,
+.sensor-filter-groups button,
+.sensor-filter-parts>button{border-top-left-radius:0;border-bottom-left-radius:0}
 :is(.app-shell,.guest-layout) .select-option{position:relative;border-radius:0}
 :is(.app-shell,.guest-layout) .select-option[aria-selected="true"]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ui-ink);border-radius:0;pointer-events:none}
 :is(.app-shell,.guest-layout) .select-option[aria-selected="true"],
