@@ -1,6 +1,6 @@
 .board-profiles{max-width:1500px;padding:32px 38px 70px;color:#f5f5f5}
 .board-page-head{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid #282828;padding-bottom:22px;margin-bottom:26px}
-.board-page-head h1{font-size:34px;font-weight:400;margin:9px 0 4px}.board-page-head p,.board-page-head>span{font-size:12px;color:#bdbdbd;margin:0}
+.board-page-head h1{font-size:34px;font-weight:400;letter-spacing:0;margin:9px 0 4px}.board-page-head p,.board-page-head>span{font-size:12px;color:#bdbdbd;margin:0}
 .board-layout{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);gap:32px;align-items:start}
 .board-list{display:flex;flex-direction:column;min-height:0;max-height:min(640px,calc(100vh - 250px));border:1px solid #303030;border-radius:12px;background:#000}
 .board-search{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #303030;color:#aaa}
