@@ -40,8 +40,8 @@
 .app-shell .wizard-steps i{border-color:#444;background:#0b0b0b}
 .app-shell .wizard-steps .current i{border-color:#ddd;background:#171717;color:#fff}
 .app-shell .wizard-steps .done i{border-color:#777}
-.app-shell .wizard-body .eyebrow,.app-shell .wizard-text-button,.app-shell .wizard-back{color:#d6d6d6}
-.app-shell .wizard-text-button:hover,.app-shell .wizard-back:hover{color:#fff}
+.app-shell .wizard-body .eyebrow,.app-shell .wizard-text-button{color:#d6d6d6}
+.app-shell .wizard-text-button:hover{color:#fff}
 .app-shell .wizard-body>p,.app-shell .wizard-hint,.app-shell .wizard-tests>p,
 .app-shell .wizard-components small,.app-shell .wizard-tests small,.app-shell .wizard-choices small,
 .app-shell .wizard-file small,.app-shell .library-heading p,.app-shell .library-detail p{color:#aaa}

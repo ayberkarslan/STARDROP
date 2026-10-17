@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowLeft, ArrowRight, Cpu, Download, FileUp, Lightbulb, RefreshCw, Send, ShieldCheck } from 'lucide-react';
+import { Activity, ArrowRight, Cpu, Download, FileUp, Lightbulb, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 import { addManualPeripheral, newBoardProfile, validateBoardProfile, validateTestTarget } from './lib/boardProfile.js';
 import { buildableTargetPart, testsForComponent } from './lib/testCatalog.js';
-import SelectMenu from './SelectMenu.jsx';
+import { BackArrow, SelectMenu } from './ui/index.js';
 import PackagePinout from './PackagePinout.jsx';
 import { deviceForComponent } from './lib/testCatalog.js';
 import { overallConfidence } from './lib/boardProfile.js';
@@ -16,7 +16,7 @@ const defaultsFor = (protocol, mcuPart) => protocol === 'GPIO'
   : protocol === 'I2C' ? { SCL: 'PB6', SDA: 'PB7' }
     : { SCK: 'PA5', MISO: 'PA6', MOSI: 'PA7', CS: 'PB0' };
 
-export default function WorkbenchWizard({ onShare, preset, profile, setProfile, sources, catalog, githubConfig, sourceStatus, sourceError,
+export default function WorkbenchWizard({ onShare, onBackToTests, preset, profile, setProfile, sources, catalog, githubConfig, sourceStatus, sourceError,
   sourceBusy, refreshSource, activateSource, target, esp, activeSensor, activeComponent, setActiveComponent,
   editConnection, approveComponent, updateLedSetting, compatibleTests, selectedTest,
   setSelectedTestId, testBlocker, testBusy, testStage, flashBusy, flashLog, flashProgress, visualPending,
@@ -124,10 +124,9 @@ export default function WorkbenchWizard({ onShare, preset, profile, setProfile, 
   };
 
   return <div className="workspace wizard-workspace">
-    {profile && <div className="wizard-top wizard-actions"><button className="wizard-text-button" onClick={exportProject}>.STARDROP KAYDET</button></div>}
+    <div className="wizard-top"><BackArrow label={step === 'start' ? 'Yeni Test sayfasına dön' : 'Önceki adıma dön'} onClick={step === 'start' ? onBackToTests : back}/>{profile && <button className="wizard-text-button" onClick={exportProject}>.STARDROP KAYDET</button>}</div>
     {flow && <div className="wizard-steps" aria-label="İş akışı">{steps.map((label, index) => <span key={label} className={index === stepIndex ? 'current' : index < stepIndex ? 'done' : ''}><i>{index + 1}</i>{label}</span>)}</div>}
     <div className="wizard-body">
-      {step !== 'start' && <button className="wizard-back" onClick={back}><ArrowLeft size={15}/>GERİ</button>}
       {step === 'start' && <><h2>Nasıl başlamak istersin?</h2><p>Bağlantıları kendin seç veya kart dosyanı yükle.</p><div className="wizard-choices"><button onClick={() => start('manual')}><Cpu/><strong>Bağlantıları kendim seçeceğim</strong><small>STM32 modelini, sensörü ve pinleri elle gir.</small><ArrowRight className="wizard-arrow"/></button><button onClick={() => start('net')}><FileUp/><strong>Kart dosyamı yükleyeceğim</strong><small>Altium .NET dosyasındaki bileşen ve pin adaylarını incele.</small><ArrowRight className="wizard-arrow"/></button></div></>}
       {step === 'board' && <><span className="eyebrow">1 / KART</span><h2>Hangi STM32?</h2><p>Test yazılımı bu modele göre derlenecek. Bağlı hedefin de aynı model olması gerekir.</p><div className="wizard-fields"><label>Kart adı<input value={boardName} onChange={(event) => setBoardName(event.target.value)}/></label><label>STM32 modeli<SelectMenu ariaLabel="STM32 modeli" value={mcuPart} options={presetModels} onChange={setMcuPart}/></label></div><button className="primary wizard-next" onClick={createBoard}>DEVAM ET <ArrowRight size={16}/></button></>}
       {step === 'file' && <><span className="eyebrow">1 / KART DOSYASI</span><h2>Altium .NET dosyanı yükle</h2><p>Algılanan sensörler ve bağlantı adayları sonraki ekranda görünecek. Pinleri flash öncesinde sen onaylayacaksın.</p><div className="wizard-file-options"><label className="wizard-file"><FileUp/><strong>.NET DOSYASI SEÇ</strong><small>Altium netlist · .NET veya .txt</small><input type="file" accept=".NET,.net,.txt" onChange={(event) => readNetlist(event.target.files?.[0])}/></label><label className="wizard-file"><Download/><strong>KAYITLI .STARDROP AÇ</strong><small>Daha önce bıraktığın yerden devam et</small><input type="file" accept=".stardrop" onChange={(event) => readProject(event.target.files?.[0])}/></label></div>{working && <p>Dosya okunuyor…</p>}</>}

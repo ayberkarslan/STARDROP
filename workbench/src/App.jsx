@@ -645,7 +645,7 @@ export default function App() {
         mode === 'boards' ? <BoardProfiles records={targetRecords} target={target} saveTargetName={saveTargetName} setNotice={setNotice}/> :
         mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
         mode === 'tests' ? <TestHome startNewTest={() => workspace.open('workbench', { fresh: true })} openLibrary={() => { workspace.open('library'); void refreshLibrary(); }}/> :
-        mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange}/> :
+        mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange} onBackToTests={() => workspace.open('tests')}/> :
         mode === 'library' ? <TestLibrary initialDraftId={doc.initialData?.draftId} entries={libraryEntries} catalog={catalog} busy={libraryBusy} error={libraryError} refresh={refreshLibrary} publish={publishLibrary}
           drafts={testDrafts} documents={workspace.state.documents} openEntry={openLibraryEntry} sourceSha={sourceStatus?.activeSha}
           startNewTest={() => workspace.open('workbench', { fresh: true })} onBack={() => workspace.open('tests')}/> :
