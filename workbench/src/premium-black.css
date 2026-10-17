@@ -19,7 +19,6 @@
 .app-shell .rail,.app-shell main>header,.guest-header,.guest-layout .guest-header{background:#000;border-color:#242424}
 .app-shell .rail nav button{background:#000}
 .app-shell .rail nav button.active{position:relative;background:#000;border-color:#505050;color:#fff;box-shadow:none}
-.app-shell .rail nav button.active::before{content:'';position:absolute;left:-1px;top:0;bottom:0;width:2px;background:#fff;border-radius:0}
 .app-shell .rail nav button:hover{background:#000;border-color:#777;color:#fff}
 .app-shell .rail nav button:focus-visible{outline:1px solid #fff;outline-offset:2px}
 .app-shell .rail nav button.active:hover,.app-shell .rail nav button.active:focus-visible{border-color:#505050;outline:none;box-shadow:none}

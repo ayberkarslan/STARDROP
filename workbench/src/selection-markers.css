@@ -1,0 +1,26 @@
+/* One square-ended marker for active navigation and filter choices. */
+.app-shell .rail nav button.active,
+.app-shell .select-option,
+.guest-layout .select-option,
+.board-list-item,
+.sensor-filter-groups button,
+.sensor-filter-parts>button{position:relative}
+
+.app-shell .rail nav button.active::before,
+.app-shell .select-option[aria-selected="true"]::before,
+.guest-layout .select-option[aria-selected="true"]::before,
+.board-list-item.selected::before,
+.sensor-filter-groups button[aria-pressed="true"]::before,
+.sensor-filter-parts>button[aria-checked="true"]::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:#fff;border-radius:0;pointer-events:none;
+}
+
+.app-shell .rail nav button.active::before{left:-1px}
+.app-shell .select-option,.guest-layout .select-option{border-radius:0}
+.app-shell .select-option[aria-selected="true"],
+.guest-layout .select-option[aria-selected="true"]{background:#101010;color:#fff}
+.app-shell .select-option:hover,.app-shell .select-option:focus-visible,
+.guest-layout .select-option:hover,.guest-layout .select-option:focus-visible{background:#101010;color:#fff;outline:none}
+.settings-hub .select-option:hover{outline:none}
+.sensor-filter-groups button[aria-pressed="true"],.sensor-filter-parts>button[aria-checked="true"]{border-color:#555}
