@@ -5,9 +5,11 @@
 .ui-back-arrow:focus-visible{outline:1px solid var(--ui-focus);outline-offset:2px}
 .ui-choice-card{display:flex;align-items:flex-start;gap:20px;min-height:165px;padding:26px;border:1px solid var(--ui-line);border-radius:10px;background:var(--ui-black);color:var(--ui-ink);text-align:left;cursor:pointer;font:inherit;transition:border-color .18s ease,transform .18s ease}
 .ui-choice-card:hover,.ui-choice-card:focus-visible{border-color:#aaa;transform:translateY(-2px)}
+.ui-sliding-nav{position:relative}
+.ui-sliding-marker{position:absolute;left:0;top:0;width:2px;height:var(--ui-marker-height);transform:translateY(var(--ui-marker-y));background:var(--ui-ink);box-shadow:0 0 5px #ffffff55;border-radius:0;pointer-events:none;z-index:1;transition:transform .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1)}
 :is(.app-shell,.guest-layout) .select-option{position:relative;border-radius:0}
 :is(.app-shell,.guest-layout) .select-option[aria-selected="true"]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ui-ink);border-radius:0;pointer-events:none}
 :is(.app-shell,.guest-layout) .select-option[aria-selected="true"],
 :is(.app-shell,.guest-layout) .select-option:hover,
 :is(.app-shell,.guest-layout) .select-option:focus-visible{background:#101010;color:var(--ui-ink);outline:none}
-@media(prefers-reduced-motion:reduce){.ui-back-arrow,.ui-choice-card{transition:none}}
+@media(prefers-reduced-motion:reduce){.ui-back-arrow,.ui-choice-card,.ui-sliding-marker{transition:none}.ui-sliding-marker{box-shadow:none}}

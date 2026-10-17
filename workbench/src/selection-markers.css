@@ -10,7 +10,4 @@
   background:#fff;border-radius:0;pointer-events:none;
 }
 
-.app-shell .rail-navigation{position:relative}
-.app-shell .rail-navigation .rail-active-marker{position:absolute;left:0;top:0;width:2px;height:var(--rail-marker-height);transform:translateY(var(--rail-marker-y));background:#fff;box-shadow:0 0 5px #ffffff55;border-radius:0;pointer-events:none;z-index:1;transition:transform .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1)}
-@media(prefers-reduced-motion:reduce){.app-shell .rail-navigation .rail-active-marker{transition:none;box-shadow:none}}
 .sensor-filter-groups button[aria-pressed="true"],.sensor-filter-parts>button[aria-checked="true"]{border-color:#555}
