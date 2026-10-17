@@ -61,7 +61,6 @@ export async function updateBoardJournal(uid, update) {
       const current = request.result || { uid: normalized, status: 'unknown', events: [], lastSeenAt: null, photo: null };
       const next = update(current);
       if (!next || next.uid !== normalized || !Array.isArray(next.events)) { store.transaction.abort(); return; }
-      next.events = next.events.slice(-300);
       store.put(next); done(next);
     };
   });
@@ -77,8 +76,12 @@ export function listenBoardJournal(callback) {
 export function recordBoardEvent(uid, kind, title, detail = '') {
   let event;
   try { event = boardEvent(uid, kind, title, detail); } catch { return Promise.resolve(null); }
-  return updateBoardJournal(uid, current => ({ ...current, events: [...current.events, event],
-    lastSeenAt: kind === 'connected' ? event.at : current.lastSeenAt }));
+  return updateBoardJournal(uid, current => {
+    const previous = current.events.at(-1);
+    const repeatedConnection = kind === 'connected' && previous?.kind === 'connected' && event.at - previous.at < 30000;
+    return { ...current, events: repeatedConnection ? current.events : [...current.events, event],
+      lastSeenAt: kind === 'connected' ? event.at : current.lastSeenAt };
+  });
 }
 
 export function boardTimeline(journal, firmware = [], analysis = null) {

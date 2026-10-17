@@ -202,7 +202,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
       setNotice(`Donanım testi başarısız: ${error.message}`);
       setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
         testId: selectedTest.id, status: 'ERROR', error: error.message }]);
-      if (target?.uid) void recordBoardEvent(target.uid, 'test', `${selectedTest.name}: hata`, error.message).catch(() => {});
+      if (target?.uid || profile?.targetUid) void recordBoardEvent(target?.uid || profile.targetUid, 'test', `${selectedTest.name}: hata`, error.message).catch(() => {});
     } finally { setTestBusy(false); hardware.release(lease); }
   };
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTargetRegistry, targetRegistryStorage, targetUid } from './lib/targetRegistry.js';
+import { recordBoardEvent } from './lib/boardJournal.js';
 
 export default function useTargetRegistry(rawTarget, setNotice) {
   const [records, setRecords] = useState({});
@@ -28,7 +29,10 @@ export default function useTargetRegistry(rawTarget, setNotice) {
   }, []);
   const saveTargetAnalysis = useCallback(async (target, analysis) => {
     if (!target?.connected || !registry.current) throw new Error('Önce UID okunmuş bir STM32 bağla.');
-    return registry.current.saveAnalysis(target.uid, target.model || '', analysis);
+    const saved = await registry.current.saveAnalysis(target.uid, target.model || '', analysis);
+    void recordBoardEvent(target.uid, 'analysis', 'Flash analiz edildi',
+      `${saved.programmedBytes} bayt programlanmış · ${saved.freeBytes} bayt boş`).catch(() => {});
+    return saved;
   }, []);
   return { records, saveTargetName, saveTargetAnalysis, reloadRecords: async () => {
     const next = await targetRegistryStorage().load(); setRecords(next); return next;
