@@ -36,7 +36,7 @@ export default function SettingsPage({ services, account }) {
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const matching = sections.filter(s => `${s.title} ${s.hint}`.toLocaleLowerCase('tr').includes(query.toLocaleLowerCase('tr')));
   const selected = matching.find(s => s.id === section) || matching[0];
-  const { ref: sectionsRef, marker: sectionMarker } = useSlidingMarker(selected?.id, true, matching.map(s => s.id).join('|'));
+  const { ref: sectionsRef, markerRef: sectionMarkerRef } = useSlidingMarker(selected?.id, true, matching.map(s => s.id).join('|'));
   const task = async work => {
     if (actionBusy.current) return;
     actionBusy.current = true; setBusy(true); setMessage('');
@@ -94,7 +94,7 @@ export default function SettingsPage({ services, account }) {
   const states = readiness({ compiler, sourceStatus, repositoryOk: repoDiagnostic?.repositoryStatus === 200, esp, target });
   return <div className="settings-hub">
     <header className="settings-hub-header"><h1>Ayarlar</h1><label className="settings-search"><Search size={15}/><input aria-label="Ayarlarda ara" placeholder="Ayarlarda ara" value={query} onChange={e => setQuery(e.target.value)}/></label></header>
-    <div className="settings-hub-layout"><nav ref={sectionsRef} className="settings-sections ui-sliding-nav" aria-label="Ayar bölümleri"><SlidingMarker marker={sectionMarker}/>{matching.map(s => <button key={s.id} data-marker-key={s.id} className={selected?.id === s.id ? 'active' : ''} onClick={() => { setSection(s.id); setMessage(''); }}>{s.title}<ChevronRight size={13}/></button>)}</nav>
+    <div className="settings-hub-layout"><nav ref={sectionsRef} className="settings-sections ui-sliding-nav" aria-label="Ayar bölümleri"><SlidingMarker markerRef={sectionMarkerRef}/>{matching.map(s => <button key={s.id} data-marker-key={s.id} className={selected?.id === s.id ? 'active' : ''} onClick={() => { setSection(s.id); setMessage(''); }}>{s.title}<ChevronRight size={13}/></button>)}</nav>
       <section className="settings-detail">{!selected ? <p>Bu aramada ayar bulunamadı.</p> : <><h2>{selected.title}</h2>
       {message && <p className="settings-feedback" role="status">{message}</p>}
       {selected.id === 'system' && <>

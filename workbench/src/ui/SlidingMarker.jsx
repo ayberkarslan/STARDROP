@@ -1,31 +1,68 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+
+const MOVE = 'transform .3s cubic-bezier(.22,1,.36,1), height .3s cubic-bezier(.22,1,.36,1)';
 
 export function useSlidingMarker(activeKey, enabled = true, layoutKey = '') {
   const ref = useRef(null);
-  const [marker, setMarker] = useState(null);
+  const markerRef = useRef(null);
+  const last = useRef(null);
 
   useLayoutEffect(() => {
     const nav = ref.current;
-    if (!nav || !enabled || !activeKey) { setMarker(null); return; }
-    const active = Array.from(nav.querySelectorAll('[data-marker-key]')).find(button => button.dataset.markerKey === activeKey);
-    if (!active) { setMarker(null); return; }
-    const measure = () => setMarker(previous => {
+    const marker = markerRef.current;
+    if (!nav || !marker) return;
+
+    let cancelled = false;
+    let frame = 0;
+    const active = enabled && activeKey
+      ? Array.from(nav.querySelectorAll('[data-marker-key]')).find(button => button.dataset.markerKey === activeKey)
+      : null;
+    if (!active) {
+      marker.hidden = true;
+      last.current = null;
+      return;
+    }
+
+    const measure = (selectionChanged) => {
+      if (cancelled || !active.isConnected || active.dataset.markerKey !== activeKey) return;
       const top = active.offsetTop;
       const height = active.offsetHeight;
-      if (previous?.top === top && previous.height === height) return previous;
-      return { top, height, animate: previous !== null };
+      if (!Number.isFinite(top) || height <= 0) return;
+      const previous = last.current;
+      if (previous?.top === top && previous.height === height && !marker.hidden) {
+        last.current = { key: activeKey, layoutKey, top, height };
+        return;
+      }
+
+      // Only selection changes slide. A resize or filtered list snaps directly
+      // to its final position, never through a stale intermediate coordinate.
+      const slide = selectionChanged && previous && previous.key !== activeKey
+        && previous.layoutKey === layoutKey && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (slide) marker.getBoundingClientRect(); // Commit the current frame before changing the destination.
+      marker.style.transition = slide ? MOVE : 'none';
+      marker.style.setProperty('--ui-marker-y', `${top}px`);
+      marker.style.setProperty('--ui-marker-height', `${height}px`);
+      marker.hidden = false;
+      last.current = { key: activeKey, layoutKey, top, height };
+    };
+
+    measure(true);
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => measure(false));
     });
-    measure();
-    const observer = new ResizeObserver(measure);
     observer.observe(nav);
     observer.observe(active);
-    return () => observer.disconnect();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [activeKey, enabled, layoutKey]);
 
-  return { ref, marker };
+  return { ref, markerRef };
 }
 
-export function SlidingMarker({ marker }) {
-  if (!marker) return null;
-  return <span className="ui-sliding-marker" style={{ '--ui-marker-y': `${marker.top}px`, '--ui-marker-height': `${marker.height}px`, transition: marker.animate ? undefined : 'none' }} aria-hidden="true"/>;
+export function SlidingMarker({ markerRef }) {
+  return <span ref={markerRef} className="ui-sliding-marker" hidden aria-hidden="true"/>;
 }

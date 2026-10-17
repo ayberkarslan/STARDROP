@@ -151,7 +151,7 @@ export default function App() {
   const [catalog, setCatalog] = useState(CODE_REPO_CATALOG);
   const [catalogSha, setCatalogSha] = useState(null);
   const [catalogAdmin, setCatalogAdmin] = useState(false);
-  const { ref: railNavRef, marker: railMarker } = useSlidingMarker(railToolForMode(mode), session === 'github', catalogAdmin);
+  const { ref: railNavRef, markerRef: railMarkerRef } = useSlidingMarker(railToolForMode(mode), session === 'github', catalogAdmin);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [adminTestId, setAdminTestId] = useState(CODE_REPO_CATALOG.tests[0]?.id || '');
   const [githubLoginBusy, setGithubLoginBusy] = useState(false);
@@ -665,7 +665,7 @@ export default function App() {
     <aside className="rail">
       <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
       <nav ref={railNavRef} className="rail-navigation ui-sliding-nav">
-        <SlidingMarker marker={railMarker}/>
+        <SlidingMarker markerRef={railMarkerRef}/>
         <RailTool tool="flash" Icon={Upload} workspace={workspace} drag={drag}/>
         <RailTool tool="tests" Icon={FlaskConical} workspace={workspace} drag={drag}/>
         <RailTool tool="devices" Icon={Cpu} workspace={workspace} drag={drag}/>
