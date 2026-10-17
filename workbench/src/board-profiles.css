@@ -2,11 +2,15 @@
 .board-page-head{display:flex;align-items:end;justify-content:space-between;border-bottom:1px solid #282828;padding-bottom:22px;margin-bottom:26px}
 .board-page-head h1{font-size:34px;font-weight:400;margin:9px 0 4px}.board-page-head p,.board-page-head>span{font-size:12px;color:#bdbdbd;margin:0}
 .board-layout{display:grid;grid-template-columns:minmax(230px,300px) minmax(0,1fr);gap:32px;align-items:start}
-.board-list{border:1px solid #303030;border-radius:12px;overflow:hidden;background:#000}
+.board-list{display:flex;flex-direction:column;min-height:0;max-height:min(640px,calc(100vh - 250px));border:1px solid #303030;border-radius:12px;background:#000}
 .board-search{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #303030;color:#aaa}
 .board-search input{background:#000;border:0;color:#fff;outline:0;width:100%;font:inherit;font-size:11px;caret-color:#fff}
+.board-filters{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:10px;border-bottom:1px solid #303030;flex:none}
+.board-filters .select-trigger{background:#000;border-color:#393939;min-height:37px;font-size:10px;white-space:nowrap;overflow:hidden;padding:8px}
+.board-filters .select-trigger span{flex:none}.board-filters .select-options{min-width:max(100%,170px)}
+.board-list-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#444 #000;scrollbar-width:thin}
 .board-list-item{display:block;width:100%;text-align:left;padding:16px 18px;background:#000;color:#ddd;border:0;border-bottom:1px solid #252525;cursor:pointer}
-.board-list-item:last-child{border-bottom:0}.board-list-item:hover,.board-list-item.selected{background:#0b0b0b;color:#fff}.board-list-item.selected{box-shadow:inset 2px 0 #fff}
+.board-list-item:last-child{border-bottom:0}.board-list-item:hover,.board-list-item.selected{background:#0b0b0b;color:#fff}
 .board-list-item span{display:flex;align-items:center;justify-content:space-between;gap:8px}.board-list-item strong{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.board-list-item i{height:7px;width:7px;flex:none;border-radius:50%;background:#74e9a3;box-shadow:0 0 10px #74e9a366}
 .board-list-item small,.board-list-item em{display:block;color:#aaa;font-size:10px;font-style:normal;margin-top:7px}.board-list-item em{color:#858585}
 .board-empty-list,.board-no-selection{padding:44px 22px;text-align:center;font-size:12px;color:#aaa}
@@ -20,4 +24,4 @@
 .board-timeline{margin-top:26px;border-top:1px solid #292929}.board-note-form{display:flex;gap:10px;align-items:stretch;margin:5px 0 27px}.board-note-form textarea{resize:vertical;min-height:65px;max-height:200px;line-height:1.5}.board-note-form>div{display:flex;flex-direction:column;gap:8px}.board-note-form select{height:32px;border:1px solid #494949;background:#000;color:#fff;border-radius:7px;font:inherit;font-size:10px;padding:0 8px}.board-note-form button{white-space:nowrap}
 .board-event{display:grid;grid-template-columns:19px minmax(0,1fr);position:relative;gap:12px;padding:0 0 26px}.board-event:not(:last-child)::before{content:'';position:absolute;left:4px;top:11px;bottom:0;width:1px;background:#363636}.board-event-dot{z-index:1;width:9px;height:9px;border:1px solid #ddd;background:#000;border-radius:50%;margin-top:5px}.board-event-top{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:7px}.board-event-top small{font-size:9px;letter-spacing:.14em;color:#cfcfcf}.board-event-top time{font:10px var(--font-mono);color:#888}.board-event strong{font-size:12px;font-weight:400;color:#fff}.board-event p{font-size:11px;line-height:1.6;color:#bbb;white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0}.board-timeline-empty{display:flex;gap:12px;align-items:center;padding:25px;color:#aaa;font-size:11px}
 .board-error{border:1px solid #754343;color:#ffb9b9;padding:12px;margin:0 0 16px;font-size:11px}
-@media(max-width:900px){.board-layout{grid-template-columns:1fr}.board-list{max-height:210px;overflow:auto}.board-facts{grid-template-columns:1fr 1fr}.board-edit{flex-wrap:wrap}}
+@media(max-width:900px){.board-layout{grid-template-columns:1fr}.board-list{max-height:240px}.board-facts{grid-template-columns:1fr 1fr}.board-edit{flex-wrap:wrap}}

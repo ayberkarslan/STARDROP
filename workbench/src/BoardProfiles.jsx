@@ -3,6 +3,8 @@ import { Camera, Check, CircleAlert, Clock3, Copy, Search, StickyNote } from 'lu
 import { boardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
 import { firmwareHistory } from './lib/watchMemory.js';
 import { targetUid } from './lib/targetRegistry.js';
+import { boardChoices, filterBoards } from './lib/boardFilters.js';
+import SelectMenu from './SelectMenu.jsx';
 
 const statusLabels = { unknown: 'Durum bilinmiyor', healthy: 'Çalışıyor', check: 'Kontrol gerekli', faulty: 'Arızalı olabilir' };
 const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK' };
@@ -12,6 +14,8 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
   const [journals, setJournals] = useState({});
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState('');
+  const [modelFilter, setModelFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [noteKind, setNoteKind] = useState('note');
@@ -40,10 +44,11 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
     return () => URL.revokeObjectURL(url);
   }, [selected, journals]);
 
-  const boards = useMemo(() => Object.values({ ...Object.fromEntries(Object.keys(journals).map(uid => [uid, { uid }])), ...records })
-    .filter(board => targetUid(board.uid))
-    .sort((a, b) => (journals[b.uid]?.lastSeenAt || b.updatedAt || 0) - (journals[a.uid]?.lastSeenAt || a.updatedAt || 0)), [records, journals]);
-  const filtered = boards.filter(board => `${board.label || ''} ${board.uid} ${board.model || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const boards = useMemo(() => boardChoices(records, journals), [records, journals]);
+  const modelOptions = [{ value: 'all', label: 'Tüm MCU’lar' }, ...[...new Set(boards.map(board => board.model).filter(Boolean))]
+    .sort().map(model => ({ value: model, label: model }))];
+  const statusOptions = [{ value: 'all', label: 'Tüm durumlar' }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))];
+  const filtered = filterBoards(boards, journals, { query, model: modelFilter, status: statusFilter });
   const record = records[selected] || null;
   const journal = journals[selected] || null;
   const timeline = boardTimeline(journal, selected ? firmwareHistory(selected) : [], record?.flashAnalysis);
@@ -81,15 +86,18 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
   };
 
   return <div className="board-profiles workspace">
-    <header className="board-page-head"><div><span className="eyebrow">ATÖLYE HAFIZASI</span><h1>Kartlar</h1><p>Her kartın geçmişi, kendi UID’sinde.</p></div><span>{boards.length} kart</span></header>
+    <header className="board-page-head"><div><h1>Kartlar</h1><p>Her kartın geçmişi, kendi UID’sinde.</p></div><span>{filtered.length}{filtered.length !== boards.length ? ` / ${boards.length}` : ''} kart</span></header>
     {error && <div className="board-error" role="alert">{error}</div>}
     <div className="board-layout">
       <aside className="board-list"><label className="board-search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Ad, model veya UID ara" aria-label="Kart ara"/></label>
+        <div className="board-filters"><SelectMenu ariaLabel="MCU filtresi" value={modelFilter} options={modelOptions} onChange={setModelFilter}/><SelectMenu ariaLabel="Kart durumu filtresi" value={statusFilter} options={statusOptions} onChange={setStatusFilter}/></div>
+        <div className="board-list-scroll">
         {filtered.length ? filtered.map(board => <button key={board.uid} className={'board-list-item' + (selected === board.uid ? ' selected' : '')} onClick={() => setSelected(board.uid)}>
           <span><strong>{board.label || board.model || 'İsimsiz kart'}</strong>{connectedUid === board.uid && <i title="Şu an bağlı"/>}</span>
           <small>{board.model || 'STM32'} · {board.uid.slice(-8).toUpperCase()}</small>
           <em>{date(journals[board.uid]?.lastSeenAt)}</em>
-        </button>) : <div className="board-empty-list">{query ? 'Eşleşen kart yok.' : 'Kart bağlandığında profili burada oluşur.'}</div>}
+        </button>) : <div className="board-empty-list">{boards.length ? 'Filtreye uyan kart yok.' : 'Kart bağlandığında profili burada oluşur.'}</div>}
+        </div>
       </aside>
       <main className="board-detail">{selected ? <>
         <div className="board-hero"><div className="board-photo">{photoUrl ? <img src={photoUrl} alt="Kart fotoğrafı"/> : <span>{(record?.label || record?.model || 'S').slice(0, 1).toUpperCase()}</span>}
