@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Minus, Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
+import { Minus, Plus, RefreshCw, Search, SlidersHorizontal, Upload, X } from 'lucide-react';
 import { filterLibrary, SENSOR_GROUPS } from './lib/libraryFilters.js';
-import SelectMenu from './SelectMenu.jsx';
+import { BackArrow, SelectMenu } from './ui/index.js';
 import SensorFilter from './SensorFilter.jsx';
 import { catalogLibraryEntries } from './lib/testLibrary.js';
 
@@ -39,7 +39,7 @@ export default function TestLibrary({ initialDraftId, entries, catalog, busy, er
   };
 
   return <div className="workspace library-workspace library-refined">
-    <div className="library-heading"><div className="library-title-row"><button type="button" className="library-back" aria-label={selected ? 'Test listesine dön' : 'Yeni Test sayfasına dön'} title={selected ? 'Test listesine dön' : 'Yeni Test sayfasına dön'} onClick={() => selected ? setSelectedId(null) : onBack?.()}><ArrowLeft size={21} strokeWidth={1.7}/></button><h2>Test Kütüphanesi</h2></div><button className="icon-button library-refresh" onClick={refresh} disabled={busy} aria-label="Test kütüphanesini yenile" title="Yenile"><RefreshCw size={17} className={busy ? 'library-refreshing' : ''}/></button></div>
+    <div className="library-heading"><div className="library-title-row"><BackArrow label={selected ? 'Test listesine dön' : 'Yeni Test sayfasına dön'} onClick={() => selected ? setSelectedId(null) : onBack?.()}/><h2>Test Kütüphanesi</h2></div><button className="icon-button library-refresh" onClick={refresh} disabled={busy} aria-label="Test kütüphanesini yenile" title="Yenile"><RefreshCw size={17} className={busy ? 'library-refreshing' : ''}/></button></div>
     <div className="library-toolbar">
       <label className="library-search"><Search size={17}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Test, sensör veya pin ara…" aria-label="Test kütüphanesinde ara"/></label>
       <button className={'secondary library-filter-trigger' + (category !== 'all' || parts.length ? ' active' : '')} onClick={() => setFilterOpen(true)}><SlidersHorizontal size={15}/>Sensörler{parts.length > 0 && <span>{parts.length}</span>}</button>

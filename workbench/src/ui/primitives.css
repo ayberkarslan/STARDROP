@@ -1,0 +1,13 @@
+/* Small, shared visual primitives. Screen-specific layout stays with each screen. */
+:root{--ui-black:#000;--ui-ink:#fff;--ui-muted:#bdbdbd;--ui-line:#383838;--ui-focus:#fff}
+.ui-back-arrow{width:30px;height:36px;flex:none;display:grid;place-items:center;padding:0;border:0;border-radius:0;background:transparent;color:var(--ui-muted);cursor:pointer;transition:color .16s ease,transform .16s ease}
+.ui-back-arrow:hover{color:var(--ui-ink);transform:translateX(-2px)}
+.ui-back-arrow:focus-visible{outline:1px solid var(--ui-focus);outline-offset:2px}
+.ui-choice-card{display:flex;align-items:flex-start;gap:20px;min-height:165px;padding:26px;border:1px solid var(--ui-line);border-radius:10px;background:var(--ui-black);color:var(--ui-ink);text-align:left;cursor:pointer;font:inherit;transition:border-color .18s ease,transform .18s ease}
+.ui-choice-card:hover,.ui-choice-card:focus-visible{border-color:#aaa;transform:translateY(-2px)}
+:is(.app-shell,.guest-layout) .select-option{position:relative;border-radius:0}
+:is(.app-shell,.guest-layout) .select-option[aria-selected="true"]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ui-ink);border-radius:0;pointer-events:none}
+:is(.app-shell,.guest-layout) .select-option[aria-selected="true"],
+:is(.app-shell,.guest-layout) .select-option:hover,
+:is(.app-shell,.guest-layout) .select-option:focus-visible{background:#101010;color:var(--ui-ink);outline:none}
+@media(prefers-reduced-motion:reduce){.ui-back-arrow,.ui-choice-card{transition:none}}

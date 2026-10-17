@@ -1,12 +1,8 @@
 /* One square-ended marker for active navigation and filter choices. */
-.app-shell .select-option,
-.guest-layout .select-option,
 .board-list-item,
 .sensor-filter-groups button,
 .sensor-filter-parts>button{position:relative}
 
-.app-shell .select-option[aria-selected="true"]::before,
-.guest-layout .select-option[aria-selected="true"]::before,
 .board-list-item.selected::before,
 .sensor-filter-groups button[aria-pressed="true"]::before,
 .sensor-filter-parts>button[aria-checked="true"]::before{
@@ -17,10 +13,4 @@
 .app-shell .rail-navigation{position:relative}
 .app-shell .rail-navigation .rail-active-marker{position:absolute;left:0;top:0;width:2px;height:var(--rail-marker-height);transform:translateY(var(--rail-marker-y));background:#fff;box-shadow:0 0 5px #ffffff55;border-radius:0;pointer-events:none;z-index:1;transition:transform .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1)}
 @media(prefers-reduced-motion:reduce){.app-shell .rail-navigation .rail-active-marker{transition:none;box-shadow:none}}
-.app-shell .select-option,.guest-layout .select-option{border-radius:0}
-.app-shell .select-option[aria-selected="true"],
-.guest-layout .select-option[aria-selected="true"]{background:#101010;color:#fff}
-.app-shell .select-option:hover,.app-shell .select-option:focus-visible,
-.guest-layout .select-option:hover,.guest-layout .select-option:focus-visible{background:#101010;color:#fff;outline:none}
-.settings-hub .select-option:hover{outline:none}
 .sensor-filter-groups button[aria-pressed="true"],.sensor-filter-parts>button[aria-checked="true"]{border-color:#555}

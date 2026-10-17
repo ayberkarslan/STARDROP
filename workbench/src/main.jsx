@@ -23,6 +23,7 @@ import './global-watch.css';
 import './board-profiles.css';
 import './selection-markers.css';
 import './test-home.css';
+import './ui/primitives.css';
 
 const removeDesktopInput = installDesktopInput(window);
 if (import.meta.hot) import.meta.hot.dispose(removeDesktopInput);

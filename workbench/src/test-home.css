@@ -4,12 +4,9 @@
 .test-home h1{font-size:clamp(27px,3vw,38px);font-weight:400;line-height:1.35;margin:18px 0 10px}
 .test-home p{font-size:12px;color:#bdbdbd;line-height:1.7;margin:0 0 35px}
 .test-home-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.test-home-choices button{display:flex;align-items:flex-start;gap:20px;min-height:165px;padding:26px;border:1px solid #383838;border-radius:10px;background:#000;color:#fff;text-align:left;cursor:pointer;font:inherit;transition:border-color .18s ease,transform .18s ease}
-.test-home-choices button:hover,.test-home-choices button:focus-visible{border-color:#aaa;transform:translateY(-2px)}
 .test-home-choices button>svg:first-child{flex:none}
 .test-home-choices button>svg:last-child{flex:none;margin-left:auto;color:#aaa}
 .test-home-choices span{display:grid;gap:13px;padding-top:1px}
 .test-home-choices strong{font-size:15px;font-weight:400}
 .test-home-choices small{color:#aaa;font-size:11px;line-height:1.6}
 @media(max-width:800px){.test-home-choices{grid-template-columns:1fr}.test-home-choices button{min-height:120px}}
-@media(prefers-reduced-motion:reduce){.test-home-choices button{transition:none}}
