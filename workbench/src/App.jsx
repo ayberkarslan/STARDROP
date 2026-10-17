@@ -680,7 +680,7 @@ export default function App() {
     <aside className="rail">
       <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
       <nav ref={railNavRef} className="rail-navigation">
-        {railMarker && <><span className="rail-active-ghost" style={{ '--rail-marker-y': `${railMarker.top}px`, '--rail-marker-height': `${railMarker.height}px`, transition: railMarker.animate ? undefined : 'none' }} aria-hidden="true"/><span className="rail-active-marker" style={{ '--rail-marker-y': `${railMarker.top}px`, '--rail-marker-height': `${railMarker.height}px`, transition: railMarker.animate ? undefined : 'none' }} aria-hidden="true"/></>}
+        {railMarker && <span className="rail-active-marker" style={{ '--rail-marker-y': `${railMarker.top}px`, '--rail-marker-height': `${railMarker.height}px`, transition: railMarker.animate ? undefined : 'none' }} aria-hidden="true"/>}
         <RailTool tool="flash" Icon={Upload} workspace={workspace} drag={drag}/>
         <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
         <RailTool tool="library" Icon={BookOpen} workspace={workspace} drag={drag} onOpen={refreshLibrary}/>

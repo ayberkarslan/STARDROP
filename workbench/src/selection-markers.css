@@ -15,11 +15,8 @@
 }
 
 .app-shell .rail-navigation{position:relative}
-.app-shell .rail-navigation .rail-active-marker,
-.app-shell .rail-navigation .rail-active-ghost{position:absolute;left:0;top:0;width:2px;height:var(--rail-marker-height);transform:translateY(var(--rail-marker-y));border-radius:0;pointer-events:none;z-index:1}
-.app-shell .rail-navigation .rail-active-marker{background:#fff;transition:transform .27s cubic-bezier(.2,.8,.2,1),height .27s cubic-bezier(.2,.8,.2,1)}
-.app-shell .rail-navigation .rail-active-ghost{background:#fff;opacity:.18;filter:blur(3px);transition:transform .43s cubic-bezier(.2,.8,.2,1),height .43s cubic-bezier(.2,.8,.2,1)}
-@media(prefers-reduced-motion:reduce){.app-shell .rail-navigation .rail-active-marker,.app-shell .rail-navigation .rail-active-ghost{transition:none;filter:none}}
+.app-shell .rail-navigation .rail-active-marker{position:absolute;left:0;top:0;width:2px;height:var(--rail-marker-height);transform:translateY(var(--rail-marker-y));background:#fff;box-shadow:0 0 5px #ffffff55;border-radius:0;pointer-events:none;z-index:1;transition:transform .3s cubic-bezier(.22,1,.36,1),height .3s cubic-bezier(.22,1,.36,1)}
+@media(prefers-reduced-motion:reduce){.app-shell .rail-navigation .rail-active-marker{transition:none;box-shadow:none}}
 .app-shell .select-option,.guest-layout .select-option{border-radius:0}
 .app-shell .select-option[aria-selected="true"],
 .guest-layout .select-option[aria-selected="true"]{background:#101010;color:#fff}
