@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Activity, BookOpen, CircuitBoard, Cpu, FlaskConical, Github, Save, Settings, ShieldCheck, Upload } from 'lucide-react';
 import { deleteSecret, loadSecret, saveSecret, saveRepoSecret } from './lib/secretStore.js';
@@ -98,6 +98,8 @@ export default function App() {
   const workspace = useWorkspaceTabs();
   const guestWorkspace = useWorkspaceTabs('guest');
   const { mode, open: setMode } = workspace;
+  const railNavRef = useRef(null);
+  const [railMarker, setRailMarker] = useState(null);
   const [hardwareBusy, setHardwareBusy] = useState(null);
   const hardwareRef = useRef(null);
   if (!hardwareRef.current) hardwareRef.current = createHardwareGate(setHardwareBusy);
@@ -149,6 +151,23 @@ export default function App() {
   const [catalog, setCatalog] = useState(CODE_REPO_CATALOG);
   const [catalogSha, setCatalogSha] = useState(null);
   const [catalogAdmin, setCatalogAdmin] = useState(false);
+  useLayoutEffect(() => {
+    const nav = railNavRef.current;
+    if (!nav || session !== 'github') { setRailMarker(null); return; }
+    const active = Array.from(nav.querySelectorAll('[data-rail-tool]')).find(button => button.dataset.railTool === mode);
+    if (!active) { setRailMarker(null); return; }
+    const measure = () => setRailMarker(previous => {
+      const top = active.offsetTop;
+      const height = active.offsetHeight;
+      if (previous?.top === top && previous.height === height) return previous;
+      return { top, height, animate: previous !== null };
+    });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(nav);
+    observer.observe(active);
+    return () => observer.disconnect();
+  }, [mode, catalogAdmin, session]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [adminTestId, setAdminTestId] = useState(CODE_REPO_CATALOG.tests[0]?.id || '');
   const [githubLoginBusy, setGithubLoginBusy] = useState(false);
@@ -660,7 +679,8 @@ export default function App() {
   const signedView = <div className="app-shell resizable-shell" style={{ '--rail-width': `${railSize.width}px` }}>
     <aside className="rail">
       <div className="brand"><div><strong>STARDROP</strong><small>Remote Flash<br/>&amp; Test Platform</small></div></div>
-      <nav>
+      <nav ref={railNavRef} className="rail-navigation">
+        {railMarker && <><span className="rail-active-ghost" style={{ '--rail-marker-y': `${railMarker.top}px`, '--rail-marker-height': `${railMarker.height}px`, transition: railMarker.animate ? undefined : 'none' }} aria-hidden="true"/><span className="rail-active-marker" style={{ '--rail-marker-y': `${railMarker.top}px`, '--rail-marker-height': `${railMarker.height}px`, transition: railMarker.animate ? undefined : 'none' }} aria-hidden="true"/></>}
         <RailTool tool="flash" Icon={Upload} workspace={workspace} drag={drag}/>
         <RailTool tool="workbench" Icon={FlaskConical} workspace={workspace} drag={drag}/>
         <RailTool tool="library" Icon={BookOpen} workspace={workspace} drag={drag} onOpen={refreshLibrary}/>
