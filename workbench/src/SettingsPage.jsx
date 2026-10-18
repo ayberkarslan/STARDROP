@@ -153,7 +153,7 @@ export default function SettingsPage({ services, account }) {
         <Row title="Yazı boyutu"><Pick title="Yazı boyutu" value={preferences.fontScale} choices={[[1, 'Standart'], [1.1, 'Büyük'], [1.2, 'Daha büyük']]} change={v => updatePreferences({ fontScale: Number(v) })}/></Row>
         <Row title="Arayüz ölçeği"><Pick title="Arayüz ölçeği" value={preferences.uiScale} choices={[[0.9, '%90'], [1, '%100'], [1.1, '%110']]} change={v => updatePreferences({ uiScale: Number(v) })}/></Row>
         <Row title="Hareketi azalt"><input type="checkbox" aria-label="Hareketi azalt" checked={preferences.reducedMotion} onChange={e => updatePreferences({ reducedMotion: e.target.checked })}/></Row>
-        <Row title="Giriş sonrası başlangıç ekranı"><Pick title="Başlangıç ekranı" value={preferences.startPage} choices={[["workbench", "Yeni Test"], ["flash", "Hızlı Yükleme"], ["library", "Test Kütüphanesi"], ["devices", "Cihazlar"], ["monitor", "Canlı İzleme"], ["empty", "Boş sekme"]]} change={v => updatePreferences({ startPage: v })}/></Row>
+        <Row title="Giriş sonrası başlangıç ekranı"><Pick title="Başlangıç ekranı" value={preferences.startPage} choices={[["workbench", "Yeni Test"], ["flash", "Hızlı Yükleme"], ["library", "Test Kütüphanesi"], ["devices", "STARDROP"], ["monitor", "Canlı İzleme"], ["empty", "Boş sekme"]]} change={v => updatePreferences({ startPage: v })}/></Row>
         <Row title="Tema"><span>Siyah · Michroma</span></Row>
       </>}
       {selected.id === 'diagnostics' && <>
