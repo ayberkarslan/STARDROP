@@ -11,17 +11,17 @@ html, body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: transparent;
+  background: #000;
   color: #fff;
   user-select: none;
 }
 
-.splash { position: relative; width: 760px; height: 280px; font-family: Michroma, sans-serif; }
+.splash { position: relative; box-sizing: border-box; width: 760px; height: 220px; border: 1px solid #353535; background: #000; font-family: Michroma, sans-serif; }
 .splash-panel {
   position: absolute;
   left: 109px;
   right: 14px;
-  top: 55px;
+  top: 25px;
   height: 170px;
   overflow: hidden;
   box-sizing: border-box;
@@ -55,9 +55,9 @@ html, body {
   position: absolute;
   z-index: 1;
   left: 16px;
-  top: 32px;
-  width: 216px;
-  height: 216px;
+  top: 10px;
+  width: 200px;
+  height: 200px;
   overflow: hidden;
   border-radius: 50%;
   box-shadow: 0 0 0 7px #000;
