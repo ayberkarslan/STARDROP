@@ -16,6 +16,13 @@ export function YRT_StatusBadge({ children, tone = 'neutral', className, ...prop
   return <span {...props} className={join('sd-status', `sd-status--${tone}`, className)}>{children}</span>;
 }
 
+export function YRT_Disclosure({ title, children, className, ...props }) {
+  return <details {...props} className={join('sd-disclosure', className)}>
+    <summary className="sd-disclosure__summary">{title}</summary>
+    <div className="sd-disclosure__content">{children}</div>
+  </details>;
+}
+
 export const YRT_TextField = forwardRef(function YRT_TextField({ label, hint, error, id, className, ...props }, ref) {
   const generatedId = useId();
   const inputId = id || generatedId;
