@@ -625,7 +625,7 @@ export default function App() {
       id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
       {visible && <WelcomeStars subtle />}
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
-        mode === 'boards' ? <BoardProfiles records={targetRecords} target={target} saveTargetName={saveTargetName} setNotice={setNotice}/> :
+        mode === 'boards' ? <BoardProfiles records={targetRecords} target={target} esp={esp} espBase={activeBridge} hardware={hardware} hardwareBusy={hardwareBusy} documentId={doc.id} refreshTarget={refreshTarget} saveTargetName={saveTargetName} saveTargetAnalysis={saveTargetAnalysis} setNotice={setNotice}/> :
         mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
         mode === 'tests' ? <TestHome startNewTest={() => workspace.open('workbench', { fresh: true })} openLibrary={() => { workspace.open('library'); void refreshLibrary(); }}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange} onBackToTests={() => workspace.open('tests')}/> :

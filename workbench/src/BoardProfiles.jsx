@@ -5,12 +5,13 @@ import { firmwareHistory } from './lib/watchMemory.js';
 import { targetUid } from './lib/targetRegistry.js';
 import { boardChoices, filterBoards } from './lib/boardFilters.js';
 import SelectMenu from './SelectMenu.jsx';
+import EspConsole from './EspConsole.jsx';
 
 const statusLabels = { unknown: 'Durum bilinmiyor', healthy: 'Çalışıyor', check: 'Kontrol gerekli', faulty: 'Arızalı olabilir' };
 const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK', name: 'İSİM' };
 const date = value => value ? new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Henüz kayıt yok';
 
-export default function BoardProfiles({ records, target, saveTargetName, setNotice }) {
+export default function BoardProfiles({ records, target, esp, espBase, hardware, hardwareBusy, documentId, refreshTarget, saveTargetName, saveTargetAnalysis, setNotice }) {
   const [journals, setJournals] = useState({});
   const [selected, setSelected] = useState(null);
   const [query, setQuery] = useState('');
@@ -54,6 +55,7 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
   const timeline = boardTimeline(journal, selected ? firmwareHistory(selected) : [], record?.flashAnalysis);
   const timelineRows = groupBoardTimeline(timeline);
   const active = selected && connectedUid === selected;
+  const managedTarget = active ? target : { ...record, uid: selected, model: record?.model || boards.find(board => board.uid === selected)?.model, connected: false, recordUpdatedAt: record?.updatedAt };
 
   const saveName = async () => {
     setSaving(true); setError('');
@@ -93,7 +95,7 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
       <aside className="board-list"><label className="board-search"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Ad, model veya UID ara" aria-label="Kart ara"/></label>
         <div className="board-filters"><SelectMenu ariaLabel="MCU filtresi" value={modelFilter} options={modelOptions} onChange={setModelFilter}/><SelectMenu ariaLabel="Kart durumu filtresi" value={statusFilter} options={statusOptions} onChange={setStatusFilter}/></div>
         <div className="board-list-scroll">
-        {filtered.length ? filtered.map(board => <button key={board.uid} className={'board-list-item' + (selected === board.uid ? ' selected' : '')} onClick={() => setSelected(board.uid)}>
+        {filtered.length ? filtered.map(board => <button key={board.uid} className={'board-list-item' + (selected === board.uid ? ' selected' : '')} disabled={Boolean(hardwareBusy)} onClick={() => setSelected(board.uid)}>
           <span><strong>{board.label || board.model || 'İsimsiz kart'}</strong>{connectedUid === board.uid && <i title="Şu an bağlı"/>}</span>
           <small>{board.model || 'STM32'} · {board.uid.slice(-8).toUpperCase()}</small>
           <em>{date(journals[board.uid]?.lastSeenAt)}</em>
@@ -110,6 +112,7 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
         <div className="board-edit"><label>İsim<input value={name} maxLength={32} onChange={e => setName(e.target.value)} placeholder="Karta isim ver"/></label><button disabled={saving || !name.trim() || name.trim() === record?.label} onClick={saveName}>Kaydet</button>
           <div className="board-field"><span>Durum</span><SelectMenu ariaLabel="Kart durumu" value={journal?.status || 'unknown'} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} onChange={saveStatus}/></div></div>
         {!active && <p className="board-hint">Bu kart çevrimdışı. Profilini düzenleyebilir, donanım testini bağlandığında sürdürebilirsin.</p>}
+        <EspConsole key={selected} targetOnly target={managedTarget} esp={esp} bridge={espBase} espBase={espBase} hardware={hardware} hardwareBusy={hardwareBusy} documentId={documentId} refreshTarget={refreshTarget} saveTargetAnalysis={saveTargetAnalysis} setNotice={setNotice}/>
         <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>Yeni → eski</span></div>
           <form className="board-note-form" onSubmit={addNote}><textarea value={note} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="Bugün kartta ne denedin? Sonuç ve gözlemini yaz…" aria-label="Kart notu"/><div><SelectMenu ariaLabel="Kayıt türü" value={noteKind} options={[{ value: 'note', label: 'Not' }, { value: 'issue', label: 'Arıza şüphesi' }]} onChange={setNoteKind}/><button disabled={saving || !note.trim()}>Kaydet</button></div></form>
           {timelineRows.length ? timelineRows.map(event => event.kind === 'flash-group'
