@@ -1,1 +1,1 @@
-export { BackArrow as default } from '@stardrop/ui';
+export { YRT_BackArrow as default } from '@stardrop/ui';
