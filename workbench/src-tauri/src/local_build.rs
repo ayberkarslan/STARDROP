@@ -833,6 +833,32 @@ mod tests {
     }
 
     #[test]
+    fn bhi360_identity_builds_from_approved_obc_pins() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../code-repo");
+        let gcc = PathBuf::from("/usr/bin/arm-none-eabi-gcc");
+        if !gcc.is_file() { return; }
+        let objcopy = gcc.with_file_name("arm-none-eabi-objcopy");
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive_test_tree(&repo, &repo, &mut zip, "stardrop/");
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        extract_code_archive(zip.finish().unwrap().into_inner(), root.path(), &source).unwrap();
+        let mut request = bmp_request("SOFT_I2C_1", "PB10", "PB3");
+        request.test_id = "bhi360-identity".into();
+        let mut profile: serde_json::Value = serde_json::from_str(&request.profile_json).unwrap();
+        profile["components"][0]["part"] = serde_json::json!("BHI360-IMU");
+        request.profile_json = profile.to_string();
+        let built = compile_code_test_at(&source, &gcc, &objcopy, request, "bhi360-source".into()).unwrap();
+        assert!(built.header.contains("STARDROP_I2C_BUS_SOFTWARE 1"));
+        assert!(built.header.contains("STARDROP_I2C_SCL_GPIO_PIN GPIO_PIN_10"));
+        let elf = object::File::parse(built.elf_bytes.as_slice()).unwrap();
+        use object::{Object, ObjectSymbol};
+        for name in ["sensor_chip_id", "sensor_status", "sensor_error"] {
+            assert!(elf.symbols().any(|symbol| symbol.name().ok() == Some(name)), "missing global {name}");
+        }
+    }
+
+    #[test]
     fn bmp180_cpp_catalog_builds_hardware_and_software_pin_variants() {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../code-repo");
         let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("toolchain/bin/arm-none-eabi-gcc");
