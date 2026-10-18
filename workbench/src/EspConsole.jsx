@@ -260,7 +260,7 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
   </Popup>;
 
   if (targetOnly) return <div className="board-device-tools">
-    <div className="board-device-tools-head"><h3>STM32 yönetimi</h3><span>{target?.connected ? 'Canlı kart' : 'Kayıtlı bilgiler'}</span></div>
+    <div className="board-device-tools-head"><h3>STM32 yönetimi</h3><div><span>{target?.connected ? 'Canlı kart' : 'Kayıtlı bilgiler'}</span><button type="button" aria-label="STM32 bağlantısını yenile" title="STM32 bağlantısını yenile" disabled={deviceBusy || busy || esp?.status !== 'online'} onClick={refreshTarget}><RefreshCw size={15}/></button></div></div>
     {!target?.connected && <p className="board-device-hint">İşlem yapmak için bu kartı bağla. Son flash analizi kayıtlıysa aşağıda görünür.</p>}
     {renderTargetBody(true)}
     {renderTargetMaintenance()}
