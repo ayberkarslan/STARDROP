@@ -13,6 +13,9 @@
   --sd-motion:180ms ease;
 }
 .sd-button,.sd-choice-card,.sd-select__trigger,.sd-select__option{font-family:var(--sd-font)}
+.sd-back-arrow{display:grid;place-items:center;flex:none;width:30px;height:36px;padding:0;border:0;border-radius:0;background:transparent;color:var(--sd-muted);cursor:pointer;transition:color 160ms ease,transform 160ms ease}
+.sd-back-arrow:hover{color:var(--sd-white);transform:translateX(-2px)}
+.sd-back-arrow:focus-visible{outline:1px solid var(--sd-white);outline-offset:2px}
 .sd-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:10px 16px;border:1px solid var(--sd-line);border-radius:var(--sd-radius);background:var(--sd-black);color:var(--sd-white);font-size:11px;line-height:1.5;text-align:center;cursor:pointer;transition:border-color var(--sd-motion),color var(--sd-motion)}
 .sd-button:hover:not(:disabled){border-color:var(--sd-line-strong);color:#fff}
 .sd-button--primary{background:var(--sd-white);border-color:var(--sd-white);color:var(--sd-black)}
@@ -48,4 +51,4 @@
 .sd-select__option:hover,.sd-select__option:focus-visible,.sd-select__option[aria-selected=true]{background:#101010;color:var(--sd-white)}
 .sd-select__option[aria-selected=true]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--sd-white)}
 .sd-select__empty{padding:12px;color:var(--sd-muted);font-size:10px}
-@media(prefers-reduced-motion:reduce){.sd-button,.sd-choice-card{transition:none}.sd-choice-card:hover{transform:none}}
+@media(prefers-reduced-motion:reduce){.sd-button,.sd-choice-card,.sd-back-arrow{transition:none}.sd-choice-card:hover,.sd-back-arrow:hover{transform:none}}

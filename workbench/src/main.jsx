@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import WindowChrome from './WindowChrome.jsx';
 import { installDesktopInput } from './lib/desktopInput.js';
+import '@stardrop/ui/styles.css';
 import './styles.css';
 import './esp-theme.css';
 import './desktop-shell.css';

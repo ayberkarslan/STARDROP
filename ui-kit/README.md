@@ -20,7 +20,7 @@ function App() {
 }
 ```
 
-`Button`, `IconButton`, `ChoiceCard`, `Panel`, `StatusBadge`, `TextField` ve `SelectMenu` dışa açıktır. `Button` varyantları: `primary`, `secondary`, `ghost`, `danger`; boyutları: `sm`, `md`. `StatusBadge` tonları: `neutral`, `success`, `warning`, `danger`. İkonlar için kitaplık dayatılmaz; `children` olarak SVG veya Lucide bileşeni verilebilir.
+`Button`, `IconButton`, `ChoiceCard`, `BackArrow`, `Panel`, `StatusBadge`, `TextField` ve `SelectMenu` dışa açıktır. `Button` varyantları: `primary`, `secondary`, `ghost`, `danger`; boyutları: `sm`, `md`. `StatusBadge` tonları: `neutral`, `success`, `warning`, `danger`. İkonlar için kitaplık dayatılmaz; `children` olarak SVG veya Lucide bileşeni verilebilir.
 
 Renk, radius, yazı tipi ve hareket değerleri `src/styles.css` içindeki `--sd-*` değişkenleridir. Yeni uygulamada bu değişkenleri kök CSS'te değiştirerek tema özelleştirilebilir. Michroma fontu ve lisansı paketin içindedir; internet bağlantısı gerekmez. Bileşenler global `button`, `input`, `body` stillerini değiştirmez; her sınıf `sd-` önekiyle ayrılır.
 
