@@ -238,7 +238,6 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
   </div>;
 
   const renderTargetMaintenance = (compact = false) => compact ? <div className="board-maintenance-controls">
-    <p>Yeniden başlat, kurtarmayı dene veya flash’ı sil.</p>
     <div className="board-maintenance-actions">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <YRT_Button key={operation} size="sm" variant={operation === 'erase' ? 'danger' : 'secondary'} disabled={deviceBusy || busy || !target?.connected || esp?.status !== 'online' || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</YRT_Button>)}</div>
     {!programmer?.maintenanceAvailable && <small>Bakım için ESP firmware’ini güncelle.</small>}
   </div> : <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
