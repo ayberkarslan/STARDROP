@@ -8,6 +8,8 @@ Yeni bir Vite/React projesinde:
 npm install /home/ayberk/Projects/remotecode/ui-kit
 ```
 
+Çalışan başlangıç örneği `starter/` klasöründe. Yerel `file:` kurulumlarında npm paketi sembolik bağlantı yaparsa örnekteki `vite.config.js` ayarlarını (`preserveSymlinks`, React `dedupe`) kullan.
+
 ```jsx
 import { Button, Panel, TextField, SelectMenu } from '@stardrop/ui';
 import '@stardrop/ui/styles.css';

@@ -3,8 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "types": "./src/index.d.ts",
+  "files": ["src", "README.md", "OFL-Michroma.txt"],
   "exports": {
-    ".": "./src/index.jsx",
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.jsx"
+    },
     "./styles.css": "./src/styles.css"
   },
   "peerDependencies": {
