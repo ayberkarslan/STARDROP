@@ -4,7 +4,7 @@ import { YRT_Button, YRT_Panel } from '@stardrop/ui';
 import { normalizeEspAddress } from './lib/espConnection.js';
 import { espJson, espStream } from './lib/espTransport.js';
 import Popup from './Popup.jsx';
-import espModuleImage from './assets/esp32-s3.png';
+import stardropModuleImage from './assets/stardrop-module.png';
 import stmModuleImage from './assets/stm32.png';
 import WiringGuide from './WiringGuide.jsx';
 import FlashProgress from './FlashProgress.jsx';
@@ -273,29 +273,34 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
   </div>;
 
   if (devicesOnly) return <div className="workspace devices-workspace">
-    <div className="device-page-heading"><h2>Cihazlar</h2><button className="secondary" disabled={deviceBusy || busy} onClick={() => { loadSettings(); refreshTarget(); }}><RefreshCw size={15}/>Yenile</button></div>
-    <div className="device-route" aria-label="Bilgisayar Wi-Fi üzerinden ESP32’ye, ESP32 SWD üzerinden STM32’ye bağlanır"><span>Bilgisayar</span><span className="device-route-line">Wi-Fi</span><span>ESP32</span><button className="device-route-line device-wiring-button" aria-label="SWD bağlantı rehberini aç" title="Nasıl bağlanır?" onClick={() => setWiringOpen(true)}>SWD <span aria-hidden="true">↗</span></button><span>STM32</span></div>
-    <div className="device-columns"><section className="device-section device-programmer" aria-label="ESP32 programlayıcı">
-      <div className="device-card-heading"><div><small>PROGRAMLAYICI</small><h3>ESP32</h3></div><span className={'device-connection-state' + (esp?.status === 'online' ? ' is-connected' : '')}><i/>{esp?.status === 'online' ? 'Bağlı' : 'Çevrimdışı'}</span></div>
-      <div className="device-hero device-esp-hero"><img src={espModuleImage} alt="ESP32-S3 modülü"/><span>{programmer?.chipModel || 'ESP32'}<small>{base || 'Adres bekleniyor'}</small></span></div>
-      <div className="device-card-content">
-      <div className="detail-row"><span>Model</span><strong>{programmer?.chipModel || '—'}</strong></div>
-      <div className="detail-row"><span>Flash / PSRAM</span><strong>{programmer ? `${kb(programmer.flashBytes || 0)} / ${kb(programmer.psramBytes || 0)}` : '—'}</strong></div>
-      <div className="detail-row"><span>Boş heap / CPU</span><strong>{programmer ? `${kb(programmer.freeHeapBytes || 0)} / ${programmer.cpuMhz || '—'} MHz` : '—'}</strong></div>
-      <div className="detail-row"><span>Ağ</span><strong>{wifi?.ssid || '—'}</strong></div>
-      <div className="detail-row"><span>Sinyal</span><strong>{wifi?.rssi ?? '—'} dBm</strong></div>
-      <div className="detail-row"><span>SWCLK / SWDIO</span><code>{programmer?.swclkPin ?? '—'} / {programmer?.swdioPin ?? '—'}</code></div>
-      <div className="detail-row"><span>Reset bağlantısı</span><strong>{programmer ? programmer.resetAvailable ? 'Destekleniyor' : 'Yok' : '—'}</strong></div>
-      <div className="detail-row"><span>Son işlem</span><strong>{programmer?.lastResult || '—'}</strong></div>
-      <div className="device-action-row"><button className="secondary" onClick={() => setDrawer('settings')}>ESP ayarları</button>
-      <button className="secondary" disabled={deviceBusy || busy || !programmer?.maintenanceAvailable} onClick={() => openMaintenance('esp-reset')}>ESP32 yeniden başlat</button>
-      </div></div>
+    <header className="device-page-heading"><div><span className="device-eyebrow">REMOTE FLASH / TEST PLATFORM</span><h1>STARDROP</h1><p>Programlayıcı ve hedef kart. Tek istasyon, bütün durum.</p></div><button className="secondary" disabled={deviceBusy || busy} onClick={() => { loadSettings(); refreshTarget(); }}><RefreshCw size={15}/>Yenile</button></header>
+    <div className="device-route" aria-label="Bilgisayar Wi-Fi üzerinden STARDROP’a, STARDROP SWD üzerinden STM32’ye bağlanır"><span>Bilgisayar</span><span className="device-route-line">Wi-Fi</span><strong>STARDROP</strong><button className="device-route-line device-wiring-button" aria-label="SWD bağlantı rehberini aç" title="Bağlantı rehberi" onClick={() => setWiringOpen(true)}>SWD <span aria-hidden="true">↗</span></button><span>STM32</span></div>
+    <div className="device-columns"><section className="device-section device-programmer" aria-label="STARDROP programlayıcı modülü">
+      <div className="device-card-heading"><div><small>PROGRAMLAYICI MODÜL</small><h2>STARDROP <span>/ ESP32-S3</span></h2></div><span className={'device-connection-state' + (esp?.status === 'online' ? ' is-connected' : '')}><i/>{esp?.status === 'online' ? 'Çevrimiçi' : 'Çevrimdışı'}</span></div>
+      <div className="device-programmer-body"><div className="device-hero device-esp-hero"><img src={stardropModuleImage} alt="STARDROP ESP32-S3 programlayıcı modülü"/><span>SWD PROGRAMMER <small>{base || 'Adres bekleniyor'}</small></span></div>
+      <div className="device-card-content"><div className="device-metric-group"><h3>Donanım</h3><div className="device-metric-grid">
+        <div className="device-metric"><span>Çip</span><strong>{programmer?.chipModel || '—'}</strong></div>
+        <div className="device-metric"><span>Flash / PSRAM</span><strong>{programmer ? `${kb(programmer.flashBytes || 0)} / ${kb(programmer.psramBytes || 0)}` : '—'}</strong></div>
+        <div className="device-metric"><span>Boş heap / CPU</span><strong>{programmer ? `${kb(programmer.freeHeapBytes || 0)} / ${programmer.cpuMhz || '—'} MHz` : '—'}</strong></div>
+        <div className="device-metric"><span>SWCLK / SWDIO / NRST</span><strong>{programmer ? `${programmer.swclkPin ?? '—'} / ${programmer.swdioPin ?? '—'} / ${programmer.resetAvailable ? programmer.resetPin ?? 'var' : 'yok'}` : '—'}</strong></div>
+      </div></div><div className="device-metric-group"><h3>Bağlantı</h3><div className="device-metric-grid">
+        <div className="device-metric"><span>Ağ</span><strong>{wifi?.ssid || '—'}</strong></div>
+        <div className="device-metric"><span>IP / Sinyal</span><strong>{wifi?.ip || '—'} · {wifi?.rssi ?? '—'} dBm</strong></div>
+        <div className="device-metric"><span>Yedek erişim noktası</span><strong>{wifi?.apSsid || '—'}</strong></div>
+        <div className="device-metric"><span>AP adresi</span><strong>{wifi?.apIp || '—'}</strong></div>
+      </div></div><div className="device-metric-group"><h3>Yazılım</h3><div className="device-metric-grid">
+        <div className="device-metric"><span>Sürüm / derleme</span><strong>{programmer?.firmwareRevision || '—'}{programmer?.firmwareBuild ? ` · ${programmer.firmwareBuild}` : ''}</strong></div>
+        <div className="device-metric"><span>SWD profili</span><strong>{programmer?.speedMode?.toUpperCase() || '—'}</strong></div>
+        <div className="device-metric"><span>Yazma doğrulaması</span><strong>{programmer ? programmer.verifyRequired ? 'Açık' : 'Kapalı' : '—'}</strong></div>
+        <div className="device-metric"><span>Son hedef ID</span><strong>{programmer?.lastTargetIdcode || '—'}</strong></div>
+        <div className="device-metric"><span>Son işlem</span><strong>{programmer?.lastResult || '—'}</strong></div>
+        <div className="device-metric"><span>Son profil / süre</span><strong>{programmer ? `${programmer.lastProfile || '—'} · ${programmer.lastDurationMs ?? '—'} ms` : '—'}</strong></div>
+      </div>{programmer?.lastDiagnostics && programmer.lastDiagnostics !== '-' && <p className="device-diagnostics">{programmer.lastDiagnostics}</p>}</div><div className="device-action-row"><button className="secondary" onClick={() => setDrawer('settings')}>ESP ayarları</button><button className="secondary" disabled={deviceBusy || busy || !programmer?.maintenanceAvailable} onClick={() => openMaintenance('esp-reset')}>Modülü yeniden başlat</button></div></div></div>
     </section><section className="device-section device-target" aria-label="STM32 hedef kart">
-      <div className="device-card-heading"><div><small>HEDEF KART</small><h3>STM32</h3></div><span className={'device-connection-state' + (target?.connected ? ' is-connected' : '')}><i/>{target?.connected ? 'Bağlı' : 'Hedef bekleniyor'}</span></div>
-      <div className="device-hero device-stm-hero"><img src={stmModuleImage} alt="STM32 mikrodenetleyici temsili görseli"/><span>{target?.label || target?.model || 'Henüz kart bağlı değil'}<small>{target?.label ? target?.model : 'SWD üzerinden hedef bağlantısı'}</small></span></div>
+      <div className="device-card-heading"><div><small>SWD HEDEFİ</small><h2>{target?.label || target?.model || 'STM32'}</h2></div><span className={'device-connection-state' + (target?.connected ? ' is-connected' : '')}><i/>{target?.connected ? 'Bağlı' : 'Hedef bekleniyor'}</span></div>
+      <div className="device-target-main"><div className="device-hero device-stm-hero"><img src={stmModuleImage} alt="STM32 mikrodenetleyici temsili görseli"/><span>{target?.model || 'STM32'}<small>SWD üzerinden hedef bağlantısı</small></span></div>
       <div className="device-card-content"><button className="device-board-link" type="button" onClick={openBoard}>Kart profilini aç <ChevronRight size={15}/></button>{target?.connected ? renderTargetBody() : <div className="device-target-empty"><Cpu size={24} strokeWidth={1}/><p>Hedef bağlantısı bekleniyor</p><small>SWDIO, SWCLK ve GND bağlantılarını kontrol et.</small></div>}
-      {renderTargetMaintenance()}
-      </div>
+      {renderTargetMaintenance()}</div></div>
     </section></div>
     {wiringOpen && <WiringGuide programmer={programmer} online={esp?.status === 'online'} target={target} onClose={() => setWiringOpen(false)}/>}
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel="ESP32 ayarları" onClose={() => setDrawer(null)}><div className="drawer-title"><h2>ESP32 ayarları</h2><button onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>{renderSettingsBody()}</Popup>}
