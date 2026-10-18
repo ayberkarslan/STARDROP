@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boardEvent, boardNameChange, boardTimeline } from './boardJournal.js';
+import { boardEvent, boardNameChange, boardTimeline, groupBoardTimeline } from './boardJournal.js';
 
 const uid = '001300155231501920323239';
 
@@ -27,4 +27,25 @@ test('timeline merges historical flash and analysis without duplicating journal 
     { id: 'older', at: 100, status: 'loaded', name: 'old.bin' }], { analyzedAt: 250, programmedBytes: 10, freeBytes: 90 });
   assert.deepEqual(rows.map(row => row.at), [300, 250, 200, 100]);
   assert.equal(rows.filter(row => row.kind === 'flash').length, 2);
+});
+
+test('nearby consecutive uploads collapse without losing their details', () => {
+  const flash = (id, at, detail) => ({ id, kind: 'flash', at, title: 'Yazılım yüklendi', detail });
+  const events = [flash('new', 2_000_000, 'new.bin'), flash('middle', 1_990_000, 'middle.bin'),
+    flash('old', 1_980_000, 'old.bin'), { id: 'note', kind: 'note', at: 1_970_000, title: 'Kontrol edildi' },
+    flash('after-note', 1_960_000, 'other.bin')];
+  const grouped = groupBoardTimeline(events);
+  assert.deepEqual(grouped.map(row => row.kind), ['flash-group', 'note', 'flash']);
+  assert.deepEqual(grouped[0].events.map(row => row.detail), ['new.bin', 'middle.bin', 'old.bin']);
+  assert.equal(grouped[0].at, events[0].at);
+  assert.equal(grouped[0].endAt, events[2].at);
+  assert.equal(events[0].kind, 'flash');
+});
+
+test('uploads from different sessions stay separate', () => {
+  const flash = (id, at) => ({ id, kind: 'flash', at, title: 'Yazılım yüklendi' });
+  const events = [flash('today', 4_000_000), flash('yesterday', 1_000_000), flash('earlier', 990_000)];
+  const grouped = groupBoardTimeline(events);
+  assert.deepEqual(grouped.map(row => row.kind), ['flash', 'flash-group']);
+  assert.deepEqual(grouped[1].events.map(row => row.id), ['yesterday', 'earlier']);
 });

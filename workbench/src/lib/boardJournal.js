@@ -107,3 +107,27 @@ export function boardTimeline(journal, firmware = [], analysis = null) {
   }
   return events.sort((a, b) => b.at - a.at);
 }
+
+// The timeline stays intact in storage; only adjacent uploads from the same
+// workshop session become one expandable row in the UI.
+export function groupBoardTimeline(events, maxGapMs = 30 * 60 * 1000) {
+  const grouped = [];
+  for (const event of events) {
+    const previous = grouped.at(-1);
+    const previousFlash = previous?.kind === 'flash-group' ? previous.events.at(-1)
+      : previous?.kind === 'flash' ? previous : null;
+    const gap = previousFlash?.at - event.at;
+    if (event.kind === 'flash' && previousFlash && gap >= 0 && gap <= maxGapMs) {
+      if (previous.kind === 'flash-group') {
+        previous.events.push(event);
+        previous.endAt = event.at;
+      } else {
+        grouped[grouped.length - 1] = { id: `flash-group-${previous.id}`, kind: 'flash-group',
+          at: previous.at, endAt: event.at, events: [previous, event] };
+      }
+    } else {
+      grouped.push(event);
+    }
+  }
+  return grouped;
+}
