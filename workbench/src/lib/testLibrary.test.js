@@ -14,7 +14,7 @@ test('ready catalog templates are searchable without fake pins or successful run
   assert.equal(searchLibrary(entries, 'F446 LED')[0].test.id, 'led-blink-f446');
   assert.equal(filterLibrary(entries, { mcu: 'STM32F446RET6', category: 'gpio' })[0].test.id, 'led-blink-f446');
   assert.deepEqual(filterLibrary(entries, { result: 'PASS' }), []);
-  assert.deepEqual(searchLibrary(entries, 'BHI360'), []);
+  assert.equal(searchLibrary(entries, 'BHI360')[0].test.id, 'bhi360-identity');
 });
 
 test('library entry generates detailed searchable information without target UID or false success', () => {
