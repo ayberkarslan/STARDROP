@@ -41,6 +41,13 @@ import CODE_REPO_CATALOG from '../../code-repo/catalog/catalog.json' with { type
 
 const savedBridge = localStorage.getItem('stardrop.bridge') || 'http://192.168.4.1';
 
+async function verifiedCachedCatalog(repository) {
+  const cached = await invoke('active_code_catalog', { repository });
+  const validation = validateTestCatalog(cached);
+  if (!validation.valid) throw new Error(validation.errors.join(' '));
+  return cached;
+}
+
 function Badge({ children, tone = 'muted' }) { return <span className={`badge ${tone}`}>{children}</span>; }
 
 function Section({ title, children, action }) {
@@ -309,7 +316,13 @@ export default function App() {
       const validation = validateTestCatalog(remote);
       if (!validation.valid) throw new Error(validation.errors.join(' '));
       if (!cancelled) { setCatalog(remote); setCatalogSha(sha); setCatalogAdmin(canWrite); }
-    }).catch((error) => { if (!cancelled) setNotice(`GitHub kataloğu alınamadı: ${error.message}`); }).finally(() => { if (!cancelled) setCatalogLoading(false); });
+    }).catch(async (error) => {
+      if (cancelled) return;
+      try {
+        const cached = await verifiedCachedCatalog(githubConfig.repository);
+        if (!cancelled) { setCatalog(cached); setCatalogSha(null); setNotice(`GitHub kataloğu alınamadı; yalnız etkin kaynak sürümündeki testler gösteriliyor. ${String(error)}`); }
+      } catch (_) { if (!cancelled) setNotice(`GitHub kataloğu alınamadı: ${String(error)}`); }
+    }).finally(() => { if (!cancelled) setCatalogLoading(false); });
     return () => { cancelled = true; };
   }, [githubUser, githubConfig.repository, githubConfig.ref, repoCredentialRevision]);
 
@@ -335,7 +348,10 @@ export default function App() {
       const validation = validateTestCatalog(remote.catalog);
       if (!validation.valid) throw new Error(validation.errors.join(' '));
       setCatalog(remote.catalog); setCatalogSha(remote.sha);
-    } catch (error) { setSourceError(String(error)); }
+    } catch (error) {
+      setSourceError(String(error));
+      try { setCatalog(await verifiedCachedCatalog(githubConfig.repository)); setCatalogSha(null); } catch (_) { /* Etkin kaynak yok. */ }
+    }
     finally { setSourceBusy(false); }
   };
 

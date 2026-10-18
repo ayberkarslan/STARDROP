@@ -74,6 +74,16 @@ fn active_code_sha(root: &Path) -> Option<String> {
 }
 
 #[tauri::command]
+pub fn active_code_catalog(app: tauri::AppHandle, repository: String) -> Result<serde_json::Value, String> {
+    let root = code_root(&app, &repository)?;
+    let sha = active_code_sha(&root).ok_or("Etkin ve doğrulanmış test kaynağı yok")?;
+    let bytes = fs::read(root.join(sha).join("catalog/catalog.json")).map_err(|error| error.to_string())?;
+    let catalog: CodeCatalog = serde_json::from_slice(&bytes).map_err(|_| "Etkin test kataloğu geçersiz")?;
+    catalog.validate()?;
+    serde_json::from_slice(&bytes).map_err(|_| "Etkin test kataloğu okunamadı".into())
+}
+
+#[tauri::command]
 pub async fn code_repo_status(app: tauri::AppHandle, repository: String, reference: String) -> Result<SourceStatus, String> {
     let root = code_root(&app, &repository)?;
     if !safe_segment(&reference) { return Err("Geçersiz kaynak dalı".into()); }
@@ -519,7 +529,7 @@ fn compile_code_test_at(source: &Path, gcc: &Path, objcopy: &Path, request: Code
             .map_err(|_| "Test kataloğu geçersiz")?;
         catalog.validate()?;
         let test = catalog.tests.iter().find(|test| test.id == request.test_id && test.status == "ready")
-            .ok_or("Seçilen test bu kaynak sürümünde hazır değil")?;
+            .ok_or_else(|| format!("{} testi etkin kaynak sürümünde ({}) yok. Test deposunu güncelle ve yeni sürümü etkinleştir; depoda da yoksa test kaynaklarını yayımla.", request.test_id, &sha[..12.min(sha.len())]))?;
         let profile: serde_json::Value = serde_json::from_str(&request.profile_json).map_err(|_| "Kart profili geçersiz")?;
         let component = profile["components"].as_array().and_then(|items| items.iter().find(|item| item["ref"] == request.component_ref))
             .ok_or("Test bileşeni kart profilinde yok")?;
@@ -557,6 +567,19 @@ fn compile_code_test_at(source: &Path, gcc: &Path, objcopy: &Path, request: Code
             request_id: request.request_id, mcu_part: request.mcu_part, target_uid: request.target_uid,
             project_path: None };
         let mut result = compile_hal_at(&project, source, gcc, objcopy, led_request, header)?;
+        if matches!(test.id.as_str(), "bmp581-f446" | "bhi360-identity") {
+            let watch = crate::elf_watch::inspect(&result.elf_bytes).map_err(|error| format!("Canlı İzleme ELF'i geçersiz: {error}"))?;
+            let required: &[(&str, &str)] = if test.id == "bmp581-f446" {
+                &[("pressure_pa", "float"), ("temperature_c", "float"), ("sensor_status", "unsigned")]
+            } else {
+                &[("sensor_chip_id", "unsigned"), ("sensor_status", "unsigned"), ("sensor_error", "signed")]
+            };
+            for (name, kind) in required {
+                if !watch.variables.iter().any(|variable| variable.name == *name && variable.kind == *kind && variable.size == 4) {
+                    return Err(format!("Canlı İzleme için {name} globali ELF'te bulunamadı; karta yükleme yapılmadı."));
+                }
+            }
+        }
         result.source_sha = sha;
         Ok(result)
 }
