@@ -11,9 +11,9 @@ const statusLabels = { unknown: 'Durum bilinmiyor', healthy: 'Çalışıyor', ch
 const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK', name: 'İSİM' };
 const date = value => value ? new Intl.DateTimeFormat('tr-TR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Henüz kayıt yok';
 
-export default function BoardProfiles({ records, target, esp, espBase, hardware, hardwareBusy, documentId, refreshTarget, saveTargetName, saveTargetAnalysis, setNotice }) {
+export default function BoardProfiles({ initialUid = null, records, target, esp, espBase, hardware, hardwareBusy, documentId, refreshTarget, saveTargetName, saveTargetAnalysis, setNotice }) {
   const [journals, setJournals] = useState({});
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(initialUid);
   const [query, setQuery] = useState('');
   const [modelFilter, setModelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');

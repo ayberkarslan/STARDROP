@@ -607,7 +607,7 @@ export default function App() {
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy, preferences,
     debugArtifact: debugArtifacts[target?.uid], onFirmwareLoaded, onFirmwareSelected,
     recordBoardEvent,
-    openBoard: () => workspace.open('boards'),
+    openBoard: () => workspace.open('boards', target?.connected ? { fresh: true, data: { uid: targetUid(target.uid) } } : {}),
     openTelemetry: data => workspace.open('monitor', { fresh: true, data }),
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,
@@ -628,7 +628,7 @@ export default function App() {
       id={'panel-' + doc.id} role="tabpanel" aria-label={titles[doc.id] || workspaceLabels[mode]} hidden={!visible} data-drop-document={doc.id}>
       {visible && <WelcomeStars subtle />}
       {mode === 'devices' ? <FlashSession documentId={doc.id} services={services} devicesOnly/> : mode === 'flash' ? <FlashSession documentId={doc.id} services={services}/> :
-        mode === 'boards' ? <BoardProfiles records={targetRecords} target={target} esp={esp} espBase={activeBridge} hardware={hardware} hardwareBusy={hardwareBusy} documentId={doc.id} refreshTarget={refreshTarget} saveTargetName={saveTargetName} saveTargetAnalysis={saveTargetAnalysis} setNotice={setNotice}/> :
+        mode === 'boards' ? <BoardProfiles initialUid={doc.initialData?.uid} records={targetRecords} target={target} esp={esp} espBase={activeBridge} hardware={hardware} hardwareBusy={hardwareBusy} documentId={doc.id} refreshTarget={refreshTarget} saveTargetName={saveTargetName} saveTargetAnalysis={saveTargetAnalysis} setNotice={setNotice}/> :
         mode === 'monitor' ? <LiveMonitor documentId={doc.id} initialData={doc.initialData} active={visible && session === (currentWorkspace === guestWorkspace ? 'guest' : 'github')} services={services}/> :
         mode === 'tests' ? <TestHome startNewTest={() => workspace.open('workbench', { fresh: true })} openLibrary={() => { workspace.open('library'); void refreshLibrary(); }}/> :
         mode === 'workbench' ? <TestSession documentId={doc.id} initialData={doc.initialData} services={services} onDraftChange={onDraftChange} onBackToTests={() => workspace.open('tests')}/> :
