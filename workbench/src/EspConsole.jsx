@@ -18,7 +18,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ devicesOnly = false, targetOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId, openTelemetry, debugArtifact }) {
+export default function EspConsole({ devicesOnly = false, targetOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId, openTelemetry, openBoard, debugArtifact }) {
   const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [wiringOpen, setWiringOpen] = useState(false);
@@ -288,7 +288,7 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
     </section><section className="device-section device-target" aria-label="STM32 hedef kart">
       <div className="device-card-heading"><div><small>HEDEF KART</small><h3>STM32</h3></div><span className={'device-connection-state' + (target?.connected ? ' is-connected' : '')}><i/>{target?.connected ? 'Bağlı' : 'Hedef bekleniyor'}</span></div>
       <div className="device-hero device-stm-hero"><img src={stmModuleImage} alt="STM32 mikrodenetleyici temsili görseli"/><span>{target?.label || target?.model || 'Henüz kart bağlı değil'}<small>{target?.label ? target?.model : 'SWD üzerinden hedef bağlantısı'}</small></span></div>
-      <div className="device-card-content">{target?.connected ? renderTargetBody() : <div className="device-target-empty"><Cpu size={24} strokeWidth={1}/><p>Hedef bağlantısı bekleniyor</p><small>SWDIO, SWCLK ve GND bağlantılarını kontrol et.</small></div>}
+      <div className="device-card-content"><button className="device-board-link" type="button" onClick={openBoard}>Kart profilini aç <ChevronRight size={15}/></button>{target?.connected ? renderTargetBody() : <div className="device-target-empty"><Cpu size={24} strokeWidth={1}/><p>Hedef bağlantısı bekleniyor</p><small>SWDIO, SWCLK ve GND bağlantılarını kontrol et.</small></div>}
       {renderTargetMaintenance()}
       </div>
     </section></div>

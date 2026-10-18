@@ -607,6 +607,7 @@ export default function App() {
   const services = { session, githubUser, esp, target, catalog, githubConfig, sourceStatus, sourceError, sourceBusy, preferences,
     debugArtifact: debugArtifacts[target?.uid], onFirmwareLoaded, onFirmwareSelected,
     recordBoardEvent,
+    openBoard: () => workspace.open('boards'),
     openTelemetry: data => workspace.open('monitor', { fresh: true, data }),
     shareTest: documentId => workspace.open('library', { fresh: true, data: { draftId: documentId } }),
     refreshSource, activateSource, activeBridge, bridge, setBridge, refreshTarget, refreshTargetAt, saveTargetName, saveTargetAnalysis, setNotice,
