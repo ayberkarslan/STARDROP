@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Cpu, FileUp, RefreshCw, Settings, X } from 'lucide-react';
+import { YRT_Button, YRT_Panel } from '@stardrop/ui';
 import { normalizeEspAddress } from './lib/espConnection.js';
 import { espJson, espStream } from './lib/espTransport.js';
 import Popup from './Popup.jsx';
@@ -205,14 +206,14 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
           <strong>{usage ? `${usagePercent.toFixed(1)}%` : '—'}</strong>
           <span>{usageProgress !== null ? 'Flash SWD üzerinden okunuyor...'
             : usageError || (usage ? `${kb(usage.programmedBytes)} programlanmış · ${kb(usage.freeBytes)} boş · ${(usage.durationMs / 1000).toFixed(1)} sn` : 'Flash analizi yapılmadı.')}</span>
-          <button className="flash-analyze" disabled={usageProgress !== null || deviceBusy || !target?.connected || esp?.status !== 'online'} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</button>
+          <YRT_Button size="sm" className="flash-analyze" disabled={usageProgress !== null || deviceBusy || !target?.connected || esp?.status !== 'online'} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</YRT_Button>
         </div>
       </div>
       {usageProgress !== null && <div className="target-analysis-progress"><div className="flash-feedback-top"><span>{usageRemaining === null ? 'SWD FLASH OKUNUYOR...' : `FLASH TARANIYOR · ~${usageRemaining} SN KALDI`}</span><strong>{usageProgress}%</strong></div><div className="progress"><i style={{ width: `${usageProgress}%` }}/></div></div>}
-      <p className="flash-analysis-note">Analiz tüm flash’ı SWD üzerinden yalnızca okur. “Programlanmış” bayt, değeri FF olmayan fiziksel flash baytıdır.</p>
+      {!compact && <p className="flash-analysis-note">Analiz tüm flash’ı SWD üzerinden yalnızca okur. “Programlanmış” bayt, değeri FF olmayan fiziksel flash baytıdır.</p>}
       {usage?.analyzedAt && <div className="flash-record-meta"><time dateTime={new Date(usage.analyzedAt).toISOString()}>Son analiz · {recordedDate(usage.analyzedAt)}</time><small>{usage.unsaved ? 'Bu oturum · yerel kayıt yapılmadı.' : 'Yerel kayıt · canlı ölçüm değil. Yükleme veya silme sonrası yeniden analiz et.'}</small></div>}
     </div>
-    {compact ? <details className="board-technical-details"><summary>Teknik bilgiler</summary>{targetDetails}</details> : targetDetails}
+    {!compact && targetDetails}
     {!compact && <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>}
   </div>;
 
@@ -236,7 +237,11 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
     </>}
   </div>;
 
-  const renderTargetMaintenance = () => <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
+  const renderTargetMaintenance = (compact = false) => compact ? <div className="board-maintenance-controls">
+    <p>Yeniden başlat, kurtarmayı dene veya flash’ı sil.</p>
+    <div className="board-maintenance-actions">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <YRT_Button key={operation} size="sm" variant={operation === 'erase' ? 'danger' : 'secondary'} disabled={deviceBusy || busy || !target?.connected || esp?.status !== 'online' || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</YRT_Button>)}</div>
+    {!programmer?.maintenanceAvailable && <small>Bakım için ESP firmware’ini güncelle.</small>}
+  </div> : <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
     {!programmer?.maintenanceAvailable && <p>Bakım işlemleri için ESP firmware’ini güncelle.</p>}
     <div className="device-action-row">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <button key={operation} className="secondary" disabled={deviceBusy || busy || !target?.connected || esp?.status !== 'online' || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</button>)}</div>
     <small>Kurtarma donanım arızasını, kopuk hattı veya RDP kilidini çözmez. NRST bağlantısı kilitli hedefte gerekebilir.</small>
@@ -254,16 +259,15 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
     </div>}
     {maintenanceError && <p role="alert">{maintenanceError}</p>}
     <div className="device-action-row">
-      <button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>{maintenanceProgress ? 'Kapat' : 'Vazgeç'}</button>
-      {!maintenanceProgress && <button className="primary" disabled={busy || deviceBusy} onClick={() => maintenance === 'erase' && !eraseConfirmed ? setEraseConfirmed(true) : runMaintenance()}>{maintenance === 'erase' ? eraseConfirmed ? 'Evet, flash’ı sil' : 'Devam et' : 'ONAYLA'}</button>}
+      <YRT_Button disabled={busy} onClick={() => setMaintenance(null)}>{maintenanceProgress ? 'Kapat' : 'Vazgeç'}</YRT_Button>
+      {!maintenanceProgress && <YRT_Button variant={maintenance === 'erase' ? 'danger' : 'primary'} disabled={busy || deviceBusy} onClick={() => maintenance === 'erase' && !eraseConfirmed ? setEraseConfirmed(true) : runMaintenance()}>{maintenance === 'erase' ? eraseConfirmed ? 'Evet, flash’ı sil' : 'Devam et' : 'ONAYLA'}</YRT_Button>}
     </div>
   </Popup>;
 
   if (targetOnly) return <div className="board-device-tools">
     <div className="board-device-tools-head"><h3>STM32 yönetimi</h3><div><span>{target?.connected ? 'Canlı kart' : 'Kayıtlı bilgiler'}</span><button type="button" aria-label="STM32 bağlantısını yenile" title="STM32 bağlantısını yenile" disabled={deviceBusy || busy || esp?.status !== 'online'} onClick={refreshTarget}><RefreshCw size={15}/></button></div></div>
-    {!target?.connected && <p className="board-device-hint">İşlem yapmak için bu kartı bağla. Son flash analizi kayıtlıysa aşağıda görünür.</p>}
-    {renderTargetBody(true)}
-    {renderTargetMaintenance()}
+    <div className="board-tools-grid"><YRT_Panel className="board-tool-card board-flash-panel" title="Flash analizi">{renderTargetBody(true)}</YRT_Panel>
+      <YRT_Panel className="board-tool-card board-maintenance-panel" title="Bakım ve kurtarma">{renderTargetMaintenance(true)}</YRT_Panel></div>
     {maintenancePopup}
   </div>;
 

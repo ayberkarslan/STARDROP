@@ -149,5 +149,5 @@ body,#root,.guest-layout,.app-shell,.app-shell>main{background:#000}
 .flash-ring-bg{fill:none;stroke:var(--surface-3);stroke-width:9}
 .flash-ring-value{fill:none;stroke:var(--status-green);stroke-width:9;stroke-linecap:round;transition:stroke-dashoffset .45s ease}
 .flash-summary{min-width:0;font-family:var(--font-mono)}.flash-summary strong{display:block;color:#fff;font-size:19px;letter-spacing:-.04em}.flash-summary span{display:block;margin-top:4px;color:var(--text-sub);font-size:10px;line-height:1.5;overflow-wrap:anywhere}
-.flash-analyze{margin-top:9px;padding:6px 9px;border:1px solid var(--border-mid);border-radius:5px;background:var(--surface-3);color:#fff;font:700 10px var(--font-mono);letter-spacing:.04em}.flash-analyze:hover:not(:disabled){border-color:var(--border-bright)}.flash-analyze:disabled{opacity:.5;cursor:default}
+.flash-analyze{margin-top:9px;background:#000;border-color:#555;color:#fff}.flash-analyze:hover:not(:disabled){border-color:#fff;background:#000}.flash-analyze:disabled{opacity:.5;cursor:default}
 .target-analysis-progress{margin-top:10px}.target-analysis-progress .progress{margin-top:6px}.flash-analysis-note{margin:8px 0 0;color:var(--text-sub);font:10px/1.55 var(--font-mono)}
