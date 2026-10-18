@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Camera, Check, ChevronDown, Clock3, Copy, Info, Search, StickyNote, X } from 'lucide-react';
+import { Camera, Check, ChevronDown, Clock3, Copy, Info, Search, X } from 'lucide-react';
 import { YRT_IconButton, YRT_SelectMenu, YRT_TextField } from '@stardrop/ui';
 import { boardTimeline, groupBoardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
 import { firmwareHistory } from './lib/watchMemory.js';
@@ -119,9 +119,9 @@ export default function BoardProfiles({ initialUid = null, records, target, esp,
             <button className="board-uid" title="UID kopyala" onClick={() => navigator.clipboard.writeText(selected).then(() => setNotice('Kart UID’si kopyalandı.')).catch(e => setError(e.message))}>{selected.toUpperCase()} <Copy size={14}/></button></div>
           <div className="board-hero-actions"><YRT_IconButton label="Kart kimlik bilgileri" size="sm" onClick={() => setInfoOpen(true)}><Info size={17}/></YRT_IconButton><YRT_SelectMenu label="Kart durumu" value={journal?.status || 'unknown'} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} onChange={saveStatus}/></div>
         </div>
-        <div className="board-facts"><span><Clock3 size={14}/> Son görüldü <strong>{active ? 'Şu an bağlı' : date(journal?.lastSeenAt)}</strong></span><span><StickyNote size={14}/> {timeline.length} kayıt</span></div>
+        {!active && journal?.lastSeenAt && <div className="board-facts"><span><Clock3 size={14}/> Son görüldü <strong>{date(journal.lastSeenAt)}</strong></span></div>}
         <EspConsole key={selected} targetOnly target={managedTarget} esp={esp} bridge={espBase} espBase={espBase} hardware={hardware} hardwareBusy={hardwareBusy} documentId={documentId} refreshTarget={refreshTarget} saveTargetAnalysis={saveTargetAnalysis} setNotice={setNotice}/>
-        <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>Yeni → eski</span></div>
+        <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>{timeline.length} kayıt · Yeni → eski</span></div>
           <form className="board-note-form" onSubmit={addNote}><textarea value={note} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="Bugün kartta ne denedin? Sonuç ve gözlemini yaz…" aria-label="Kart notu"/><div><SelectMenu ariaLabel="Kayıt türü" value={noteKind} options={[{ value: 'note', label: 'Not' }, { value: 'issue', label: 'Arıza şüphesi' }]} onChange={setNoteKind}/><button disabled={saving || !note.trim()}>Kaydet</button></div></form>
           {timelineRows.length ? timelineRows.map(event => event.kind === 'flash-group'
             ? <article className="board-event board-event-group" key={event.id}><span className="board-event-dot"/><details><summary><div><div className="board-event-top"><small>YAZILIM</small><time dateTime={new Date(event.at).toISOString()}>{date(event.at)}</time></div><strong>{event.events.length} yükleme işlemi</strong></div><ChevronDown size={16} aria-hidden="true"/></summary><div className="board-event-group-list">{event.events.map(item => <div className="board-event-group-item" key={item.id}><time dateTime={new Date(item.at).toISOString()}>{date(item.at)}</time><strong>{item.title}</strong>{item.detail && <p>{item.detail}</p>}</div>)}</div></details></article>
