@@ -69,7 +69,7 @@
 .stardrop-showroom .device-page-heading .sd-icon-button:hover:not(:disabled){color:#fff}
 .stardrop-stage{position:relative;display:grid;place-items:center;flex:1;min-height:430px;height:clamp(430px,59vh,680px);background:#000;overflow:hidden}
 .stardrop-product{width:min(100%,1100px);height:clamp(430px,59vh,680px);min-height:0;background:#000}
-.stardrop-product .sd-showcase__float img{max-width:100%;max-height:100%;filter:contrast(1.07)}
+.stardrop-product .sd-showcase__float img{width:auto;height:min(50vh,520px);max-width:min(72%,760px);max-height:calc(100% - 80px);filter:contrast(1.07)}
 .stardrop-stage-model,.stardrop-stage-state{position:absolute;z-index:2;top:24px;font:10px var(--font-mono);letter-spacing:.14em;color:#a8a8a8}
 .stardrop-stage-model{left:4%}.stardrop-stage-state{right:4%;display:inline-flex;align-items:center;gap:9px}
 .stardrop-stage-state i{width:6px;height:6px;border-radius:50%;background:#888}
@@ -88,7 +88,7 @@
 .stardrop-detail-grid .device-metric{gap:14px}.stardrop-detail-grid .device-metric>span{white-space:normal}
 .stardrop-detail-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:20px}
 @media(max-width:1050px){.stardrop-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}}
-@media(max-width:700px){.stardrop-showroom{min-height:0}.stardrop-showroom .device-page-heading h1{font-size:19px}.stardrop-stage,.stardrop-product{height:clamp(330px,52vh,470px);min-height:330px}.stardrop-stage-model,.stardrop-stage-state{top:12px;font-size:8px}.stardrop-readouts>div{padding:12px;min-height:66px}.stardrop-readouts strong{font-size:10px}.stardrop-readouts span{font-size:8px}.stardrop-detail-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.stardrop-showroom{min-height:0}.stardrop-showroom .device-page-heading h1{font-size:19px}.stardrop-stage,.stardrop-product{height:clamp(330px,52vh,470px);min-height:330px}.stardrop-product .sd-showcase__float img{height:min(42vh,340px);max-width:80%;max-height:calc(100% - 60px)}.stardrop-stage-model,.stardrop-stage-state{top:12px;font-size:8px}.stardrop-readouts>div{padding:12px;min-height:66px}.stardrop-readouts strong{font-size:10px}.stardrop-readouts span{font-size:8px}.stardrop-detail-grid{grid-template-columns:1fr}}
 .device-wiring-button{padding:7px 0;border:0;background:#000;color:#ddd;cursor:pointer;font:inherit;font-size:9px}
 .device-wiring-button:hover{color:#fff}.device-wiring-button:focus-visible{outline:1px solid #fff;outline-offset:5px}
 .ui-popup-backdrop .wiring-guide{width:min(750px,100%);padding:28px;background:#000}
