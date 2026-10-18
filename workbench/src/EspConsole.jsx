@@ -18,7 +18,7 @@ const speedOptions = [
   { value: 'safe', title: 'SAFE', detail: 'Uzun kablo ve zayıf temas' },
 ];
 
-export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId, openTelemetry, debugArtifact }) {
+export default function EspConsole({ devicesOnly = false, targetOnly = false, esp, bridge, setBridge, espBase, devices, onConnect, onDiscover, target, notice, refreshTarget, saveTargetName, saveTargetAnalysis, firmware, setFirmware, flashFirmware, flashLog, flashProgress, flashBusy, flashStage, flashError, flashStartedAt, setNotice, hardware, hardwareBusy, documentId, openTelemetry, debugArtifact }) {
   const deviceBusy = flashBusy || Boolean(hardwareBusy);
   const [drawer, setDrawer] = useState(null);
   const [wiringOpen, setWiringOpen] = useState(false);
@@ -64,7 +64,7 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
   };
 
   useEffect(() => { if (drawer === 'settings' && base) loadSettings(); }, [drawer, base]);
-  useEffect(() => { if (devicesOnly && base) loadSettings(); }, [devicesOnly, base]);
+  useEffect(() => { if ((devicesOnly || targetOnly) && base) loadSettings(); }, [devicesOnly, targetOnly, base]);
   useEffect(() => {
     if (esp?.programmer) setProgrammer(esp.programmer);
     if (esp?.wifi) setWifi(esp.wifi);
@@ -183,8 +183,17 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
     }
     finally { setBusy(false); }
   };
-  const renderTargetBody = () => <div className="drawer-body">
-    <div className="target-drawer-name"><Cpu size={18}/><strong>{target?.label || target?.model}</strong><small>{target?.model}</small></div>
+  const targetDetails = <>
+    <div className="detail-row"><span>UID</span><code>{target?.uid || '—'}</code></div>
+    <div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div>
+    <div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div>
+    <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
+    {target?.flashSizeKb > 0 && <div className="detail-row"><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + target.flashSizeKb * 1024 - 1).toString(16).toUpperCase().padStart(8, '0')}</code></div>}
+    {usage?.durationMs > 0 && <div className="detail-row"><span>Son tarama hızı</span><strong>{kb(usage.totalBytes * 1000 / usage.durationMs)}/sn</strong></div>}
+    {target?.recordUpdatedAt && <div className="detail-row"><span>Yerel kayıt güncellendi</span><strong>{recordedDate(target.recordUpdatedAt)}</strong></div>}
+  </>;
+  const renderTargetBody = (compact = false) => <div className="drawer-body">
+    {!compact && <div className="target-drawer-name"><Cpu size={18}/><strong>{target?.label || target?.model}</strong><small>{target?.model}</small></div>}
     <div className="target-flash-card">
       <div className="flash-visual">
         <svg className="flash-ring" viewBox="0 0 104 104" role="img" aria-label={`Flash doluluğu ${usage ? usagePercent.toFixed(1) + '%' : 'henüz ölçülmedi'}`}>
@@ -195,21 +204,15 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
           <strong>{usage ? `${usagePercent.toFixed(1)}%` : '—'}</strong>
           <span>{usageProgress !== null ? 'Flash SWD üzerinden okunuyor...'
             : usageError || (usage ? `${kb(usage.programmedBytes)} programlanmış · ${kb(usage.freeBytes)} boş · ${(usage.durationMs / 1000).toFixed(1)} sn` : 'Flash analizi yapılmadı.')}</span>
-          <button className="flash-analyze" disabled={usageProgress !== null || deviceBusy} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</button>
+          <button className="flash-analyze" disabled={usageProgress !== null || deviceBusy || !target?.connected || esp?.status !== 'online'} onClick={readUsage}>{usageProgress !== null ? 'ANALİZ EDİLİYOR...' : "FLASH'I ANALİZ ET"}</button>
         </div>
       </div>
       {usageProgress !== null && <div className="target-analysis-progress"><div className="flash-feedback-top"><span>{usageRemaining === null ? 'SWD FLASH OKUNUYOR...' : `FLASH TARANIYOR · ~${usageRemaining} SN KALDI`}</span><strong>{usageProgress}%</strong></div><div className="progress"><i style={{ width: `${usageProgress}%` }}/></div></div>}
       <p className="flash-analysis-note">Analiz tüm flash’ı SWD üzerinden yalnızca okur. “Programlanmış” bayt, değeri FF olmayan fiziksel flash baytıdır.</p>
       {usage?.analyzedAt && <div className="flash-record-meta"><time dateTime={new Date(usage.analyzedAt).toISOString()}>Son analiz · {recordedDate(usage.analyzedAt)}</time><small>{usage.unsaved ? 'Bu oturum · yerel kayıt yapılmadı.' : 'Yerel kayıt · canlı ölçüm değil. Yükleme veya silme sonrası yeniden analiz et.'}</small></div>}
     </div>
-    <div className="detail-row"><span>UID</span><code>{target?.uid || '—'}</code></div>
-    <div className="detail-row"><span>Device / revision</span><code>{target?.deviceId || '—'} / {target?.revisionId || '—'}</code></div>
-    <div className="detail-row"><span>DP IDCODE</span><code>{target?.dpIdcode || '—'}</code></div>
-    <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
-    {target?.flashSizeKb > 0 && <div className="detail-row"><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + target.flashSizeKb * 1024 - 1).toString(16).toUpperCase().padStart(8, '0')}</code></div>}
-    {usage?.durationMs > 0 && <div className="detail-row"><span>Son tarama hızı</span><strong>{kb(usage.totalBytes * 1000 / usage.durationMs)}/sn</strong></div>}
-    {target?.recordUpdatedAt && <div className="detail-row"><span>Yerel kayıt güncellendi</span><strong>{recordedDate(target.recordUpdatedAt)}</strong></div>}
-    <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>
+    {compact ? <details className="board-technical-details"><summary>Teknik bilgiler</summary>{targetDetails}</details> : targetDetails}
+    {!compact && <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>}
   </div>;
 
   const chooseFile = (file) => {
@@ -230,6 +233,37 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       <section className="settings-group"><div className="settings-group-heading"><strong>Kayıtlı ağlar</strong><small>Bağlanınca ESP’nin IP adresi değişebilir.</small></div>{wifi?.saved?.length ? wifi.saved.map((name) => <div className="network-row" key={name}><span>{name}{wifi.ssid === name && wifi.connected ? ' · aktif' : ''}</span><div><button disabled={busy || wifi.ssid === name && wifi.connected} onClick={() => action('/api/wifi/switch', { ssid: name }, `${name} ağına geçiliyor; IP değişebilir.`)}>Bağlan</button><button disabled={busy || wifi.ssid === name && wifi.connected} onClick={() => action('/api/wifi/remove', { ssid: name }, `${name} kaldırıldı.`)}>Sil</button></div></div>) : <small>Henüz kayıtlı ağ yok.</small>}<button className="settings-text-button" onClick={scanWifi} disabled={busy}>Çevredeki ağları tara</button>{networks.length > 0 && <div className="network-scan">{networks.map((item) => <button key={item.ssid} onClick={() => setSsid(item.ssid)}>{item.ssid}<small>{item.rssi} dBm</small></button>)}</div>}</section>
       <section className="settings-group"><div className="settings-group-heading"><strong>Yeni ağ ekle</strong><small>Ağı kaydettikten sonra yukarıdaki listeden bağlan.</small></div><input aria-label="Wi-Fi adı" value={ssid} onChange={(event) => setSsid(event.target.value)} placeholder="Wi-Fi adı (SSID)"/><input aria-label="Wi-Fi şifresi" type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Wi-Fi şifresi"/><button className="drawer-primary" disabled={busy || !ssid.trim()} onClick={() => action('/api/wifi/add', { ssid: ssid.trim(), pass: password }, 'Ağ kaydedildi. Bağlanmak için yukarıdan seç.')}>Ağı kaydet</button></section>
     </>}
+  </div>;
+
+  const renderTargetMaintenance = () => <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
+    {!programmer?.maintenanceAvailable && <p>Bakım işlemleri için ESP firmware’ini güncelle.</p>}
+    <div className="device-action-row">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <button key={operation} className="secondary" disabled={deviceBusy || busy || !target?.connected || esp?.status !== 'online' || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</button>)}</div>
+    <small>Kurtarma donanım arızasını, kopuk hattı veya RDP kilidini çözmez. NRST bağlantısı kilitli hedefte gerekebilir.</small>
+  </details>;
+  const maintenancePopup = maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}>
+    <h2>{maintenanceProgress?.done ? 'Flash silindi' : maintenanceError ? 'İşlem tamamlanamadı' : busy ? 'Flash bakımı' : maintenance === 'erase' ? eraseConfirmed ? 'Emin misin?' : 'Flash silinecek' : maintenance === 'recover' ? 'Kurtarma denemesi' : maintenance === 'esp-reset' ? 'ESP32 yeniden başlatılacak' : 'STM32 yeniden başlatılacak'}</h2>
+    <p>{maintenance === 'esp-reset' ? base : (target?.label || target?.model) + ' · ' + maintenanceUid}</p>
+    {!maintenanceProgress && <p>{maintenance === 'erase' ? 'Program ve tüm flash verileri kalıcı olarak silinir. Geri alınamaz; sonrasında yeniden kod yüklemelisin.' : maintenance === 'esp-reset' ? 'Ağ bağlantısı geçici kesilir. Kayıtlı ayarlar ve STM32 flash’ı korunur.' : 'Çalışan test kesilir. Flash programı korunur.'}</p>}
+    {maintenanceProgress && <div className="maintenance-progress" aria-live="polite">
+      <strong>{maintenanceProgress.done ? 'Silme ve doğrulama tamamlandı · %100' : maintenanceProgress.stage === 'erasing' ? `Siliniyor · %${maintenanceProgress.pct}` : maintenanceProgress.stage === 'verifying' ? `Silindi · %100 — Doğrulanıyor · %${maintenanceProgress.pct}` : 'Hedef bağlantısı kontrol ediliyor…'}</strong>
+      <progress max="100" value={maintenanceProgress.overallPct || 0} aria-label="Silme ve doğrulama ilerlemesi" style={{ width: '100%', accentColor: '#fff', margin: '18px 0' }}/>
+      <p>{maintenanceProgress.totalBytes > 0 ? `${kb(maintenanceProgress.processedBytes || 0)} / ${kb(maintenanceProgress.totalBytes)} · ` : ''}{maintenanceSeconds} sn</p>
+      {busy && Date.now() - maintenanceClock.current.updated > 5000 && <small>Son güncelleme {Math.floor((Date.now() - maintenanceClock.current.updated) / 1000)} sn önce. Yeni sektör yanıtı bekleniyor; tekrar silme başlatma.</small>}
+      {maintenanceProgress.done && <p>Flash’ın boş olduğu doğrulandı. Yeni kod yükleyebilirsin.</p>}
+    </div>}
+    {maintenanceError && <p role="alert">{maintenanceError}</p>}
+    <div className="device-action-row">
+      <button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>{maintenanceProgress ? 'Kapat' : 'Vazgeç'}</button>
+      {!maintenanceProgress && <button className="primary" disabled={busy || deviceBusy} onClick={() => maintenance === 'erase' && !eraseConfirmed ? setEraseConfirmed(true) : runMaintenance()}>{maintenance === 'erase' ? eraseConfirmed ? 'Evet, flash’ı sil' : 'Devam et' : 'ONAYLA'}</button>}
+    </div>
+  </Popup>;
+
+  if (targetOnly) return <div className="board-device-tools">
+    <div className="board-device-tools-head"><h3>STM32 yönetimi</h3><span>{target?.connected ? 'Canlı kart' : 'Kayıtlı bilgiler'}</span></div>
+    {!target?.connected && <p className="board-device-hint">İşlem yapmak için bu kartı bağla. Son flash analizi kayıtlıysa aşağıda görünür.</p>}
+    {renderTargetBody(true)}
+    {renderTargetMaintenance()}
+    {maintenancePopup}
   </div>;
 
   if (devicesOnly) return <div className="workspace devices-workspace">
@@ -254,32 +288,12 @@ export default function EspConsole({ devicesOnly = false, esp, bridge, setBridge
       <div className="device-card-heading"><div><small>HEDEF KART</small><h3>STM32</h3></div><span className={'device-connection-state' + (target?.connected ? ' is-connected' : '')}><i/>{target?.connected ? 'Bağlı' : 'Hedef bekleniyor'}</span></div>
       <div className="device-hero device-stm-hero"><img src={stmModuleImage} alt="STM32 mikrodenetleyici temsili görseli"/><span>{target?.label || target?.model || 'Henüz kart bağlı değil'}<small>{target?.label ? target?.model : 'SWD üzerinden hedef bağlantısı'}</small></span></div>
       <div className="device-card-content">{target?.connected ? renderTargetBody() : <div className="device-target-empty"><Cpu size={24} strokeWidth={1}/><p>Hedef bağlantısı bekleniyor</p><small>SWDIO, SWCLK ve GND bağlantılarını kontrol et.</small></div>}
-      <details className="device-maintenance"><summary>Bakım ve kurtarma</summary><p>Reset RAM’i yazılımın başlangıç durumuna getirir. Flash silme tüm programı ve flash’taki verileri kaldırır; geri alınamaz. Option byte ve koruma ayarları değiştirilmez.</p>
-        {!programmer?.maintenanceAvailable && <p>Bakım işlemleri için ESP firmware’ini güncelle.</p>}
-        <div className="device-action-row">{[['reset', 'Yeniden başlat'], ['recover', 'Kurtarma dene'], ['erase', 'Flash’ı sil']].map(([operation, text]) => <button key={operation} className="secondary" disabled={deviceBusy || busy || !target?.connected || !programmer?.maintenanceAvailable} onClick={() => openMaintenance(operation)}>{text}</button>)}</div>
-        <small>Kurtarma donanım arızasını, kopuk hattı veya RDP kilidini çözmez. NRST bağlantısı kilitli hedefte gerekebilir.</small>
-      </details>
+      {renderTargetMaintenance()}
       </div>
     </section></div>
     {wiringOpen && <WiringGuide programmer={programmer} online={esp?.status === 'online'} target={target} onClose={() => setWiringOpen(false)}/>}
     {drawer && <Popup variant="drawer" className="detail-drawer" ariaLabel="ESP32 ayarları" onClose={() => setDrawer(null)}><div className="drawer-title"><h2>ESP32 ayarları</h2><button onClick={() => setDrawer(null)} aria-label="Kapat"><X size={18}/></button></div>{renderSettingsBody()}</Popup>}
-    {maintenance && <Popup ariaLabel="STM32 bakım onayı" onClose={() => { if (!busy) setMaintenance(null); }}>
-      <h2>{maintenanceProgress?.done ? 'Flash silindi' : maintenanceError ? 'İşlem tamamlanamadı' : busy ? 'Flash bakımı' : maintenance === 'erase' ? eraseConfirmed ? 'Emin misin?' : 'Flash silinecek' : maintenance === 'recover' ? 'Kurtarma denemesi' : maintenance === 'esp-reset' ? 'ESP32 yeniden başlatılacak' : 'STM32 yeniden başlatılacak'}</h2>
-      <p>{maintenance === 'esp-reset' ? base : (target?.label || target?.model) + ' · ' + maintenanceUid}</p>
-      {!maintenanceProgress && <p>{maintenance === 'erase' ? 'Program ve tüm flash verileri kalıcı olarak silinir. Geri alınamaz; sonrasında yeniden kod yüklemelisin.' : maintenance === 'esp-reset' ? 'Ağ bağlantısı geçici kesilir. Kayıtlı ayarlar ve STM32 flash’ı korunur.' : 'Çalışan test kesilir. Flash programı korunur.'}</p>}
-      {maintenanceProgress && <div className="maintenance-progress" aria-live="polite">
-        <strong>{maintenanceProgress.done ? 'Silme ve doğrulama tamamlandı · %100' : maintenanceProgress.stage === 'erasing' ? `Siliniyor · %${maintenanceProgress.pct}` : maintenanceProgress.stage === 'verifying' ? `Silindi · %100 — Doğrulanıyor · %${maintenanceProgress.pct}` : 'Hedef bağlantısı kontrol ediliyor…'}</strong>
-        <progress max="100" value={maintenanceProgress.overallPct || 0} aria-label="Silme ve doğrulama ilerlemesi" style={{ width: '100%', accentColor: '#fff', margin: '18px 0' }}/>
-        <p>{maintenanceProgress.totalBytes > 0 ? `${kb(maintenanceProgress.processedBytes || 0)} / ${kb(maintenanceProgress.totalBytes)} · ` : ''}{maintenanceSeconds} sn</p>
-        {busy && Date.now() - maintenanceClock.current.updated > 5000 && <small>Son güncelleme {Math.floor((Date.now() - maintenanceClock.current.updated) / 1000)} sn önce. Yeni sektör yanıtı bekleniyor; tekrar silme başlatma.</small>}
-        {maintenanceProgress.done && <p>Flash’ın boş olduğu doğrulandı. Yeni kod yükleyebilirsin.</p>}
-      </div>}
-      {maintenanceError && <p role="alert">{maintenanceError}</p>}
-      <div className="device-action-row">
-        <button className="secondary" disabled={busy} onClick={() => setMaintenance(null)}>{maintenanceProgress ? 'Kapat' : 'Vazgeç'}</button>
-        {!maintenanceProgress && <button className="primary" disabled={busy || deviceBusy} onClick={() => maintenance === 'erase' && !eraseConfirmed ? setEraseConfirmed(true) : runMaintenance()}>{maintenance === 'erase' ? eraseConfirmed ? 'Evet, flash’ı sil' : 'Devam et' : 'ONAYLA'}</button>}
-      </div>
-    </Popup>}
+    {maintenancePopup}
   </div>;
 
   const blocker = deviceBusy ? 'Donanım işleminin bitmesi bekleniyor.' : esp?.status !== 'online' ? 'ESP32 bağlantısı bekleniyor.' : !target?.connected ? 'STM32 bağlantısı bekleniyor.' : !firmware ? 'Bir .bin veya .elf dosyası seç.' : '';
