@@ -58,7 +58,8 @@ Katalog testin MCU ailesini, manifest ise gerçek HAL hedefini belirtir;
 F401 kaynakları F446 isteğiyle derlenemez. PA13/PA14 SWD için ayrılmıştır.
 
 Yeni testte aynı klasör/manifest/pin-rol düzenini kullan. Sensör kodu ve
-başarı ölçütü hazır olmadan `ready` yapma; BHI360 hâlâ `planned`.
+başarı ölçütü hazır olmadan `ready` yapma. BHI360 için yalnızca bağlantı/kimlik
+testi hazırdır; ivme/jyro ölçümü henüz hazır değildir.
 
 ## Ekiple proje paylaşma
 

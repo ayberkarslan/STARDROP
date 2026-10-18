@@ -25,7 +25,7 @@ test('GitHub code catalog resolves LED test without hardcoded board reference', 
   assert.equal(deviceForComponent(CODE_REPO_CATALOG, bhi)?.id, 'bhi360');
   assert.deepEqual(deviceForComponent(CODE_REPO_CATALOG, { ...bhi, protocol: 'SPI' })
     ?.interfaces.find((item) => item.protocol === 'SPI').requiredRoles, ['SCK', 'MISO', 'MOSI', 'CS']);
-  assert.equal(testForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6'), null);
+  assert.equal(testForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6')?.id, 'bhi360-identity');
   assert.deepEqual(testsForComponent(CODE_REPO_CATALOG, bhi, 'STM32F446RET6').map((item) => item.id), ['bhi360-identity']);
 });
 

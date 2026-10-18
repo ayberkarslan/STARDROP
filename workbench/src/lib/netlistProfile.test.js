@@ -45,7 +45,7 @@ test('custom I2C netlist automatically receives a software bus, pending approval
   assert.equal(validateTestTarget(profile, 'U2').valid, true);
 });
 
-test('BHI360 fixture is detected but not claimed as a runnable hardware test', () => {
+test('BHI360 fixture maps pins but requires approval before the identity test', () => {
   const netlist = readFileSync(new URL('../../../parse_algorithm/test.net', import.meta.url), 'utf8');
   const { profile, analysis } = profileFromNetlist(netlist);
   const bhi = profile.components.find((item) => item.part.startsWith('BHI360'));
@@ -61,6 +61,7 @@ test('BHI360 fixture is detected but not claimed as a runnable hardware test', (
   assert.equal(profile.components.find(component => component.ref === 'D6').activeLow, false);
   assert.deepEqual(profile.components.filter(component => component.powerOnly).map(component => component.ref), ['D3', 'D4', 'D5']);
   assert.equal(validateTestTarget(profile, bhi.ref).valid, false);
+  assert.equal(testForComponent(DEFAULT_TEST_CATALOG, bhi, profile.mcu.part), null);
 });
 
 const ledNet = (gpioSide = 'A', railSide = 'GND', via = true) => `Wire List

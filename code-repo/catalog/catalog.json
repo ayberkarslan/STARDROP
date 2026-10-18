@@ -85,11 +85,13 @@
     {
       "id": "bhi360-identity",
       "deviceId": "bhi360",
-      "name": "BHI360 · kimlik ve başlatma",
-      "description": "Planlandı: kimlik, firmware yükleme/başlatma ve örnek ölçüm raporu.",
-      "status": "planned",
+      "name": "BHI360 · bağlantı ve kimlik",
+      "description": "I²C üzerinden ürün kimliğini kontrol eder. Firmware yüklemez; ivme/jyro ölçümü değildir. Fiziksel kart doğrulaması bekliyor.",
+      "status": "ready",
       "protocol": "I2C",
-      "supportedMcu": ["STM32F446"],
+      "matchParts": ["BHI360", "BHI360-IMU"],
+      "supportedMcu": ["STM32F446RE"],
+      "sourcePath": "tests/bhi360-f446/stardrop-project.json",
       "build": "stm32-hal-v1",
       "result": "sram",
       "requiredRoles": ["SCL", "SDA"]
