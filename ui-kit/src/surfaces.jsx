@@ -2,7 +2,7 @@ import { forwardRef, useId } from 'react';
 
 const join = (...parts) => parts.filter(Boolean).join(' ');
 
-export function Panel({ title, description, action, children, className, as: Element = 'section', ...props }) {
+export function YRT_Panel({ title, description, action, children, className, as: Element = 'section', ...props }) {
   return <Element {...props} className={join('sd-panel', className)}>
     {(title || description || action) && <div className="sd-panel__header">
       <div>{title && <h2 className="sd-panel__title">{title}</h2>}{description && <p className="sd-panel__description">{description}</p>}</div>
@@ -12,11 +12,11 @@ export function Panel({ title, description, action, children, className, as: Ele
   </Element>;
 }
 
-export function StatusBadge({ children, tone = 'neutral', className, ...props }) {
+export function YRT_StatusBadge({ children, tone = 'neutral', className, ...props }) {
   return <span {...props} className={join('sd-status', `sd-status--${tone}`, className)}>{children}</span>;
 }
 
-export const TextField = forwardRef(function TextField({ label, hint, error, id, className, ...props }, ref) {
+export const YRT_TextField = forwardRef(function YRT_TextField({ label, hint, error, id, className, ...props }, ref) {
   const generatedId = useId();
   const inputId = id || generatedId;
   const hintId = `${inputId}-hint`;

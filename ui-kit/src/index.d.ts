@@ -1,38 +1,38 @@
 import type { ReactNode, ComponentPropsWithoutRef, ElementType, Ref } from 'react';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md';
-export type StatusTone = 'neutral' | 'success' | 'warning' | 'danger';
+export type YRT_ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type YRT_ButtonSize = 'sm' | 'md';
+export type YRT_StatusTone = 'neutral' | 'success' | 'warning' | 'danger';
 
-export interface ButtonProps extends ComponentPropsWithoutRef<'button'> {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
+export interface YRT_ButtonProps extends ComponentPropsWithoutRef<'button'> {
+  variant?: YRT_ButtonVariant;
+  size?: YRT_ButtonSize;
   loading?: boolean;
 }
-export function Button(props: ButtonProps & { ref?: Ref<HTMLButtonElement> }): ReactNode;
-export function IconButton(props: ButtonProps & { label: string; ref?: Ref<HTMLButtonElement> }): ReactNode;
-export function ChoiceCard(props: ComponentPropsWithoutRef<'button'> & { ref?: Ref<HTMLButtonElement> }): ReactNode;
-export function BackArrow(props: { onClick?: () => void; label?: string; title?: string; className?: string }): ReactNode;
+export function YRT_Button(props: YRT_ButtonProps & { ref?: Ref<HTMLButtonElement> }): ReactNode;
+export function YRT_IconButton(props: YRT_ButtonProps & { label: string; ref?: Ref<HTMLButtonElement> }): ReactNode;
+export function YRT_ChoiceCard(props: ComponentPropsWithoutRef<'button'> & { ref?: Ref<HTMLButtonElement> }): ReactNode;
+export function YRT_BackArrow(props: { onClick?: () => void; label?: string; title?: string; className?: string }): ReactNode;
 
-export interface PanelProps extends Omit<ComponentPropsWithoutRef<'section'>, 'title'> {
+export interface YRT_PanelProps extends Omit<ComponentPropsWithoutRef<'section'>, 'title'> {
   title?: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   as?: ElementType;
 }
-export function Panel(props: PanelProps): ReactNode;
-export function StatusBadge(props: ComponentPropsWithoutRef<'span'> & { tone?: StatusTone }): ReactNode;
-export function TextField(props: ComponentPropsWithoutRef<'input'> & {
+export function YRT_Panel(props: YRT_PanelProps): ReactNode;
+export function YRT_StatusBadge(props: ComponentPropsWithoutRef<'span'> & { tone?: YRT_StatusTone }): ReactNode;
+export function YRT_TextField(props: ComponentPropsWithoutRef<'input'> & {
   label?: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
   ref?: Ref<HTMLInputElement>;
 }): ReactNode;
 
-export interface SelectOption { value: string; label: ReactNode; searchText?: string }
-export interface SelectMenuProps {
+export interface YRT_SelectOption { value: string; label: ReactNode; searchText?: string }
+export interface YRT_SelectMenuProps {
   value: string;
-  options: SelectOption[];
+  options: YRT_SelectOption[];
   onChange: (value: string) => void;
   label: string;
   placeholder?: string;
@@ -40,4 +40,12 @@ export interface SelectMenuProps {
   disabled?: boolean;
   className?: string;
 }
-export function SelectMenu(props: SelectMenuProps): ReactNode;
+export function YRT_SelectMenu(props: YRT_SelectMenuProps): ReactNode;
+
+export { YRT_Button as Button, YRT_IconButton as IconButton, YRT_ChoiceCard as ChoiceCard,
+  YRT_BackArrow as BackArrow, YRT_Panel as Panel, YRT_StatusBadge as StatusBadge,
+  YRT_TextField as TextField, YRT_SelectMenu as SelectMenu };
+export type { YRT_ButtonVariant as ButtonVariant, YRT_ButtonSize as ButtonSize,
+  YRT_StatusTone as StatusTone, YRT_ButtonProps as ButtonProps,
+  YRT_PanelProps as PanelProps, YRT_SelectOption as SelectOption,
+  YRT_SelectMenuProps as SelectMenuProps };

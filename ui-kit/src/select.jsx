@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
-export function SelectMenu({ value, options, onChange, label, placeholder = 'Seç', searchable = false, disabled = false, className = '' }) {
+export function YRT_SelectMenu({ value, options, onChange, label, placeholder = 'Seç', searchable = false, disabled = false, className = '' }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const root = useRef(null);
