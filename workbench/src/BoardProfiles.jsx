@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Camera, Check, ChevronDown, CircleAlert, Clock3, Copy, Search, StickyNote } from 'lucide-react';
+import { Camera, Check, ChevronDown, Clock3, Copy, Info, Search, StickyNote, X } from 'lucide-react';
+import { YRT_IconButton, YRT_SelectMenu, YRT_TextField } from '@stardrop/ui';
 import { boardTimeline, groupBoardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
 import { firmwareHistory } from './lib/watchMemory.js';
 import { targetUid } from './lib/targetRegistry.js';
 import { boardChoices, filterBoards } from './lib/boardFilters.js';
 import SelectMenu from './SelectMenu.jsx';
 import EspConsole from './EspConsole.jsx';
+import Popup from './Popup.jsx';
 
 const statusLabels = { unknown: 'Durum bilinmiyor', healthy: 'Çalışıyor', check: 'Kontrol gerekli', faulty: 'Arızalı olabilir' };
 const eventLabels = { connected: 'BAĞLANTI', flash: 'YAZILIM', test: 'TEST', note: 'NOT', issue: 'DURUM', analysis: 'BELLEK', name: 'İSİM' };
@@ -18,6 +20,8 @@ export default function BoardProfiles({ initialUid = null, records, target, esp,
   const [modelFilter, setModelFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [name, setName] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [note, setNote] = useState('');
   const [noteKind, setNoteKind] = useState('note');
   const [photoUrl, setPhotoUrl] = useState(null);
@@ -36,7 +40,7 @@ export default function BoardProfiles({ initialUid = null, records, target, esp,
   useEffect(() => {
     if (connectedUid && !selected) setSelected(connectedUid);
   }, [connectedUid, selected]);
-  useEffect(() => { setName(records[selected]?.label || ''); }, [selected, records]);
+  useEffect(() => { setName(records[selected]?.label || ''); setEditingName(false); setInfoOpen(false); }, [selected, records[selected]?.label]);
   useEffect(() => {
     const blob = journals[selected]?.photo;
     if (!blob) { setPhotoUrl(null); return; }
@@ -58,14 +62,16 @@ export default function BoardProfiles({ initialUid = null, records, target, esp,
   const managedTarget = active ? target : { ...journal?.hardware, ...record, uid: selected, model: record?.model || journal?.hardware?.model, connected: false,
     hardwareObservedAt: journal?.hardware?.observedAt, recordUpdatedAt: record?.updatedAt };
 
-  const saveName = async () => {
+  const saveName = async event => {
+    event?.preventDefault();
+    if (!name.trim() || name.trim() === record?.label) return;
     setSaving(true); setError('');
-    try { await saveTargetName({ uid: selected, model: record?.model || target?.model || '' }, name); setNotice('Kart adı UID’ye kaydedildi.'); }
+    try { await saveTargetName({ uid: selected, model: record?.model || managedTarget?.model || '' }, name.trim()); setEditingName(false); setNotice('Kart adı UID’ye kaydedildi.'); }
     catch (e) { setError(e.message); }
     finally { setSaving(false); }
   };
   const saveStatus = async status => {
-    if (!selected || !statusLabels[status]) return;
+    if (!selected || !statusLabels[status] || status === (journal?.status || 'unknown')) return;
     try {
       const title = `Durum: ${statusLabels[status]}`;
       await updateBoardJournal(selected, current => ({ ...current, status, events: [...current.events, {
@@ -106,13 +112,14 @@ export default function BoardProfiles({ initialUid = null, records, target, esp,
       <main className="board-detail">{selected ? <>
         <div className="board-hero"><div className="board-photo">{photoUrl ? <img src={photoUrl} alt="Kart fotoğrafı"/> : <span>{(record?.label || record?.model || 'S').slice(0, 1).toUpperCase()}</span>}
           <label className="board-photo-pick" title="Fotoğraf ekle"><Camera size={17}/><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => changePhoto(e.target.files?.[0])}/></label></div>
-          <div className="board-identity"><span className="eyebrow">KART PROFİLİ {active && <span className="board-live-label"><i aria-hidden="true"/>BAĞLI</span>}</span><h2>{record?.label || record?.model || 'İsimsiz kart'}</h2><p>{record?.model || target?.model || 'Model bilinmiyor'}</p>
+          <div className="board-identity"><span className="eyebrow">KART PROFİLİ {active && <span className="board-live-label"><i aria-hidden="true"/>BAĞLI</span>}</span>
+            {editingName ? <form className="board-name-editor" onSubmit={saveName}><YRT_TextField autoFocus value={name} maxLength={32} aria-label="Kart adı" onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setEditingName(false); setName(record?.label || ''); } }}/><YRT_IconButton label="Kart adını kaydet" size="sm" type="submit" disabled={saving || !name.trim() || name.trim() === record?.label}><Check size={16}/></YRT_IconButton><YRT_IconButton label="Vazgeç" size="sm" onClick={() => { setEditingName(false); setName(record?.label || ''); }}><X size={16}/></YRT_IconButton></form>
+              : <button className="board-name-button" type="button" title="Kart adını değiştir" onClick={() => setEditingName(true)}>{record?.label || record?.model || 'İsimsiz kart'}</button>}
+            <p>{managedTarget?.model || 'Model bilinmiyor'}</p>
             <button className="board-uid" title="UID kopyala" onClick={() => navigator.clipboard.writeText(selected).then(() => setNotice('Kart UID’si kopyalandı.')).catch(e => setError(e.message))}>{selected.toUpperCase()} <Copy size={14}/></button></div>
+          <div className="board-hero-actions"><YRT_IconButton label="Kart kimlik bilgileri" size="sm" onClick={() => setInfoOpen(true)}><Info size={17}/></YRT_IconButton><YRT_SelectMenu label="Kart durumu" value={journal?.status || 'unknown'} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} onChange={saveStatus}/></div>
         </div>
-        <div className="board-facts"><span><Clock3 size={16}/> Son görüldü <strong>{active ? 'Şu an bağlı' : date(journal?.lastSeenAt)}</strong></span><span><StickyNote size={16}/> Kayıt <strong>{timeline.length}</strong></span><span><CircleAlert size={16}/> Durum <strong>{statusLabels[journal?.status || 'unknown']}</strong></span></div>
-        <div className="board-edit"><label>İsim<input value={name} maxLength={32} onChange={e => setName(e.target.value)} placeholder="Karta isim ver"/></label><button disabled={saving || !name.trim() || name.trim() === record?.label} onClick={saveName}>Kaydet</button>
-          <div className="board-field"><span>Durum</span><SelectMenu ariaLabel="Kart durumu" value={journal?.status || 'unknown'} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} onChange={saveStatus}/></div></div>
-        {!active && <p className="board-hint">Bu kart çevrimdışı. Profilini düzenleyebilir, donanım testini bağlandığında sürdürebilirsin.</p>}
+        <div className="board-facts"><span><Clock3 size={14}/> Son görüldü <strong>{active ? 'Şu an bağlı' : date(journal?.lastSeenAt)}</strong></span><span><StickyNote size={14}/> {timeline.length} kayıt</span></div>
         <EspConsole key={selected} targetOnly target={managedTarget} esp={esp} bridge={espBase} espBase={espBase} hardware={hardware} hardwareBusy={hardwareBusy} documentId={documentId} refreshTarget={refreshTarget} saveTargetAnalysis={saveTargetAnalysis} setNotice={setNotice}/>
         <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>Yeni → eski</span></div>
           <form className="board-note-form" onSubmit={addNote}><textarea value={note} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="Bugün kartta ne denedin? Sonuç ve gözlemini yaz…" aria-label="Kart notu"/><div><SelectMenu ariaLabel="Kayıt türü" value={noteKind} options={[{ value: 'note', label: 'Not' }, { value: 'issue', label: 'Arıza şüphesi' }]} onChange={setNoteKind}/><button disabled={saving || !note.trim()}>Kaydet</button></div></form>
@@ -121,6 +128,9 @@ export default function BoardProfiles({ initialUid = null, records, target, esp,
             : <article className="board-event" key={event.id}><span className="board-event-dot"/><div><div className="board-event-top"><small>{eventLabels[event.kind] || 'KAYIT'}</small><time dateTime={new Date(event.at).toISOString()}>{date(event.at)}</time></div><strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div></article>)
             : <div className="board-timeline-empty"><Check size={20}/> Henüz olay yok. İlk atölye notunu ekle.</div>}
         </section>
+        {infoOpen && <Popup ariaLabel="Kart kimlik bilgileri" className="board-info-popup" onClose={() => setInfoOpen(false)}><div className="board-info-head"><div><span className="eyebrow">KART KİMLİĞİ</span><h2>{record?.label || managedTarget?.model || 'İsimsiz kart'}</h2></div><YRT_IconButton label="Kapat" size="sm" onClick={() => setInfoOpen(false)}><X size={17}/></YRT_IconButton></div><div className="board-info-list">
+          <div><span>Üretici</span><strong>STMicroelectronics</strong></div><div><span>MCU modeli</span><strong>{managedTarget?.model || '—'}</strong></div><div><span>Çip UID</span><code>{selected.toUpperCase()}</code></div><div><span>Device ID</span><code>{managedTarget?.deviceId || '—'}</code></div><div><span>Revizyon</span><code>{managedTarget?.revisionId || '—'}</code></div><div><span>Debug Port IDCODE</span><code>{managedTarget?.dpIdcode || '—'}</code></div><div><span>Flash kapasitesi</span><strong>{managedTarget?.flashSizeKb ? `${managedTarget.flashSizeKb} KB` : '—'}</strong></div>{managedTarget?.flashSizeKb > 0 && <div><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + managedTarget.flashSizeKb * 1024 - 1).toString(16).toUpperCase().padStart(8, '0')}</code></div>}
+        </div><p>UID çipe özgü kimliktir; kartın ayrı bir üretim seri numarası varsa bu veri SWD üzerinden okunamaz.</p></Popup>}
       </> : <div className="board-no-selection">Bir kart seç veya STM32 bağla.</div>}</main>
     </div>
   </div>;
