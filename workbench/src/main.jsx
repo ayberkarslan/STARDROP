@@ -36,7 +36,11 @@ if (window.__TAURI_INTERNALS__) {
   const started = performance.now();
   void document.fonts.load('16px Michroma').catch(() => {}).then(() => {
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      setTimeout(() => { void invoke('finish_startup').catch(() => {}); }, Math.max(0, 1200 - (performance.now() - started)));
+      setTimeout(() => {
+        void invoke('finish_startup').catch(() => {}).finally(() => document.documentElement.classList.remove('startup-pending'));
+      }, Math.max(0, 1200 - (performance.now() - started)));
     }));
   });
+} else {
+  document.documentElement.classList.remove('startup-pending');
 }

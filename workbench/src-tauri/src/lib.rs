@@ -565,13 +565,12 @@ pub fn run() {
 
 fn reveal_main_window(app: &tauri::AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
-        if !main.is_visible().unwrap_or(false) {
-            let _ = main.show();
-            let _ = main.set_focus();
+        if !main.is_resizable().unwrap_or(false) {
+            let _ = main.set_size(tauri::LogicalSize::new(1280.0, 820.0));
+            let _ = main.center();
+            let _ = main.set_min_size(Some(tauri::LogicalSize::new(960.0, 640.0)));
+            let _ = main.set_resizable(true);
         }
-    }
-    if let Some(splash) = app.get_webview_window("splash") {
-        let _ = splash.close();
     }
 }
 

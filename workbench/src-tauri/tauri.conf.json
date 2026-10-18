@@ -13,27 +13,11 @@
     "windows": [
       {
         "title": "STARDROP Workbench",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 960,
-        "minHeight": 640,
-        "resizable": true,
-        "decorations": false,
-        "devtools": false,
-        "visible": false
-      },
-      {
-        "label": "splash",
-        "title": "STARDROP",
-        "url": "splash.html",
         "width": 760,
         "height": 220,
         "resizable": false,
-        "decorations": false,
-        "transparent": false,
-        "shadow": false,
         "center": true,
-        "skipTaskbar": true,
+        "decorations": false,
         "devtools": false
       }
     ],
