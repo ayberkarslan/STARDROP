@@ -22,7 +22,7 @@
     "build": "vite build",
     "prepare:toolchain": "node tools/prepare-toolchain.mjs",
     "tauri": "tauri",
-    "test:core": "node src/lib/targetPins.test.js && node src/lib/boardProfile.test.js && node src/lib/netlistProfile.test.js && node src/lib/projectArchive.test.js && node src/lib/aiReview.test.js && node src/lib/githubClient.test.js && node src/lib/githubAuth.test.js && node src/lib/diagnosticArtifact.test.js && node src/lib/testCatalog.test.js && node src/lib/testLibrary.test.js && node src/lib/firmwareImage.test.js && node src/lib/espConnection.test.js && node src/lib/espTransport.test.js",
+    "test:core": "node src/lib/targetPins.test.js && node src/lib/boardProfile.test.js && node src/lib/netlistProfile.test.js && node src/lib/projectArchive.test.js && node src/lib/aiReview.test.js && node src/lib/githubClient.test.js && node src/lib/githubAuth.test.js && node src/lib/diagnosticArtifact.test.js && node src/lib/testCatalog.test.js && node src/lib/testLibrary.test.js && node src/lib/testFailure.test.js && node src/lib/firmwareImage.test.js && node src/lib/espConnection.test.js && node src/lib/espTransport.test.js",
     "test:firmware": "node src/lib/diagnosticPipeline.test.js",
     "test:bmp180": "node tools/bmp180-smoke.mjs",
     "test:bmp581": "node tools/bmp581-smoke.mjs && node --test src/lib/bmp581Catalog.test.js",

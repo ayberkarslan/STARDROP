@@ -8,6 +8,7 @@ import { saveSecret } from './lib/secretStore.js';
 import { hash32FromSha256, sha256Hex } from './lib/diagnosticArtifact.js';
 import { espJson } from './lib/espTransport.js';
 import { buildableTargetPart, testsForComponent } from './lib/testCatalog.js';
+import { testFailureMessage } from './lib/testFailure.js';
 import WorkbenchWizard from './WorkbenchWizard.jsx';
 import Popup from './Popup.jsx';
 import useFirmwareJob from './useFirmwareJob.js';
@@ -48,7 +49,7 @@ export default function TestSession({ documentId, initialData, services, onDraft
     : !githubUser ? 'Ayarlar ekranından GitHub girişi yap.'
     : !buildableTargetPart(profile?.mcu?.part) ? 'Bu MCU için yerel HAL derleme desteği henüz yok.'
     : preferences && preferences.trustedRepository !== githubConfig.repository ? 'Bu depoyu Ayarlar → Güvenlik bölümünde güvenilir olarak seç.'
-    : !selectedTest ? 'Bu bileşen için hazır test kataloğa henüz eklenmedi.'
+    : !selectedTest ? 'Bu bileşen için etkin kaynak sürümünde hazır test yok. Test deposunu güncelle; kaynaklar henüz yayımlanmadıysa önce yayımla.'
     : selectedTest.build !== 'stm32-hal-v1' || !['visual', 'sram'].includes(selectedTest.result) ? 'Bu test için desteklenen kaynak veya sonuç sözleşmesi yok.'
     : sourceBusy ? 'Kod kaynağı güncelleniyor; indirme bitince testi başlat.'
     : !sourceStatus?.activeSha ? 'Önce test kaynağını GitHub’dan indir.'
@@ -198,11 +199,12 @@ export default function TestSession({ documentId, initialData, services, onDraft
       setVisualPending(requestId);
       setTestStage('GitHub test firmware’i yüklendi. Sonucu gözle kontrol et.');
     } catch (error) {
-      setTestStage(`${selectedTest.name} durdu: ${error.message}`);
-      setNotice(`Donanım testi başarısız: ${error.message}`);
+      const detail = testFailureMessage(error);
+      setTestStage(`${selectedTest.name} durdu: ${detail}`);
+      setNotice(`Donanım testi başarısız: ${detail}`);
       setTestHistory((items) => [...items, { at: new Date().toISOString(), requestId, componentRef: activeSensor.ref,
-        testId: selectedTest.id, status: 'ERROR', error: error.message }]);
-      if (target?.uid || profile?.targetUid) void recordBoardEvent(target?.uid || profile.targetUid, 'test', `${selectedTest.name}: hata`, error.message).catch(() => {});
+        testId: selectedTest.id, status: 'ERROR', error: detail }]);
+      if (target?.uid || profile?.targetUid) void recordBoardEvent(target?.uid || profile.targetUid, 'test', `${selectedTest.name}: hata`, detail).catch(() => {});
     } finally { setTestBusy(false); hardware.release(lease); }
   };
 
