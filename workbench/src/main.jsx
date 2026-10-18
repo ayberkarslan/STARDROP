@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { invoke } from '@tauri-apps/api/core';
 import App from './App.jsx';
 import WindowChrome from './WindowChrome.jsx';
 import { installDesktopInput } from './lib/desktopInput.js';
@@ -30,3 +31,12 @@ const removeDesktopInput = installDesktopInput(window);
 if (import.meta.hot) import.meta.hot.dispose(removeDesktopInput);
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><WindowChrome /><App /></React.StrictMode>);
+
+if (window.__TAURI_INTERNALS__) {
+  const started = performance.now();
+  void document.fonts.load('16px Michroma').catch(() => {}).then(() => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      setTimeout(() => { void invoke('finish_startup').catch(() => {}); }, Math.max(0, 1200 - (performance.now() - started)));
+    }));
+  });
+}

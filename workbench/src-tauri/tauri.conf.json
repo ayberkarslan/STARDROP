@@ -19,6 +19,21 @@
         "minHeight": 640,
         "resizable": true,
         "decorations": false,
+        "devtools": false,
+        "visible": false
+      },
+      {
+        "label": "splash",
+        "title": "STARDROP",
+        "url": "splash.html",
+        "width": 760,
+        "height": 280,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "center": true,
+        "skipTaskbar": true,
         "devtools": false
       }
     ],
