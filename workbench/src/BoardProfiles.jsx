@@ -103,7 +103,7 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
       <main className="board-detail">{selected ? <>
         <div className="board-hero"><div className="board-photo">{photoUrl ? <img src={photoUrl} alt="Kart fotoğrafı"/> : <span>{(record?.label || record?.model || 'S').slice(0, 1).toUpperCase()}</span>}
           <label className="board-photo-pick" title="Fotoğraf ekle"><Camera size={17}/><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => changePhoto(e.target.files?.[0])}/></label></div>
-          <div className="board-identity"><span className="eyebrow">KART PROFİLİ {active && '· BAĞLI'}</span><h2>{record?.label || record?.model || 'İsimsiz kart'}</h2><p>{record?.model || target?.model || 'Model bilinmiyor'}</p>
+          <div className="board-identity"><span className="eyebrow">KART PROFİLİ {active && <span className="board-live-label"><i aria-hidden="true"/>BAĞLI</span>}</span><h2>{record?.label || record?.model || 'İsimsiz kart'}</h2><p>{record?.model || target?.model || 'Model bilinmiyor'}</p>
             <button className="board-uid" title="UID kopyala" onClick={() => navigator.clipboard.writeText(selected).then(() => setNotice('Kart UID’si kopyalandı.')).catch(e => setError(e.message))}>{selected.toUpperCase()} <Copy size={14}/></button></div>
         </div>
         <div className="board-facts"><span><Clock3 size={16}/> Son görüldü <strong>{active ? 'Şu an bağlı' : date(journal?.lastSeenAt)}</strong></span><span><StickyNote size={16}/> Kayıt <strong>{timeline.length}</strong></span><span><CircleAlert size={16}/> Durum <strong>{statusLabels[journal?.status || 'unknown']}</strong></span></div>
