@@ -1,3 +1,4 @@
+@font-face{font-family:Michroma;src:url('/fonts/michroma/Michroma-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:swap}
 :root{--font-sans:Michroma,sans-serif;--font-mono:Michroma,sans-serif;font-family:var(--font-sans)}
 body,button,input,textarea,select{font-family:var(--font-sans)}
 .log,.esp-terminal,.esp-terminal pre,.flash-terminal,.wizard-terminal,pre,code,.source-preview{font-family:ui-monospace,"SF Mono",Consolas,monospace}
