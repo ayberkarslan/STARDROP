@@ -51,7 +51,7 @@ int main(void) {
     report->detail_code = (uint32_t)sensor_error;
     report->elapsed_ms = HAL_GetTick();
     stardrop_error_t error = sensor_error == -1 ? STARDROP_ERROR_CONFIGURATION
-        : sensor_error == -2 ? STARDROP_ERROR_BUS_TIMEOUT
+        : sensor_error == -2 ? STARDROP_ERROR_DEVICE_NOT_FOUND
         : sensor_error == -3 ? STARDROP_ERROR_ID_MISMATCH : STARDROP_ERROR_NONE;
     stardrop_report_finish_at(report, sensor_status == 1 ? STARDROP_REPORT_PASS : STARDROP_REPORT_FAIL, error);
     for (;;) HAL_Delay(1000);
