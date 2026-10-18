@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Camera, Check, CircleAlert, Clock3, Copy, Search, StickyNote } from 'lucide-react';
-import { boardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
+import { Camera, Check, ChevronDown, CircleAlert, Clock3, Copy, Search, StickyNote } from 'lucide-react';
+import { boardTimeline, groupBoardTimeline, listBoardJournals, listenBoardJournal, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
 import { firmwareHistory } from './lib/watchMemory.js';
 import { targetUid } from './lib/targetRegistry.js';
 import { boardChoices, filterBoards } from './lib/boardFilters.js';
@@ -52,6 +52,7 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
   const record = records[selected] || null;
   const journal = journals[selected] || null;
   const timeline = boardTimeline(journal, selected ? firmwareHistory(selected) : [], record?.flashAnalysis);
+  const timelineRows = groupBoardTimeline(timeline);
   const active = selected && connectedUid === selected;
 
   const saveName = async () => {
@@ -111,7 +112,9 @@ export default function BoardProfiles({ records, target, saveTargetName, setNoti
         {!active && <p className="board-hint">Bu kart çevrimdışı. Profilini düzenleyebilir, donanım testini bağlandığında sürdürebilirsin.</p>}
         <section className="board-timeline"><div className="board-section-head"><h3>Zaman çizelgesi</h3><span>Yeni → eski</span></div>
           <form className="board-note-form" onSubmit={addNote}><textarea value={note} maxLength={2000} onChange={e => setNote(e.target.value)} placeholder="Bugün kartta ne denedin? Sonuç ve gözlemini yaz…" aria-label="Kart notu"/><div><SelectMenu ariaLabel="Kayıt türü" value={noteKind} options={[{ value: 'note', label: 'Not' }, { value: 'issue', label: 'Arıza şüphesi' }]} onChange={setNoteKind}/><button disabled={saving || !note.trim()}>Kaydet</button></div></form>
-          {timeline.length ? timeline.map(event => <article className="board-event" key={event.id}><span className="board-event-dot"/><div><div className="board-event-top"><small>{eventLabels[event.kind] || 'KAYIT'}</small><time dateTime={new Date(event.at).toISOString()}>{date(event.at)}</time></div><strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div></article>)
+          {timelineRows.length ? timelineRows.map(event => event.kind === 'flash-group'
+            ? <article className="board-event board-event-group" key={event.id}><span className="board-event-dot"/><details><summary><div><div className="board-event-top"><small>YAZILIM</small><time dateTime={new Date(event.at).toISOString()}>{date(event.at)}</time></div><strong>{event.events.length} yükleme işlemi</strong></div><ChevronDown size={16} aria-hidden="true"/></summary><div className="board-event-group-list">{event.events.map(item => <div className="board-event-group-item" key={item.id}><time dateTime={new Date(item.at).toISOString()}>{date(item.at)}</time><strong>{item.title}</strong>{item.detail && <p>{item.detail}</p>}</div>)}</div></details></article>
+            : <article className="board-event" key={event.id}><span className="board-event-dot"/><div><div className="board-event-top"><small>{eventLabels[event.kind] || 'KAYIT'}</small><time dateTime={new Date(event.at).toISOString()}>{date(event.at)}</time></div><strong>{event.title}</strong>{event.detail && <p>{event.detail}</p>}</div></article>)
             : <div className="board-timeline-empty"><Check size={20}/> Henüz olay yok. İlk atölye notunu ekle.</div>}
         </section>
       </> : <div className="board-no-selection">Bir kart seç veya STM32 bağla.</div>}</main>
