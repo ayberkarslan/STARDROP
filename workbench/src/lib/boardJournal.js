@@ -46,6 +46,14 @@ export function boardNameChange(previous, next) {
     detail: oldName ? `${oldName} → ${newName}` : newName };
 }
 
+export function boardHardwareSnapshot(target, at = Date.now()) {
+  if (!target?.connected || !targetUid(target.uid)) return null;
+  const text = value => String(value || '').slice(0, 80);
+  return { model: text(target.model), deviceId: text(target.deviceId), revisionId: text(target.revisionId),
+    dpIdcode: text(target.dpIdcode), flashSizeKb: Number.isSafeInteger(target.flashSizeKb) && target.flashSizeKb > 0 ? target.flashSizeKb : null,
+    observedAt: at };
+}
+
 export async function listBoardJournals() {
   return transact('readonly', (store, done) => {
     const request = store.getAll(); request.onsuccess = () => done(request.result || []);

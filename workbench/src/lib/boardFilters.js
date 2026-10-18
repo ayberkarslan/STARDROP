@@ -2,7 +2,7 @@ import { targetUid } from './targetRegistry.js';
 
 export function boardChoices(records, journals) {
   const uids = new Set([...Object.keys(records), ...Object.keys(journals)]);
-  return [...uids].filter(targetUid).map(uid => ({ uid, ...(records[uid] || {}) }))
+  return [...uids].filter(targetUid).map(uid => ({ uid, ...(records[uid] || {}), model: records[uid]?.model || journals[uid]?.hardware?.model || '' }))
     .sort((a, b) => (journals[b.uid]?.lastSeenAt || b.updatedAt || 0) -
       (journals[a.uid]?.lastSeenAt || a.updatedAt || 0));
 }

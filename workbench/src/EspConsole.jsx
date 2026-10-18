@@ -190,6 +190,7 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
     <div className="detail-row"><span>Flash</span><strong>{target?.flashSizeKb || '—'} KB</strong></div>
     {target?.flashSizeKb > 0 && <div className="detail-row"><span>Flash adres aralığı</span><code>0x08000000 – 0x{(0x08000000 + target.flashSizeKb * 1024 - 1).toString(16).toUpperCase().padStart(8, '0')}</code></div>}
     {usage?.durationMs > 0 && <div className="detail-row"><span>Son tarama hızı</span><strong>{kb(usage.totalBytes * 1000 / usage.durationMs)}/sn</strong></div>}
+    {target?.hardwareObservedAt && <div className="detail-row"><span>Son teknik okuma</span><strong>{recordedDate(target.hardwareObservedAt)}</strong></div>}
     {target?.recordUpdatedAt && <div className="detail-row"><span>Yerel kayıt güncellendi</span><strong>{recordedDate(target.recordUpdatedAt)}</strong></div>}
   </>;
   const renderTargetBody = (compact = false) => <div className="drawer-body">

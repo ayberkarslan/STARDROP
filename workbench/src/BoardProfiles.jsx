@@ -55,7 +55,8 @@ export default function BoardProfiles({ records, target, esp, espBase, hardware,
   const timeline = boardTimeline(journal, selected ? firmwareHistory(selected) : [], record?.flashAnalysis);
   const timelineRows = groupBoardTimeline(timeline);
   const active = selected && connectedUid === selected;
-  const managedTarget = active ? target : { ...record, uid: selected, model: record?.model || boards.find(board => board.uid === selected)?.model, connected: false, recordUpdatedAt: record?.updatedAt };
+  const managedTarget = active ? target : { ...journal?.hardware, ...record, uid: selected, model: record?.model || journal?.hardware?.model, connected: false,
+    hardwareObservedAt: journal?.hardware?.observedAt, recordUpdatedAt: record?.updatedAt };
 
   const saveName = async () => {
     setSaving(true); setError('');

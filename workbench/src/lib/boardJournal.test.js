@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boardEvent, boardNameChange, boardTimeline, groupBoardTimeline } from './boardJournal.js';
+import { boardEvent, boardHardwareSnapshot, boardNameChange, boardTimeline, groupBoardTimeline } from './boardJournal.js';
 
 const uid = '001300155231501920323239';
 
@@ -48,4 +48,12 @@ test('uploads from different sessions stay separate', () => {
   const grouped = groupBoardTimeline(events);
   assert.deepEqual(grouped.map(row => row.kind), ['flash', 'flash-group']);
   assert.deepEqual(grouped[1].events.map(row => row.id), ['yesterday', 'earlier']);
+});
+
+test('hardware snapshot is tied to a connected UID and excludes transient connection state', () => {
+  const target = { connected: true, uid, model: 'STM32F446', deviceId: '0x421', revisionId: '0x1000', dpIdcode: '0x2ba01477', flashSizeKb: 512 };
+  assert.deepEqual(boardHardwareSnapshot(target, 123), { model: 'STM32F446', deviceId: '0x421', revisionId: '0x1000',
+    dpIdcode: '0x2ba01477', flashSizeKb: 512, observedAt: 123 });
+  assert.equal(boardHardwareSnapshot({ ...target, connected: false }), null);
+  assert.equal(boardHardwareSnapshot({ ...target, uid: 'invalid' }), null);
 });

@@ -23,7 +23,7 @@ import TestHome from './TestHome.jsx';
 import FlashSession from './FlashSession.jsx';
 import LiveMonitor from './LiveMonitor.jsx';
 import BoardProfiles from './BoardProfiles.jsx';
-import { recordBoardEvent } from './lib/boardJournal.js';
+import { boardHardwareSnapshot, recordBoardEvent, updateBoardJournal } from './lib/boardJournal.js';
 import { targetUid } from './lib/targetRegistry.js';
 import { recordFirmware, rememberWatchElf } from './lib/watchMemory.js';
 import stardustWordmark from './assets/stardust-wordmark.png';
@@ -123,7 +123,9 @@ export default function App() {
   useEffect(() => {
     const uid = rawTarget?.connected ? targetUid(rawTarget.uid) : null;
     if (uid && uid !== lastConnectedUid.current) {
-      void recordBoardEvent(uid, 'connected', 'Kart bağlandı', rawTarget.model || '').catch(() => {});
+      const hardware = boardHardwareSnapshot(rawTarget);
+      void recordBoardEvent(uid, 'connected', 'Kart bağlandı', rawTarget.model || '')
+        .then(() => updateBoardJournal(uid, current => ({ ...current, hardware }))).catch(() => {});
     }
     lastConnectedUid.current = uid;
   }, [rawTarget?.connected, rawTarget?.uid, rawTarget?.model]);
