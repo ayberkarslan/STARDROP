@@ -6,6 +6,7 @@ import { espJson, espStream } from './lib/espTransport.js';
 import Popup from './Popup.jsx';
 import stardropModuleImage from './assets/stardrop-module.png';
 import WiringGuide from './WiringGuide.jsx';
+import { wiringRows } from './lib/wiringGuide.js';
 import FlashProgress from './FlashProgress.jsx';
 import { targetUid, validateFlashAnalysis } from './lib/targetRegistry.js';
 
@@ -273,6 +274,13 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
 
   if (devicesOnly) return <div className="workspace devices-workspace stardrop-showroom">
     <header className="device-page-heading"><h1>STARDROP</h1><YRT_IconButton variant="bare" size="sm" label="Modül bilgilerini yenile" disabled={deviceBusy || busy} onClick={() => base ? loadSettings() : onDiscover?.()}><RefreshCw size={18}/></YRT_IconButton></header>
+    <div className="stardrop-wiring-strip" aria-label="Nucleo F446RE SWD bağlantıları">
+      <span className="stardrop-wiring-label">NUCLEO F446RE · SWD</span>
+      {wiringRows({ programmer, espProfile: esp?.status === 'online' && programmer ? 'live' : 's3', board: 'nucleo' })
+        .filter(row => !row.optional || row.available)
+        .map(row => <span className="stardrop-wiring-pair" key={row.signal}><b>{row.esp}</b><i>→</i><b>{row.signal === 'GND' ? 'GND' : `${row.stm.split(' · ')[0]} · ${row.location}`}</b></span>)}
+      <button type="button" className="stardrop-wiring-open" onClick={() => setWiringOpen(true)}>Tüm bağlantılar <ChevronRight size={14}/></button>
+    </div>
     <section className="stardrop-stage" aria-label="STARDROP modülü">
       <span className="stardrop-stage-model">{programmer?.chipModel || 'ESP32-S3'}</span>
       <span className={'stardrop-stage-state' + (esp?.status === 'online' ? ' is-connected' : '')}><i/>{esp?.status === 'online' ? 'BAĞLI' : 'ÇEVRİMDIŞI'}</span>
