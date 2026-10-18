@@ -12,6 +12,8 @@ import { targetUid, validateFlashAnalysis } from './lib/targetRegistry.js';
 
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
 const recordedDate = value => value ? new Date(value).toLocaleString('tr-TR') : '—';
+const analysisTime = value => new Date(value).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+const analysisDate = value => new Date(value).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
 const speedOptions = [
   { value: 'auto', title: 'AUTO', detail: 'Önerilen · gerektiğinde yavaşlar' },
   { value: 'turbo', title: 'TURBO', detail: 'En hızlı · sağlam kısa hat' },
@@ -211,7 +213,7 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
       </div>
       {usageProgress !== null && <div className="target-analysis-progress"><div className="flash-feedback-top"><span>{usageRemaining === null ? 'SWD FLASH OKUNUYOR...' : `FLASH TARANIYOR · ~${usageRemaining} SN KALDI`}</span><strong>{usageProgress}%</strong></div><div className="progress"><i style={{ width: `${usageProgress}%` }}/></div></div>}
       {!compact && <p className="flash-analysis-note">Analiz tüm flash’ı SWD üzerinden yalnızca okur. “Programlanmış” bayt, değeri FF olmayan fiziksel flash baytıdır.</p>}
-      {usage?.analyzedAt && <div className="flash-record-meta"><time dateTime={new Date(usage.analyzedAt).toISOString()}>Son analiz · {recordedDate(usage.analyzedAt)}</time><small>{usage.unsaved ? 'Bu oturum · yerel kayıt yapılmadı.' : 'Yerel kayıt · canlı ölçüm değil. Yükleme veya silme sonrası yeniden analiz et.'}</small></div>}
+      {usage?.analyzedAt && <div className="flash-record-meta"><time dateTime={new Date(usage.analyzedAt).toISOString()}><span>Son analiz</span><strong>{analysisTime(usage.analyzedAt)}</strong><span>{analysisDate(usage.analyzedAt)}</span></time><small>{usage.unsaved ? 'Bu oturum · yerel kayıt yapılmadı.' : 'Yerel kayıt · canlı ölçüm değil. Yükleme veya silme sonrası yeniden analiz et.'}</small></div>}
     </div>
     {!compact && targetDetails}
     {!compact && <div className="drawer-section"><label>Kart adı</label><div className="inline-form"><input aria-label="Kart adı" value={label} maxLength={32} onChange={(event) => setLabel(event.target.value)} placeholder="Örn. Telemetri kartı"/><button disabled={busy || deviceBusy || !target?.connected || !label.trim()} onClick={() => action('/api/target/label', { label: label.trim() }, 'Kart adı kaydedildi.')}>Kaydet</button></div><small>UID ile bu bilgisayarda saklanır.</small></div>}
@@ -263,7 +265,7 @@ export default function EspConsole({ devicesOnly = false, targetOnly = false, es
     </div>
   </Popup>;
 
-  if (targetOnly) return <div className="board-device-tools">
+  if (targetOnly) return <div className={`board-device-tools${target?.connected ? '' : ' is-offline'}`}>
     <div className="board-device-tools-head"><h3>STM32 yönetimi</h3><div><span>{target?.connected ? 'Canlı kart' : 'Kayıtlı bilgiler'}</span><button type="button" aria-label="STM32 bağlantısını yenile" title="STM32 bağlantısını yenile" disabled={deviceBusy || busy || esp?.status !== 'online'} onClick={refreshTarget}><RefreshCw size={15}/></button></div></div>
     <div className="board-tools-grid"><YRT_Panel className="board-tool-card board-flash-panel" title="Flash analizi">{renderTargetBody(true)}</YRT_Panel>
       <YRT_Panel className="board-tool-card board-maintenance-panel" title="Bakım ve kurtarma">{renderTargetMaintenance(true)}</YRT_Panel></div>

@@ -87,8 +87,9 @@
 .app-shell .select-option[aria-selected=true]{background:#222;color:#fff}
 .app-shell .select-menu.open .select-trigger,.app-shell .select-trigger:focus-visible,
 .app-shell .wizard-fields input:focus{border-color:#aaa;box-shadow:0 0 0 2px #ffffff1a}
-.app-shell .manual-kind button,.app-shell .secondary,.app-shell .speed-options button,
-.app-shell .flash-analyze{background:#111;border-color:#3c3c3c;color:#eee}
+.app-shell .manual-kind button,.app-shell .secondary,.app-shell .speed-options button{background:#111;border-color:#3c3c3c;color:#eee}
+.app-shell .flash-analyze,.app-shell .flash-analyze:hover:not(:disabled){background:#000;border-color:#fff;color:#fff}
+.app-shell .flash-analyze:disabled{background:#000;border-color:#555;color:#aaa;opacity:1}
 .app-shell .manual-kind button.active,.app-shell .speed-options button.selected{background:#222;border-color:#888;color:#fff}
 .app-shell .primary,.app-shell .flash-submit{background:#f4f4f4;border-color:#f4f4f4;color:#050505}
 .app-shell .primary:hover:not(:disabled),.app-shell .flash-submit:hover:not(:disabled){background:#dcdcdc}
