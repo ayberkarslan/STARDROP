@@ -44,10 +44,31 @@ export interface YRT_SelectMenuProps {
 }
 export function YRT_SelectMenu(props: YRT_SelectMenuProps): ReactNode;
 
+export function YRT_TextArea(props: ComponentPropsWithoutRef<'textarea'> & {
+  label?: ReactNode; hint?: ReactNode; error?: ReactNode; ref?: Ref<HTMLTextAreaElement>;
+}): ReactNode;
+export function YRT_Checkbox(props: Omit<ComponentPropsWithoutRef<'input'>, 'type'> & {
+  label: ReactNode; hint?: ReactNode; ref?: Ref<HTMLInputElement>;
+}): ReactNode;
+export function YRT_EmptyState(props: ComponentPropsWithoutRef<'div'> & {
+  title: ReactNode; description?: ReactNode; action?: ReactNode; icon?: ReactNode;
+}): ReactNode;
+export interface YRT_TabItem { value: string; label: ReactNode; content: ReactNode; disabled?: boolean }
+export function YRT_Tabs(props: {
+  items: YRT_TabItem[]; value?: string; defaultValue?: string;
+  onChange?: (value: string) => void; label?: string; className?: string;
+}): ReactNode;
+export function YRT_Dialog(props: {
+  open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode;
+  children?: ReactNode; actions?: ReactNode; className?: string; closeLabel?: string;
+}): ReactNode;
+
 export { YRT_Button as Button, YRT_IconButton as IconButton, YRT_ChoiceCard as ChoiceCard,
   YRT_BackArrow as BackArrow, YRT_Panel as Panel, YRT_StatusBadge as StatusBadge,
   YRT_TextField as TextField, YRT_SelectMenu as SelectMenu,
-  YRT_Disclosure as Disclosure, YRT_Showcase as Showcase };
+  YRT_Disclosure as Disclosure, YRT_Showcase as Showcase,
+  YRT_TextArea as TextArea, YRT_Checkbox as Checkbox,
+  YRT_EmptyState as EmptyState, YRT_Tabs as Tabs, YRT_Dialog as Dialog };
 export type { YRT_ButtonVariant as ButtonVariant, YRT_ButtonSize as ButtonSize,
   YRT_StatusTone as StatusTone, YRT_ButtonProps as ButtonProps,
   YRT_PanelProps as PanelProps, YRT_SelectOption as SelectOption,

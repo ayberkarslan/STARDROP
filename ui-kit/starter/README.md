@@ -1,7 +1,12 @@
-# Vite başlangıcı
+# YRT UI: bağımsız takvim örneği
 
-Bu klasörde `npm install` ardından `npm run dev` yeterli. `@stardrop/ui` üst dizindeki paketten alınır. Başka bir konuma kopyalarsan `package.json` içindeki `file:..` yolunu yeni paket yoluna göre güncelle veya `npm install /paketin/tam/yolu` çalıştır.
+Bu Vite + React projesi paket dışındaki bir uygulamanın `@stardrop/ui` bileşenlerini nasıl kullanacağını gösterir. Donanım, STARDROP servisleri veya ağ erişimi gerekmez.
 
-Yerel `file:` bağımlılığı npm tarafından sembolik bağlantı olarak kurulabilir. `vite.config.js` içindeki `preserveSymlinks` ve React `dedupe` ayarları paketin uygulamanın React kopyasını kullanmasını sağlar; yeni projede yerel paket kullanırken bu ayarları koru.
+```sh
+npm install
+npm run dev
+```
 
-`src/App.jsx` yalnız UI örneğidir. Gerçek veri akışı, durum yönetimi ve donanım işlemleri yeni uygulamaya aittir.
+`package.json` içindeki `file:..` bağımlılığı bir üst dizindeki `ui-kit` paketini kullanır. Örneği başka yere taşırsanız yolu yeni paket konumuna göre güncelleyin. Yerel pakette React'in tek kopyasını kullanmak için `vite.config.js` içindeki `preserveSymlinks` ve `dedupe` ayarları bulunur.
+
+Örnek; panel, buton, sekme, boş durum, modal, metin alanı ve onay kutusu kullanımını içerir. Etkinlikler yalnız bellek içinde tutulur; gerçek uygulamada kalıcı veri katmanını siz eklersiniz.

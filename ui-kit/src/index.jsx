@@ -5,3 +5,6 @@ export { YRT_Panel, YRT_Panel as Panel, YRT_StatusBadge, YRT_StatusBadge as Stat
 export { YRT_Showcase, YRT_Showcase as Showcase } from './showcase.jsx';
 export { YRT_SelectMenu, YRT_SelectMenu as SelectMenu } from './select.jsx';
 export { YRT_BackArrow, YRT_BackArrow as BackArrow } from './back-arrow.jsx';
+export { YRT_TextArea, YRT_TextArea as TextArea, YRT_Checkbox, YRT_Checkbox as Checkbox,
+  YRT_EmptyState, YRT_EmptyState as EmptyState, YRT_Tabs, YRT_Tabs as Tabs,
+  YRT_Dialog, YRT_Dialog as Dialog } from './common.jsx';
